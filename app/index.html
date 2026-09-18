@@ -6,33 +6,69 @@
 <title>EarPrint — Personal</title>
 
 <style>
+
 :root{
-  --bg:#0a0e17;
-  --panel:#111827;
+  --bg:#070b12;
+  --panel:#0e1624;
+  --panel2:#0b1320;
   --text:#eef4ff;
-  --muted:#98a6bc;
-  --line:#27344d;
-  --accent:#7ea7ff;
+  --muted:#92a2ba;
+  --line:#22314a;
+  --accent:#66a3ff;
+  --accent2:#4de0a7;
+  --mask:#ff5f8f;
+  --original:#dce7f8;
   --ok:#62d39a;
   --warn:#f2c66d;
   --bad:#ef8795;
 }
 
-*{
-  box-sizing:border-box;
+*{box-sizing:border-box}
+
+html{
+  -webkit-text-size-adjust:100%;
+  text-size-adjust:100%;
 }
 
 body{
   margin:0;
-  background:linear-gradient(180deg,#090d15,#0d1420);
+  min-width:0;
+  overflow-x:hidden;
+  background:
+    radial-gradient(circle at 20% 0%,rgba(50,91,150,.14),transparent 32rem),
+    linear-gradient(180deg,#070b12,#0b1220);
   color:var(--text);
-  font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  font:15px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+}
+
+button,a.btn,select,input{
+  font:inherit;
+}
+
+button,a.btn{
+  border:1px solid var(--line);
+  background:#142038;
+  color:var(--text);
+  padding:9px 12px;
+  border-radius:9px;
+  text-decoration:none;
+  cursor:pointer;
+  touch-action:manipulation;
+}
+
+button.primary,a.primary{
+  background:#1d4f9c;
+  border-color:#3d75d4;
+}
+
+button:active,a.btn:active{
+  transform:translateY(1px);
 }
 
 .wrap{
-  max-width:1240px;
+  width:min(1240px,100%);
   margin:auto;
-  padding:20px;
+  padding:18px;
 }
 
 .top{
@@ -46,34 +82,19 @@ body{
 .brand h1{
   margin:0;
   font-size:28px;
+  letter-spacing:-.02em;
 }
 
 .brand p{
   margin:3px 0 0;
   color:var(--muted);
+  overflow-wrap:anywhere;
 }
 
 .actions{
   display:flex;
   flex-wrap:wrap;
   gap:8px;
-}
-
-button,
-a.btn{
-  border:1px solid var(--line);
-  background:#162239;
-  color:var(--text);
-  padding:9px 12px;
-  border-radius:9px;
-  text-decoration:none;
-  cursor:pointer;
-}
-
-button.primary,
-a.primary{
-  background:#214a92;
-  border-color:#3264bd;
 }
 
 .grid{
@@ -84,22 +105,15 @@ a.primary{
 }
 
 .card{
-  background:rgba(17,24,39,.95);
+  background:rgba(14,22,36,.96);
   border:1px solid var(--line);
   border-radius:13px;
   padding:14px;
+  min-width:0;
 }
 
-.num{
-  font-size:25px;
-  font-weight:700;
-}
-
-.label,
-.muted,
-.status{
-  color:var(--muted);
-}
+.num{font-size:25px;font-weight:700}
+.label,.muted,.status{color:var(--muted)}
 
 .cols{
   display:grid;
@@ -107,23 +121,12 @@ a.primary{
   gap:12px;
 }
 
-.section{
-  margin-top:12px;
-}
+.section{margin-top:12px}
+.section h2{margin:0 0 10px;font-size:18px}
 
-.section h2{
-  margin:0 0 10px;
-  font-size:18px;
-}
-
-.pillbox{
-  display:flex;
-  flex-wrap:wrap;
-  gap:7px;
-}
-
+.pillbox{display:flex;flex-wrap:wrap;gap:7px}
 .pill{
-  background:#152137;
+  background:#122038;
   border:1px solid var(--line);
   border-radius:999px;
   padding:6px 9px;
@@ -141,6 +144,7 @@ a.primary{
   display:flex;
   flex-direction:column;
   gap:5px;
+  min-width:0;
 }
 
 .field label{
@@ -148,23 +152,17 @@ a.primary{
   color:var(--muted);
 }
 
-select,
-input{
-  background:#0f1726;
+select,input{
+  width:100%;
+  min-width:0;
+  background:#0b1423;
   color:var(--text);
   border:1px solid var(--line);
   border-radius:8px;
   padding:9px;
 }
 
-.inline{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-  align-items:center;
-}
-
-.resultbar{
+.inline,.resultbar{
   display:flex;
   gap:8px;
   flex-wrap:wrap;
@@ -176,13 +174,23 @@ input{
   border:1px solid var(--line);
   border-radius:12px;
   overflow:hidden;
-  background:#090f1c;
+  background:#080f1b;
 }
 
 .chart svg{
   width:100%;
   height:auto;
   display:block;
+}
+
+.chart-scroll{
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:thin;
+}
+
+.chart-scroll svg{
+  min-width:0;
 }
 
 .error{
@@ -194,18 +202,181 @@ input{
   color:#ffdbe1;
 }
 
-.warn{
-  color:var(--warn);
+.warn{color:var(--warn)}
+.ok{color:var(--ok)}
+.small{font-size:12px}
+
+/* ============================================================
+   TARGET VISUALIZER
+   ============================================================ */
+
+.visualizer{
+  margin-top:12px;
 }
 
-.ok{
-  color:var(--ok);
+.visualizer-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+  gap:12px;
+  margin-bottom:8px;
 }
 
-.small{
+.visualizer-title{
+  margin:0;
+  font-size:16px;
+}
+
+.visualizer-subtitle{
+  color:var(--muted);
+  font-size:12px;
+  margin-top:2px;
+}
+
+.viz-controls{
+  display:grid;
+  grid-template-columns:1.1fr 1.1fr 1fr auto;
+  gap:8px;
+  align-items:end;
+}
+
+.viz-control{
+  min-width:0;
+}
+
+.viz-control label{
+  display:block;
+  color:var(--muted);
+  font-size:11px;
+  margin:0 0 4px;
+}
+
+.viz-actions{
+  display:flex;
+  gap:7px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.toggle{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  color:#dce7f8;
+  font-size:12px;
+  user-select:none;
+}
+
+.toggle input{
+  width:18px;
+  height:18px;
+  margin:0;
+  accent-color:#3e86ef;
+}
+
+.viz-grid{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 235px;
+  gap:10px;
+  align-items:stretch;
+}
+
+.viz-main{
+  min-width:0;
+}
+
+.viz-side{
+  display:grid;
+  gap:10px;
+  min-width:0;
+}
+
+.viz-panel{
+  background:rgba(8,16,28,.82);
+  border:1px solid var(--line);
+  border-radius:11px;
+  padding:10px;
+}
+
+.viz-panel h3{
+  margin:0 0 8px;
+  font-size:13px;
+}
+
+.legend{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 13px;
+  margin-top:8px;
+  color:#c9d5e8;
+  font-size:11px;
+}
+
+.legend-item{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+
+.legend-line{
+  width:24px;
+  height:0;
+  border-top:2px solid currentColor;
+}
+
+.legend-line.dashed{
+  border-top-style:dashed;
+}
+
+.legend-swatch{
+  width:24px;
+  height:8px;
+  border-radius:3px;
+  background:rgba(255,95,143,.18);
+  border:1px solid rgba(255,95,143,.35);
+}
+
+.readout{
+  display:grid;
+  grid-template-columns:auto 1fr;
+  gap:3px 10px;
   font-size:12px;
 }
 
+.readout .k{color:var(--muted)}
+.readout .v{text-align:right;font-variant-numeric:tabular-nums}
+
+.summary-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+}
+
+.summary{
+  background:#0d1727;
+  border:1px solid #1c2a40;
+  border-radius:8px;
+  padding:7px;
+}
+
+.summary .k{display:block;color:var(--muted);font-size:10px}
+.summary .v{font-size:13px;font-variant-numeric:tabular-nums}
+
+.viz-footer{
+  margin-top:8px;
+  color:var(--muted);
+  font-size:11px;
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.viz-empty{
+  padding:24px 12px;
+  color:var(--muted);
+  text-align:center;
+}
 
 /* ============================================================
    MODAL
@@ -214,164 +385,88 @@ input{
 .modalBack{
   position:fixed;
   inset:0;
-  background:rgba(0,0,0,.70);
+  background:rgba(0,0,0,.72);
   display:flex;
   align-items:center;
   justify-content:center;
   padding:16px;
   z-index:9999;
+  overscroll-behavior:contain;
 }
 
-.modalBack[hidden]{
-  display:none !important;
-}
+.modalBack[hidden]{display:none !important}
 
 .modal{
   width:min(700px,100%);
-  max-height:90vh;
+  max-height:min(90vh,760px);
   overflow:auto;
+  -webkit-overflow-scrolling:touch;
 }
-
 
 /* ============================================================
-   RESPONSIVE
+   RESPONSIVE / ANDROID
    ============================================================ */
 
-@media(max-width:850px){
-
-  .grid{
-    grid-template-columns:repeat(2,1fr);
-  }
-
-  .cols{
-    grid-template-columns:1fr;
-  }
-
+@media(max-width:900px){
+  .viz-grid{grid-template-columns:1fr}
+  .viz-side{grid-template-columns:1fr 1fr}
+  .viz-controls{grid-template-columns:1fr 1fr}
+  .viz-actions{grid-column:1/-1}
+  .cols{grid-template-columns:1fr}
 }
 
-@media(max-width:520px){
-
-  html{
-    -webkit-text-size-adjust:100%;
-  }
-
-  body{
-    overflow-x:hidden;
-  }
-
-  .wrap{
-    width:100%;
-    padding:12px;
-  }
-
-  .top{
-    gap:10px;
-  }
-
-  .brand{
-    width:100%;
-  }
-
-  .brand h1{
-    font-size:24px;
-    line-height:1.2;
-  }
-
-  .brand p{
-    font-size:13px;
-    overflow-wrap:anywhere;
-  }
-
+@media(max-width:600px){
+  body{font-size:14px}
+  .wrap{padding:10px}
+  .top{gap:10px}
+  .brand{width:100%}
+  .brand h1{font-size:23px;line-height:1.2}
+  .brand p{font-size:12px}
   .actions{
     width:100%;
     display:grid;
     grid-template-columns:1fr 1fr;
   }
-
-  .actions button,
-  .actions a.btn{
+  .actions button,.actions a.btn{
     width:100%;
     min-height:44px;
     display:flex;
     align-items:center;
     justify-content:center;
     text-align:center;
-    padding:10px 8px;
+    padding:9px 7px;
   }
-
-  .grid{
-    grid-template-columns:1fr 1fr;
-    gap:8px;
-  }
-
-  .card{
-    padding:12px;
-    min-width:0;
-  }
-
-  .num{
-    font-size:21px;
-  }
-
-  .label{
-    font-size:12px;
-    line-height:1.3;
-  }
-
-  .formrow{
-    grid-template-columns:1fr;
-  }
-
-  .field{
-    min-width:0;
-  }
-
-  select,
-  input,
-  button,
-  a.btn{
-    min-height:44px;
-    font-size:16px;
-  }
-
-  select,
-  input{
-    width:100%;
-  }
-
-  .inline,
-  .resultbar{
-    width:100%;
-  }
-
-  .inline button,
-  .resultbar button{
-    flex:1 1 100%;
-    min-height:44px;
-  }
-
-  .chart{
-    width:100%;
-    overflow-x:auto;
-    -webkit-overflow-scrolling:touch;
-  }
-
-  .chart svg{
-    min-width:520px;
-  }
-
-  .modalBack{
-    align-items:flex-start;
-    padding:8px;
-  }
-
-  .modal{
-    width:100%;
-    max-height:calc(100vh - 16px);
-    margin-top:0;
-  }
-
+  .grid{grid-template-columns:1fr 1fr;gap:7px;margin:11px 0}
+  .card{padding:11px;border-radius:11px}
+  .num{font-size:20px}
+  .label{font-size:11px;line-height:1.3}
+  .formrow{grid-template-columns:1fr;gap:8px}
+  .field label{font-size:11px}
+  select,input,button,a.btn{min-height:44px;font-size:16px}
+  .inline,.resultbar{width:100%}
+  .inline button,.resultbar button{flex:1 1 100%}
+  .viz-controls{grid-template-columns:1fr}
+  .viz-actions{grid-column:auto}
+  .viz-side{grid-template-columns:1fr}
+  .visualizer-head{align-items:flex-start}
+  .legend{gap:7px 10px}
+  .legend-line{width:19px}
+  .chart{border-radius:10px}
+  .chart-scroll{overflow-x:auto}
+  .chart-scroll svg{min-width:520px;max-width:none}
+  .viz-main .chart-scroll svg{width:100%;min-width:0}
+  .viz-footer{display:block}
+  .viz-footer span{display:block;margin-top:3px}
+  .modalBack{align-items:flex-start;padding:8px}
+  .modal{width:100%;max-height:calc(100dvh - 16px);margin-top:0}
 }
+
+@media(max-width:380px){
+  .actions{grid-template-columns:1fr}
+  .grid{grid-template-columns:1fr 1fr}
+  .brand h1{font-size:21px}
+}
+
 </style>
 </head>
 
@@ -560,90 +655,181 @@ input{
   </div>
 
 
+
   <!-- ========================================================
-       TARGET RESULTS
+       TARGET RESULTS / VISUALIZER
        ========================================================= -->
 
   <div class="card section">
 
-    <h2>
-      Target results
-    </h2>
-
-
-    <div class="formrow">
-
-
-      <div class="field">
-
-        <label>
-          Target
-        </label>
-
-        <select
-          id="targetSelect"
-          onchange="showTarget()">
-        </select>
-
+    <div class="visualizer-head">
+      <div>
+        <h2 style="margin:0">Target Visualizer</h2>
+        <div class="visualizer-subtitle">
+          Original target vs robust masked target, with your Pure EarPrint as reference.
+        </div>
       </div>
-
-
-      <div class="field">
-
-        <label>
-          Result
+      <div class="viz-actions">
+        <label class="toggle">
+          <input id="showOriginal" type="checkbox" checked onchange="rerenderTargetViz()">
+          Original
         </label>
-
-        <select
-          id="resultType"
-          onchange="showTarget()">
-
-          <option value="mask">
-            Robust Mask
-          </option>
-
-          <option value="robust">
-            Robust Target
-          </option>
-
-        </select>
-
+        <label class="toggle">
+          <input id="showRobust" type="checkbox" checked onchange="rerenderTargetViz()">
+          Robust
+        </label>
+        <label class="toggle">
+          <input id="showPure" type="checkbox" checked onchange="rerenderTargetViz()">
+          EarPrint
+        </label>
+        <label class="toggle">
+          <input id="showMask" type="checkbox" checked onchange="rerenderTargetViz()">
+          Mask Δ
+        </label>
       </div>
-
-
     </div>
 
+    <div class="formrow viz-controls">
+
+      <div class="viz-control">
+        <label for="targetSelect">Target</label>
+        <select id="targetSelect" onchange="showTarget()"></select>
+      </div>
+
+      <div class="viz-control">
+        <label for="resultType">Selected result</label>
+        <select id="resultType" onchange="showTarget()">
+          <option value="mask">Robust Mask</option>
+          <option value="robust">Robust Target</option>
+        </select>
+      </div>
+
+      <div class="viz-control">
+        <label for="vizRange">View</label>
+        <select id="vizRange" onchange="rerenderTargetViz()">
+          <option value="full">20 Hz – 20 kHz</option>
+          <option value="music">20 Hz – 12 kHz</option>
+          <option value="mid">200 Hz – 12 kHz</option>
+        </select>
+      </div>
+
+      <div class="viz-control">
+        <label>&nbsp;</label>
+        <button type="button" onclick="resetVizView()">Reset view</button>
+      </div>
+
+    </div>
 
     <div class="resultbar">
-
-
-      <button
-        type="button"
-        class="primary"
-        onclick="downloadTargetResult()">
-
+      <button type="button" class="primary" onclick="downloadTargetResult()">
         Download selected
-
       </button>
+      <span id="targetStatus" class="status"></span>
+    </div>
 
+    <div class="viz-grid visualizer">
 
-      <span
-        id="targetStatus"
-        class="status">
-      </span>
+      <div class="viz-main">
 
+        <div id="targetChart" class="chart"></div>
+
+        <div class="legend" aria-label="Chart legend">
+          <span class="legend-item" style="color:#dce7f8">
+            <span class="legend-line dashed"></span> Original Target
+          </span>
+          <span class="legend-item" style="color:#66a3ff">
+            <span class="legend-line"></span> Robust Target
+          </span>
+          <span class="legend-item" style="color:#4de0a7">
+            <span class="legend-line"></span> Pure EarPrint
+          </span>
+          <span class="legend-item" style="color:#ff5f8f">
+            <span class="legend-line"></span> Mask Δ
+          </span>
+        </div>
+
+        <div id="maskChart" class="chart" style="margin-top:8px"></div>
+
+        <div class="legend">
+          <span class="legend-item" style="color:#ff5f8f">
+            <span class="legend-line"></span> Mask Δ
+          </span>
+          <span class="legend-item">
+            <span class="legend-swatch"></span> zero/reference region
+          </span>
+        </div>
+
+      </div>
+
+      <div class="viz-side">
+
+        <div class="viz-panel">
+          <h3>Point readout</h3>
+          <div class="readout">
+            <span class="k">Frequency</span>
+            <span id="readFreq" class="v">Tap graph</span>
+            <span class="k">Original</span>
+            <span id="readOriginal" class="v">—</span>
+            <span class="k">Robust</span>
+            <span id="readRobust" class="v">—</span>
+            <span class="k">EarPrint</span>
+            <span id="readPure" class="v">—</span>
+            <span class="k">Mask Δ</span>
+            <span id="readMask" class="v">—</span>
+          </div>
+        </div>
+
+        <div class="viz-panel">
+          <h3>Summary · 1–12 kHz</h3>
+          <div class="summary-grid">
+            <div class="summary">
+              <span class="k">Mask max</span>
+              <span id="sumMax" class="v">—</span>
+            </div>
+            <div class="summary">
+              <span class="k">Mask min</span>
+              <span id="sumMin" class="v">—</span>
+            </div>
+            <div class="summary">
+              <span class="k">Mask RMS</span>
+              <span id="sumRms" class="v">—</span>
+            </div>
+            <div class="summary">
+              <span class="k">Points</span>
+              <span id="sumPoints" class="v">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="viz-panel">
+          <h3>Frequency regions</h3>
+          <div class="small muted">
+            <b>20–200 Hz</b> · Bass<br>
+            <b>200 Hz–1 kHz</b> · Lower Mid<br>
+            <b>1–12 kHz</b> · Upper Mid<br>
+            <b>&gt;12 kHz</b> · Treble / display only
+          </div>
+        </div>
+
+        <div class="viz-panel">
+          <h3>What you're seeing</h3>
+          <div class="small muted">
+            The original target is shown as supplied. The robust target and mask are
+            the engine's exported results. The Pure EarPrint is a reference only;
+            this visualizer does not alter any engine output.
+          </div>
+        </div>
+
+      </div>
 
     </div>
 
-
-    <div
-      id="targetChart"
-      class="chart">
+    <div class="viz-footer">
+      <span id="vizDataStatus">Loading target data…</span>
+      <span>Tap a graph point/area on Android for a frequency readout.</span>
     </div>
-
 
   </div>
-
 
   <!-- ========================================================
        HYBRID BUILDER
@@ -1111,6 +1297,14 @@ let pureCurve = null;
 
 let generatedHybrid = null;
 
+let targetViz = {
+  name:'',
+  original:null,
+  robust:null,
+  mask:null,
+  pure:null
+};
+
 let githubToken = '';
 
 let addKind = 'iem';
@@ -1465,21 +1659,11 @@ function buildHybrid(
   join
 ){
 
-  /*
-    Hybrid rule:
-    - target is used only at/below the join
-    - Pure EarPrint is used above the join
-    - the upper Pure EarPrint segment receives one
-      constant shift so its value at the join matches
-      the target exactly
-  */
-
   const targetAtJoin =
     logInterp(
       target,
       join
     );
-
 
   const pureAtJoin =
     logInterp(
@@ -1487,14 +1671,11 @@ function buildHybrid(
       join
     );
 
-
   const shift =
     targetAtJoin -
     pureAtJoin;
 
-
   const output = [];
-
 
   for(
     let i=0;
@@ -1505,17 +1686,21 @@ function buildHybrid(
     const frequency =
       frequencyGrid[i];
 
+    const pureValue =
+      pure[i][1];
+
+    /*
+      IMPORTANT:
+      The selected target is used only at/below the join.
+      Above the join the hybrid is Pure EarPrint plus one
+      constant vertical shift. We deliberately do not
+      interpolate the target above the join.
+    */
 
     const value =
       frequency <= join
-
-        ? logInterp(
-            target,
-            frequency
-          )
-
-        : pure[i][1] + shift;
-
+        ? logInterp(target, frequency)
+        : pureValue + shift;
 
     output.push([
       frequency,
@@ -1523,7 +1708,6 @@ function buildHybrid(
     ]);
 
   }
-
 
   return {
     curve:output,
@@ -1533,255 +1717,369 @@ function buildHybrid(
 }
 
 
+
 /* ============================================================
-   GRAPH
+   TARGET VISUALIZER
    ============================================================ */
 
+const VIZ_COLORS = {
+  original:'#dce7f8',
+  robust:'#66a3ff',
+  pure:'#4de0a7',
+  mask:'#ff5f8f',
+  grid:'#1c2a40',
+  gridStrong:'#2a3b57',
+  band1:'rgba(46,190,255,.075)',
+  band2:'rgba(77,224,167,.055)',
+  band3:'rgba(255,201,77,.055)',
+  band4:'rgba(174,112,255,.07)'
+};
 
-function draw(
-  points,
-  containerId
-){
+function curveValue(curve, frequency){
+  if(!curve || curve.length < 2) return null;
+  if(frequency < curve[0][0] || frequency > curve[curve.length-1][0]) return null;
+  try{
+    return logInterp(curve, frequency);
+  }catch(_){
+    return null;
+  }
+}
 
-  if(
-    !points ||
-    points.length < 2
-  ){
+function finiteValues(curves, minHz, maxHz){
+  const values=[];
+  for(const curve of curves){
+    if(!curve) continue;
+    for(const [f,v] of curve){
+      if(f>=minHz && f<=maxHz && Number.isFinite(v)) values.push(v);
+    }
+  }
+  return values;
+}
 
+function niceStep(range, desired=6){
+  const raw = Math.max(range/desired, .1);
+  const power = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw/power;
+  let step;
+  if(n<=1) step=1;
+  else if(n<=2) step=2;
+  else if(n<=5) step=5;
+  else step=10;
+  return step*power;
+}
+
+function fmtHz(f){
+  if(f>=1000){
+    const k=f/1000;
+    return (Math.abs(k-Math.round(k))<.001 ? String(Math.round(k)) : k.toFixed(1))+'k';
+  }
+  return String(Math.round(f));
+}
+
+function fmtDb(v){
+  return Number.isFinite(v) ? (v>=0?'+':'')+v.toFixed(1)+' dB' : '—';
+}
+
+function pathForCurve(curve, px, py, minHz, maxHz){
+  if(!curve || curve.length<2) return '';
+  let d='';
+  let started=false;
+
+  for(const [f,v] of curve){
+    if(f<minHz || f>maxHz) continue;
+    const x=px(Math.log10(f));
+    const y=py(v);
+    d+=(started?'L':'M')+x.toFixed(2)+','+y.toFixed(2);
+    started=true;
+  }
+
+  return d;
+}
+
+function drawTargetMain(){
+  const container=document.getElementById('targetChart');
+  if(!container) return;
+
+  const curves=[
+    targetViz.original,
+    targetViz.robust,
+    targetViz.pure
+  ].filter(Boolean);
+
+  if(!curves.length){
+    container.innerHTML='<div class="viz-empty">No target curve available.</div>';
     return;
-
   }
 
+  const rangeMode=document.getElementById('vizRange')?.value || 'full';
+  let requestedMin=rangeMode==='mid'?200:20;
+  let requestedMax=rangeMode==='music'?12000:20000;
 
-  const W = 1120;
+  const availableMin=Math.max(...curves.map(c=>c[0][0]));
+  const availableMax=Math.min(...curves.map(c=>c[c.length-1][0]));
+  const minHz=Math.max(requestedMin, Math.min(availableMin, requestedMax));
+  const maxHz=Math.min(requestedMax, Math.max(availableMax, minHz*1.01));
 
-  const H = 430;
+  const W=1000;
+  const H=430;
+  const L=58,R=18,T=48,B=42;
+  const PW=W-L-R, PH=H-T-B;
 
-  const L = 65;
+  const visible=[];
+  if(document.getElementById('showOriginal')?.checked && targetViz.original) visible.push(targetViz.original);
+  if(document.getElementById('showRobust')?.checked && targetViz.robust) visible.push(targetViz.robust);
+  if(document.getElementById('showPure')?.checked && targetViz.pure) visible.push(targetViz.pure);
+  if(!visible.length) visible.push(...curves);
 
-  const R = 20;
+  const vals=finiteValues(visible,minHz,maxHz);
+  let ymin=Math.min(...vals);
+  let ymax=Math.max(...vals);
+  if(!Number.isFinite(ymin)||!Number.isFinite(ymax)){ymin=50;ymax=70}
+  const pad=Math.max(2,(ymax-ymin)*.12);
+  ymin=Math.floor((ymin-pad)/2)*2;
+  ymax=Math.ceil((ymax+pad)/2)*2;
+  if(ymax-ymin<8){ymin-=4;ymax+=4}
 
-  const T = 24;
+  const lx0=Math.log10(minHz), lx1=Math.log10(maxHz);
+  const px=x=>L+(x-lx0)/(lx1-lx0||1)*PW;
+  const py=y=>T+(ymax-y)/(ymax-ymin||1)*PH;
 
-  const B = 55;
+  const parts=[];
+  parts.push(`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Frequency response target comparison" style="touch-action:pan-y">`);
+  parts.push(`<rect width="${W}" height="${H}" fill="#080f1b"/>`);
 
-
-  const xValues =
-    points.map(
-      point =>
-        Math.log10(
-          point[0]
-        )
-    );
-
-
-  const yValues =
-    points.map(
-      point =>
-        point[1]
-    );
-
-
-  const xmin =
-    Math.min(
-      ...xValues
-    );
-
-
-  const xmax =
-    Math.max(
-      ...xValues
-    );
-
-
-  const ymin =
-    Math.min(
-      ...yValues
-    );
-
-
-  const ymax =
-    Math.max(
-      ...yValues
-    );
-
-
-  function px(x){
-
-    return (
-      L +
-      (x-xmin) /
-      (xmax-xmin || 1) *
-      (W-L-R)
-    );
-
-  }
-
-
-  function py(y){
-
-    return (
-      T +
-      (ymax-y) /
-      (ymax-ymin || 1) *
-      (H-T-B)
-    );
-
-  }
-
-
-  let path = '';
-
-
-  points.forEach(
-    (point,index) => {
-
-      path +=
-
-        (index ? 'L' : 'M') +
-
-        px(
-          xValues[index]
-        ).toFixed(1) +
-
-        ',' +
-
-        py(
-          yValues[index]
-        ).toFixed(1);
-
-    }
-  );
-
-
-  let grid = '';
-
-
-  for(
-    let i=0;
-    i<7;
-    i++
-  ){
-
-    const y =
-      ymin +
-      (ymax-ymin) *
-      i / 6;
-
-
-    grid +=
-
-      `<line
-        x1="${L}"
-        x2="${W-R}"
-        y1="${py(y)}"
-        y2="${py(y)}"
-        stroke="#26334a"/>
-
-       <text
-        x="8"
-        y="${py(y)+4}"
-        fill="#98a6bc"
-        font-size="12">
-
-        ${y.toFixed(1)}
-
-       </text>`;
-
-  }
-
-
-  const frequencies = [
-
-    20,
-    50,
-    100,
-    200,
-    500,
-    1000,
-    2000,
-    5000,
-    10000,
-    20000
-
+  /* frequency bands */
+  const bands=[
+    [20,200,VIZ_COLORS.band1,'Bass'],
+    [200,1000,VIZ_COLORS.band2,'Lower Mid'],
+    [1000,12000,VIZ_COLORS.band3,'Upper Mid'],
+    [12000,20000,VIZ_COLORS.band4,'Treble']
   ];
-
-
-  for(
-    const frequency of frequencies
-  ){
-
-    if(
-      frequency <
-      points[0][0] ||
-
-      frequency >
-      points[
-        points.length - 1
-      ][0]
-    ){
-
-      continue;
-
+  for(const [a,b,color,label] of bands){
+    const lo=Math.max(a,minHz), hi=Math.min(b,maxHz);
+    if(hi<=lo) continue;
+    const x1=px(Math.log10(lo)), x2=px(Math.log10(hi));
+    parts.push(`<rect x="${x1.toFixed(2)}" y="${T}" width="${Math.max(0,x2-x1).toFixed(2)}" height="${PH}" fill="${color}"/>`);
+    if(x2-x1>85){
+      parts.push(`<text x="${((x1+x2)/2).toFixed(1)}" y="20" text-anchor="middle" fill="#b8c8de" font-size="11" font-weight="600">${label}</text>`);
+      parts.push(`<text x="${((x1+x2)/2).toFixed(1)}" y="34" text-anchor="middle" fill="#73859f" font-size="9">${fmtHz(a)}–${fmtHz(b)} Hz</text>`);
     }
-
-
-    const x =
-      px(
-        Math.log10(
-          frequency
-        )
-      );
-
-
-    grid +=
-
-      `<line
-        x1="${x}"
-        x2="${x}"
-        y1="${T}"
-        y2="${H-B}"
-        stroke="#1a263a"/>
-
-       <text
-        x="${x-12}"
-        y="${H-20}"
-        fill="#98a6bc"
-        font-size="12">
-
-        ${
-          frequency >= 1000
-            ? frequency / 1000 + 'k'
-            : frequency
-        }
-
-       </text>`;
-
   }
 
+  /* y grid */
+  const step=niceStep(ymax-ymin,6);
+  const first=Math.ceil(ymin/step)*step;
+  for(let y=first;y<=ymax+step*.1;y+=step){
+    const yy=py(y);
+    parts.push(`<line x1="${L}" x2="${W-R}" y1="${yy.toFixed(2)}" y2="${yy.toFixed(2)}" stroke="${VIZ_COLORS.grid}"/>`);
+    parts.push(`<text x="${L-8}" y="${(yy+4).toFixed(2)}" text-anchor="end" fill="#8292aa" font-size="10">${y.toFixed(0)}</text>`);
+  }
 
-  document.getElementById(
-    containerId
-  ).innerHTML =
+  const freqs=[20,50,100,200,500,1000,2000,5000,10000,12000,20000];
+  for(const f of freqs){
+    if(f<minHz || f>maxHz) continue;
+    const x=px(Math.log10(f));
+    const strong=(f===200||f===1000||f===12000);
+    parts.push(`<line x1="${x.toFixed(2)}" x2="${x.toFixed(2)}" y1="${T}" y2="${H-B}" stroke="${strong?VIZ_COLORS.gridStrong:VIZ_COLORS.grid}" stroke-dasharray="${strong?'4 3':'0'}"/>`);
+    parts.push(`<text x="${x.toFixed(2)}" y="${H-15}" text-anchor="middle" fill="${strong?'#b9c9df':'#8292aa'}" font-size="10">${fmtHz(f)}</text>`);
+  }
 
-    `<svg
-       viewBox="0 0 ${W} ${H}">
+  /* curves */
+  if(document.getElementById('showOriginal')?.checked && targetViz.original){
+    const d=pathForCurve(targetViz.original,px,py,minHz,maxHz);
+    parts.push(`<path d="${d}" fill="none" stroke="${VIZ_COLORS.original}" stroke-width="2" stroke-dasharray="7 5" stroke-linejoin="round"/>`);
+  }
+  if(document.getElementById('showRobust')?.checked && targetViz.robust){
+    const d=pathForCurve(targetViz.robust,px,py,minHz,maxHz);
+    parts.push(`<path d="${d}" fill="none" stroke="${VIZ_COLORS.robust}" stroke-width="2.6" stroke-linejoin="round"/>`);
+  }
+  if(document.getElementById('showPure')?.checked && targetViz.pure){
+    const d=pathForCurve(targetViz.pure,px,py,minHz,maxHz);
+    parts.push(`<path d="${d}" fill="none" stroke="${VIZ_COLORS.pure}" stroke-width="2.3" stroke-linejoin="round"/>`);
+  }
 
-       <rect
-         width="${W}"
-         height="${H}"
-         fill="#090f1c"/>
+  parts.push(`<text x="${L}" y="${H-2}" fill="#6f819a" font-size="9">Frequency (Hz, log)</text>`);
+  parts.push(`<text x="12" y="${T}" fill="#6f819a" font-size="9" transform="rotate(-90 12 ${T})">Level (dB)</text>`);
 
-       ${grid}
+  /* transparent hit target for touch/mouse readout */
+  parts.push(`<rect class="viz-hit" x="${L}" y="${T}" width="${PW}" height="${PH}" fill="transparent" pointer-events="all"/>`);
+  parts.push('</svg>');
 
-       <path
-         d="${path}"
-         fill="none"
-         stroke="#7ea7ff"
-         stroke-width="2.5"/>
+  container.innerHTML=parts.join('');
 
-     </svg>`;
+  const svg=container.querySelector('svg');
+  const hit=container.querySelector('.viz-hit');
+  if(hit){
+    const read=(event)=>{
+      const rect=svg.getBoundingClientRect();
+      const cx=(event.clientX-rect.left)/rect.width*W;
+      const ratio=(cx-L)/PW;
+      if(ratio<0||ratio>1) return;
+      const f=Math.pow(10,lx0+ratio*(lx1-lx0));
+      updateReadout(f);
+    };
+    hit.addEventListener('pointerdown',read,{passive:true});
+    hit.addEventListener('pointermove',(event)=>{
+      if(event.pointerType==='mouse' || event.buttons) read(event);
+    },{passive:true});
+  }
+}
 
+function drawMaskChart(){
+  const container=document.getElementById('maskChart');
+  if(!container) return;
+
+  const curve=targetViz.mask;
+  if(!curve){
+    container.innerHTML='<div class="viz-empty">Mask output is not available for this target.</div>';
+    return;
+  }
+
+  const requestedMin=20, requestedMax=12000;
+  const minHz=Math.max(requestedMin,curve[0][0]);
+  const maxHz=Math.min(requestedMax,curve[curve.length-1][0]);
+
+  const vals=finiteValues([curve],minHz,maxHz);
+  let ymin=Math.min(...vals,0), ymax=Math.max(...vals,0);
+  const span=Math.max(ymax-ymin,2);
+  const pad=Math.max(.8,span*.15);
+  ymin-=pad; ymax+=pad;
+
+  const W=1000,H=210,L=58,R=18,T=24,B=34;
+  const PW=W-L-R,PH=H-T-B;
+  const lx0=Math.log10(minHz),lx1=Math.log10(maxHz);
+  const px=x=>L+(x-lx0)/(lx1-lx0||1)*PW;
+  const py=y=>T+(ymax-y)/(ymax-ymin||1)*PH;
+
+  const parts=[];
+  parts.push(`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Robust mask delta" style="touch-action:pan-y">`);
+  parts.push(`<rect width="${W}" height="${H}" fill="#080f1b"/>`);
+
+  /* subtle upper/lower zero shading */
+  const zeroY=py(0);
+  parts.push(`<rect x="${L}" y="${T}" width="${PW}" height="${Math.max(0,zeroY-T)}" fill="rgba(77,224,167,.025)"/>`);
+  parts.push(`<rect x="${L}" y="${zeroY}" width="${PW}" height="${Math.max(0,H-B-zeroY)}" fill="rgba(255,95,143,.035)"/>`);
+
+  const step=niceStep(ymax-ymin,4);
+  const first=Math.ceil(ymin/step)*step;
+  for(let y=first;y<=ymax+step*.1;y+=step){
+    const yy=py(y);
+    parts.push(`<line x1="${L}" x2="${W-R}" y1="${yy.toFixed(2)}" y2="${yy.toFixed(2)}" stroke="${y===0?'#52647f':VIZ_COLORS.grid}" stroke-width="${y===0?1.4:1}"/>`);
+    parts.push(`<text x="${L-8}" y="${(yy+4).toFixed(2)}" text-anchor="end" fill="#8292aa" font-size="10">${y.toFixed(0)}</text>`);
+  }
+
+  for(const f of [20,100,200,500,1000,2000,5000,10000,12000]){
+    if(f<minHz||f>maxHz) continue;
+    const x=px(Math.log10(f));
+    const strong=f===200||f===1000||f===12000;
+    parts.push(`<line x1="${x.toFixed(2)}" x2="${x.toFixed(2)}" y1="${T}" y2="${H-B}" stroke="${strong?VIZ_COLORS.gridStrong:VIZ_COLORS.grid}" stroke-dasharray="${strong?'4 3':'0'}"/>`);
+    parts.push(`<text x="${x.toFixed(2)}" y="${H-12}" text-anchor="middle" fill="#8292aa" font-size="10">${fmtHz(f)}</text>`);
+  }
+
+  const d=pathForCurve(curve,px,py,minHz,maxHz);
+  parts.push(`<path d="${d}" fill="none" stroke="${VIZ_COLORS.mask}" stroke-width="2.4" stroke-linejoin="round"/>`);
+  parts.push(`<text x="${L}" y="13" fill="#9eacc1" font-size="10">Mask Δ (dB)</text>`);
+  parts.push(`<rect class="mask-hit" x="${L}" y="${T}" width="${PW}" height="${PH}" fill="transparent" pointer-events="all"/>`);
+  parts.push('</svg>');
+
+  container.innerHTML=parts.join('');
+
+  const svg=container.querySelector('svg');
+  const hit=container.querySelector('.mask-hit');
+  if(hit){
+    hit.addEventListener('pointerdown',event=>{
+      const rect=svg.getBoundingClientRect();
+      const cx=(event.clientX-rect.left)/rect.width*W;
+      const ratio=(cx-L)/PW;
+      if(ratio<0||ratio>1)return;
+      updateReadout(Math.pow(10,lx0+ratio*(lx1-lx0)));
+    },{passive:true});
+  }
+}
+
+function updateReadout(frequency){
+  const put=(id,value)=>{
+    const el=document.getElementById(id);
+    if(el) el.textContent=value;
+  };
+
+  put('readFreq',fmtHz(frequency)+' Hz');
+  put('readOriginal',fmtDb(curveValue(targetViz.original,frequency)));
+  put('readRobust',fmtDb(curveValue(targetViz.robust,frequency)));
+  put('readPure',fmtDb(curveValue(targetViz.pure,frequency)));
+  put('readMask',fmtDb(curveValue(targetViz.mask,frequency)));
+}
+
+function updateMaskSummary(){
+  const curve=targetViz.mask;
+  const ids=['sumMax','sumMin','sumRms','sumPoints'];
+  if(!curve){
+    ids.forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='—'});
+    return;
+  }
+
+  const vals=curve
+    .filter(([f,v])=>f>=1000&&f<=12000&&Number.isFinite(v))
+    .map(p=>p[1]);
+
+  if(!vals.length){
+    ids.forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='—'});
+    return;
+  }
+
+  const max=Math.max(...vals);
+  const min=Math.min(...vals);
+  const rms=Math.sqrt(vals.reduce((a,v)=>a+v*v,0)/vals.length);
+
+  document.getElementById('sumMax').textContent=fmtDb(max);
+  document.getElementById('sumMin').textContent=fmtDb(min);
+  document.getElementById('sumRms').textContent=rms.toFixed(2)+' dB';
+  document.getElementById('sumPoints').textContent=String(vals.length);
+}
+
+function rerenderTargetViz(){
+  if(!targetViz.original && !targetViz.robust && !targetViz.pure) return;
+  drawTargetMain();
+  drawMaskChart();
+}
+
+function resetVizView(){
+  const el=document.getElementById('vizRange');
+  if(el) el.value='full';
+  rerenderTargetViz();
+}
+
+function draw(points, containerId){
+  /* Backward-compatible single-curve renderer for the hybrid chart. */
+  if(!points || points.length<2) return;
+
+  const W=1000,H=330,L=55,R=16,T=18,B=38;
+  const xs=points.map(p=>Math.log10(p[0]));
+  const ys=points.map(p=>p[1]);
+  const xmin=Math.min(...xs),xmax=Math.max(...xs);
+  let ymin=Math.min(...ys),ymax=Math.max(...ys);
+  const pad=Math.max(2,(ymax-ymin)*.1);
+  ymin-=pad;ymax+=pad;
+  const px=x=>L+(x-xmin)/(xmax-xmin||1)*(W-L-R);
+  const py=y=>T+(ymax-y)/(ymax-ymin||1)*(H-T-B);
+
+  let grid='';
+  const step=niceStep(ymax-ymin,5);
+  const first=Math.ceil(ymin/step)*step;
+  for(let y=first;y<=ymax+step*.1;y+=step){
+    const yy=py(y);
+    grid+=`<line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" stroke="#1c2a40"/>`;
+    grid+=`<text x="${L-7}" y="${yy+4}" text-anchor="end" fill="#8292aa" font-size="10">${y.toFixed(0)}</text>`;
+  }
+  for(const f of [20,50,100,200,500,1000,2000,5000,10000,20000]){
+    if(f<points[0][0]||f>points[points.length-1][0])continue;
+    const x=px(Math.log10(f));
+    grid+=`<line x1="${x}" x2="${x}" y1="${T}" y2="${H-B}" stroke="#162238"/>`;
+    grid+=`<text x="${x}" y="${H-12}" text-anchor="middle" fill="#8292aa" font-size="10">${fmtHz(f)}</text>`;
+  }
+  const d=pathForCurve(points,px,py,points[0][0],points[points.length-1][0]);
+  document.getElementById(containerId).innerHTML=
+    `<svg viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#080f1b"/>${grid}<path d="${d}" fill="none" stroke="#66a3ff" stroke-width="2.5"/></svg>`;
 }
 
 
@@ -2831,88 +3129,73 @@ async function loadPure(){
 
 async function showTarget(){
 
-  if(
-    !targets.length
-  ){
-
-    document.getElementById(
-      'targetChart'
-    ).innerHTML =
-      '';
-
-
+  if(!targets.length){
+    document.getElementById('targetChart').innerHTML='';
+    document.getElementById('maskChart').innerHTML='';
     return;
-
   }
-
 
   try{
+    const encodedName=document.getElementById('targetSelect').value;
+    if(!encodedName) return;
 
-    const encodedName =
-      document.getElementById(
-        'targetSelect'
-      ).value;
+    const name=decodeURIComponent(encodedName);
+    const basePath='input/targets/'+encodeURIComponent(name);
+    const robustPath='output/'+stem(name)+'__robust_target.txt';
+    const maskPath='output/'+stem(name)+'__mask.txt';
 
+    document.getElementById('vizDataStatus').textContent='Loading target, robust target, mask and Pure EarPrint…';
 
-    if(!encodedName)
-      return;
+    const results=await Promise.allSettled([
+      rawText(basePath),
+      rawText(robustPath),
+      rawText(maskPath),
+      pureCurve
+        ? Promise.resolve(null)
+        : rawText('output/pure_earprint_dynamic.txt')
+    ]);
 
+    let original=null, robust=null, mask=null, pure=pureCurve;
 
-    const name =
-      decodeURIComponent(
-        encodedName
-      );
+    if(results[0].status==='fulfilled') original=parseXY(results[0].value);
+    if(results[1].status==='fulfilled') robust=parseXY(results[1].value);
+    if(results[2].status==='fulfilled') mask=parseXY(results[2].value);
+    if(!pure && results[3].status==='fulfilled') pure=parseXY(results[3].value);
 
+    pureCurve=pure || pureCurve;
 
-    const type =
-      document.getElementById(
-        'resultType'
-      ).value;
+    targetViz={
+      name,
+      original,
+      robust,
+      mask,
+      pure:pureCurve
+    };
 
+    const type=document.getElementById('resultType').value;
+    const selectedPath=type==='mask' ? maskPath : robustPath;
 
-    const path =
-      type === 'mask'
+    const missing=[];
+    if(!original) missing.push('original target');
+    if(!robust) missing.push('robust target');
+    if(!mask) missing.push('mask');
 
-        ? 'output/' +
-          stem(name) +
-          '__mask.txt'
+    document.getElementById('targetStatus').textContent=
+      missing.length
+        ? selectedPath+' · missing: '+missing.join(', ')
+        : selectedPath;
 
-        : 'output/' +
-          stem(name) +
-          '__robust_target.txt';
+    document.getElementById('vizDataStatus').textContent=
+      missing.length
+        ? 'Loaded with '+missing.join(', ')+' unavailable. Engine outputs were not changed.'
+        : 'Original + robust target + mask + Pure EarPrint loaded.';
 
-
-    const text =
-      await rawText(
-        path
-      );
-
-
-    const curve =
-      parseXY(
-        text
-      );
-
-
-    draw(
-      curve,
-      'targetChart'
-    );
-
-
-    document.getElementById(
-      'targetStatus'
-    ).textContent =
-      path;
+    updateMaskSummary();
+    rerenderTargetViz();
 
   }catch(error){
-
-    showErr(
-      error.message
-    );
-
+    showErr(error.message);
   }
-
 }
 
 
@@ -2989,171 +3272,77 @@ async function generateHybrid(){
   try{
 
     if(!pureCurve){
-
       await loadPure();
-
     }
 
-
-    const encodedTarget =
-      document.getElementById(
-        'hybridTarget'
-      ).value;
-
+    const encodedTarget=document.getElementById('hybridTarget').value;
 
     if(!encodedTarget){
-
-      throw Error(
-        'No target selected.'
-      );
-
+      throw Error('No target selected.');
     }
 
+    const targetName=decodeURIComponent(encodedTarget);
 
-    const targetName =
-      decodeURIComponent(
-        encodedTarget
-      );
+    const target=parseXY(
+      await rawText(
+        'input/targets/'+encodeURIComponent(targetName)
+      )
+    );
 
+    const join=Number(document.getElementById('joinHz').value);
 
-    const target =
-      parseXY(
-        await rawText(
-          'input/targets/' +
-          encodeURIComponent(
-            targetName
-          )
-        )
-      );
-
-
-    const join =
-      Number(
-        document.getElementById(
-          'joinHz'
-        ).value
-      );
-
-
-    if(!(join > 0)){
-
-      throw Error(
-        'Join frequency must be > 0 Hz.'
-      );
-
+    if(!(join>0)){
+      throw Error('Join frequency must be > 0 Hz.');
     }
 
+    if(join<target[0][0] || join>target[target.length-1][0]){
+      throw Error('Selected target does not cover the join frequency.');
+    }
+
+    const frequencyGrid=pureCurve.map(point=>point[0]);
+
+    const lowerMax=Math.min(
+      join,
+      Math.max(...frequencyGrid)
+    );
 
     if(
-      join < target[0][0] ||
-      join >
-        target[
-          target.length - 1
-        ][0]
+      frequencyGrid[0]<target[0][0] ||
+      lowerMax>target[target.length-1][0]
     ){
-
-      throw Error(
-        'Selected target does not cover the join frequency.'
-      );
-
-    }
-
-
-    const frequencyGrid =
-      pureCurve.map(
-        point =>
-          point[0]
-      );
-
-
-    /*
-      Target must cover the lower region.
-    */
-
-    const lowerMax =
-      Math.min(
-        join,
-        Math.max(
-          ...frequencyGrid
-        )
-      );
-
-
-    if(
-      frequencyGrid[0] <
-      target[0][0] ||
-
-      lowerMax >
-      target[
-        target.length - 1
-      ][0]
-    ){
-
       throw Error(
         'Selected target does not cover the lower-frequency region required for this hybrid.'
       );
-
     }
 
-
     /*
-      Build the hybrid directly from the original target curve.
-
-      Do NOT create a placeholder target curve above the join.
-      The target is evaluated only where it is actually needed:
-      at/below the join and at the join itself.
+      Locked hybrid logic:
+      target at/below join; Pure EarPrint + ONE constant shift above join.
+      Do not feed a placeholder target curve into buildHybrid.
     */
 
-    const result =
-      buildHybrid(
-        frequencyGrid,
-        pureCurve,
-        target,
-        join
-      );
+    const result=buildHybrid(
+      frequencyGrid,
+      pureCurve,
+      target,
+      join
+    );
 
-
-    generatedHybrid = {
-
-      curve:
-        result.curve,
-
-      targetName:
-        targetName,
-
-      join:
-        join,
-
-      shift:
-        result.shift
-
+    generatedHybrid={
+      curve:result.curve,
+      targetName,
+      join,
+      shift:result.shift
     };
 
+    draw(result.curve,'hybridChart');
 
-    draw(
-      result.curve,
-      'hybridChart'
-    );
-
-
-    document.getElementById(
-      'hybridStatus'
-    ).textContent =
-
-      'shift ' +
-      result.shift.toFixed(6) +
-      ' dB · join ' +
-      join +
-      ' Hz';
+    document.getElementById('hybridStatus').textContent=
+      'shift '+result.shift.toFixed(6)+' dB · join '+join+' Hz';
 
   }catch(error){
-
-    showErr(
-      error.message
-    );
-
+    showErr(error.message);
   }
-
 }
 
 
