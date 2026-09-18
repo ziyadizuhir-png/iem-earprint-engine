@@ -509,6 +509,29 @@ select,input{
     font-size:20px!important;
   }
 }
+
+.target-delete{
+  width:34px!important;
+  height:34px!important;
+  min-width:34px!important;
+  min-height:34px!important;
+  padding:0!important;
+  border-radius:50%!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  flex:0 0 auto;
+  font-size:20px!important;
+}
+@media(max-width:520px){
+  .target-delete{
+    width:44px!important;
+    height:44px!important;
+    min-width:44px!important;
+    min-height:44px!important;
+    font-size:22px!important;
+  }
+}
 </style>
 </head>
 
@@ -712,7 +735,7 @@ select,input{
         </div>
       </div>
       <div class="viz-actions">
-        <span class="status">Original + Robust Target (Masked)ed Target</span>
+        <span class="status">Original + Robust Target (Masked)</span>
       </div>
     </div>
 
@@ -1462,68 +1485,38 @@ async function rawText(path){
 function parseXY(text){
 
   const output = [];
+  const lines = String(text || '')
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/);
 
   /*
-    Accept the common frequency-response TXT formats:
-    - whitespace / tab separated: 20 68.3
-    - CSV / semicolon separated: 20,68.3
-    - unit-labelled lines: 20 Hz 68.3 dB
-
-    Header/comment lines are ignored because they contain
-    fewer than two numeric values.
+    Accept:
+      20,64
+      20\t64
+      20 64
+      20 Hz, 64 dB
+    Headers/comments are ignored.
   */
+  const pairPattern =
+    /^\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)\s*(?:Hz)?\s*(?:,|;|\t|\s+)\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)\s*(?:dB)?\s*$/i;
 
-  const numberPattern =
-    /[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?/g;
+  for(const raw of lines){
 
-  for(
-    const rawLine of
-    String(text)
-      .replace(/^\uFEFF/, '')
-      .split(/\r?\n/)
-  ){
+    const line = raw.trim();
 
-    const line =
-      rawLine.trim();
-
-    if(
-      !line ||
-      line.startsWith('#') ||
-      line.startsWith('//') ||
-      line.startsWith(';')
-    )
+    if(!line || line.startsWith('#') || line.startsWith('//'))
       continue;
 
-    const matches =
-      line.match(numberPattern);
+    const m = line.match(pairPattern);
 
-    if(
-      !matches ||
-      matches.length < 2
-    )
+    if(!m)
       continue;
 
-    /*
-      First two numeric fields are frequency and response.
-      This supports TXT, TSV, CSV and unit-labelled exports.
-    */
-    const frequency =
-      Number(matches[0]);
+    const f = Number(m[1]);
+    const v = Number(m[2]);
 
-    const value =
-      Number(matches[1]);
-
-    if(
-      Number.isFinite(frequency) &&
-      Number.isFinite(value) &&
-      frequency > 0
-    ){
-
-      output.push([
-        frequency,
-        value
-      ]);
-
+    if(Number.isFinite(f) && Number.isFinite(v) && f > 0){
+      output.push([f,v]);
     }
 
   }
@@ -1532,25 +1525,18 @@ function parseXY(text){
 
     throw Error(
       'Not enough numeric points. ' +
-      'Expected at least two frequency/value pairs, e.g. 20 68.3.'
+      'Expected two-column frequency/response data such as 20,64 or 20 64.'
     );
 
   }
 
-  for(
-    let i=1;
-    i<output.length;
-    i++
-  ){
+  for(let i=1;i<output.length;i++){
 
-    if(
-      output[i][0] <=
-      output[i-1][0]
-    ){
+    if(output[i][0] <= output[i-1][0]){
 
       throw Error(
-        'Frequencies are not strictly ascending. ' +
-        'Please sort the file by frequency before uploading.'
+        'Frequencies are not strictly ascending at row ' +
+        (i+1) + '.'
       );
 
     }
@@ -2831,9 +2817,21 @@ async function saveInputToGitHub(){
       Validate curve.
     */
 
-    parseXY(
-      text
-    );
+    const parsedCurve =
+      parseXY(
+        text
+      );
+
+    document.getElementById(
+      'addValidation'
+    ).textContent =
+      'Validated ' +
+      parsedCurve.length.toLocaleString() +
+      ' points · ' +
+      parsedCurve[0][0] +
+      '–' +
+      parsedCurve[parsedCurve.length-1][0] +
+      ' Hz. Saving…';
 
 
     const folder =
@@ -2961,58 +2959,84 @@ async function saveInputToGitHub(){
 
 async function deleteTarget(filename){
 
-  if(!filename) return;
+  if(!filename)
+    return;
 
   if(!githubToken){
-    showErr('GitHub token required. Open GitHub Access first.');
+
+    showErr(
+      'GitHub token required. Open GitHub Access first.'
+    );
+
+    openSettings();
     return;
+
   }
 
-  const label=filename.replace(/\.txt$/i,'');
+  const label =
+    filename.replace(/\.txt$/i,'');
 
   if(!window.confirm(
-    'Delete target "'+label+'"?\n\n' +
-    'This deletes the target input from input/targets/. ' +
-    'GitHub Actions will rebuild the generated results.'
+    'Delete target "' +
+    label +
+    '"?\n\n' +
+    'This removes the target from input/targets/. ' +
+    'GitHub Actions will then rebuild the generated results.'
   )){
     return;
   }
 
   try{
 
-    const path='input/targets/'+filename;
+    /*
+      Encode each path component for the GitHub Contents API.
+      This is important for filenames containing spaces, brackets,
+      parentheses or other punctuation.
+    */
+    const inputPath =
+      'input/targets/' +
+      encodeURIComponent(filename);
 
-    const meta=await ghAuth(
-      path+'?ref=main'
-    );
+    const meta =
+      await ghAuth(
+        inputPath + '?ref=main'
+      );
+
+    if(!meta || !meta.sha)
+      throw Error('GitHub did not return a file SHA.');
 
     await ghAuth(
-      path,
+      inputPath,
       {
         method:'DELETE',
         body:JSON.stringify({
-          message:'Delete target '+filename,
+          message:'Delete target ' + filename,
           sha:meta.sha,
           branch:'main'
         })
       }
     );
 
-    document.getElementById('targetStatus').textContent=
-      'Deleted '+label+'. GitHub Actions will rebuild results.';
+    document.getElementById(
+      'targetStatus'
+    ).textContent =
+      'Deleted ' +
+      label +
+      '. GitHub Actions will rebuild the results.';
 
     await loadAll();
 
   }catch(error){
 
     showErr(
-      'Could not delete target: '+
+      'Could not delete target: ' +
       error.message
     );
 
   }
 
 }
+
 
 
 async function loadAll(){
