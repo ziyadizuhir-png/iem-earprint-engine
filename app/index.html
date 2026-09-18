@@ -2008,10 +2008,35 @@ function stem(name){
 
 async function gh(path){
 
+  const headers = {
+    Accept:
+      'application/vnd.github+json',
+
+    'X-GitHub-Api-Version':
+      '2022-11-28'
+  };
+
+  /*
+    If the user has connected GitHub in this browser session,
+    authenticate API reads as well as writes.
+
+    This is important because GitHub API rate limits are much
+    more restrictive for unauthenticated requests. The previous
+    version verified and stored the token, but the public-read
+    helper did not actually attach it to GET requests.
+  */
+  if(githubToken){
+
+    headers.Authorization =
+      'Bearer ' + githubToken;
+
+  }
+
   const response =
     await fetch(
       API + path,
       {
+        headers,
         cache:'no-store'
       }
     );
@@ -2019,12 +2044,47 @@ async function gh(path){
 
   if(!response.ok){
 
-    throw Error(
+    let message =
       'GitHub API ' +
       response.status +
       ' for ' +
-      path
-    );
+      path;
+
+    try{
+
+      const data =
+        await response.json();
+
+      if(data && data.message)
+        message =
+          data.message +
+          ' (' +
+          response.status +
+          ')';
+
+    }catch(_){}
+
+    if(response.status === 401){
+
+      githubToken = '';
+
+      removeSessionToken();
+
+      message =
+        'GitHub session expired or token is invalid. ' +
+        'Reconnect GitHub Access.';
+
+    }else if(response.status === 403){
+
+      message =
+        'GitHub API 403 for ' +
+        path +
+        '. If GitHub Access is connected, reconnect the token. ' +
+        'Otherwise this may be the GitHub API rate limit.';
+
+    }
+
+    throw Error(message);
 
   }
 
