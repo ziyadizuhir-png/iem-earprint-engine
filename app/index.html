@@ -12,11 +12,15 @@
   --text:#eef4ff;
   --muted:#98a6bc;
   --line:#27344d;
+  --accent:#7ea7ff;
   --ok:#62d39a;
   --warn:#f2c66d;
+  --bad:#ef8795;
 }
 
-*{box-sizing:border-box}
+*{
+  box-sizing:border-box;
+}
 
 body{
   margin:0;
@@ -194,19 +198,32 @@ input{
   color:var(--warn);
 }
 
+.ok{
+  color:var(--ok);
+}
+
 .small{
   font-size:12px;
 }
 
+
+/* ============================================================
+   MODAL
+   ============================================================ */
+
 .modalBack{
   position:fixed;
   inset:0;
-  background:rgba(0,0,0,.65);
+  background:rgba(0,0,0,.70);
   display:flex;
   align-items:center;
   justify-content:center;
   padding:16px;
-  z-index:20;
+  z-index:9999;
+}
+
+.modalBack[hidden]{
+  display:none !important;
 }
 
 .modal{
@@ -215,11 +232,13 @@ input{
   overflow:auto;
 }
 
-.modal[hidden]{
-  display:none;
-}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
 
 @media(max-width:850px){
+
   .grid{
     grid-template-columns:repeat(2,1fr);
   }
@@ -227,9 +246,11 @@ input{
   .cols{
     grid-template-columns:1fr;
   }
+
 }
 
 @media(max-width:520px){
+
   .grid{
     grid-template-columns:1fr 1fr;
   }
@@ -245,49 +266,71 @@ input{
   .brand h1{
     font-size:24px;
   }
+
 }
 </style>
 </head>
+
 
 <body>
 
 <div class="wrap">
 
-  <!-- HEADER -->
+
+  <!-- ========================================================
+       HEADER
+       ========================================================= -->
 
   <div class="top">
 
     <div class="brand">
-      <h1>EarPrint — Personal</h1>
-      <p id="repoLabel">Loading repository…</p>
+
+      <h1>
+        EarPrint — Personal
+      </h1>
+
+      <p id="repoLabel">
+        Loading repository…
+      </p>
+
     </div>
+
 
     <div class="actions">
 
-      <button type="button"
-              onclick="openAdd('iem')">
+      <button
+        type="button"
+        onclick="openAdd('iem')">
         Add IEM
       </button>
 
-      <button type="button"
-              onclick="openAdd('target')">
+
+      <button
+        type="button"
+        onclick="openAdd('target')">
         Add Target
       </button>
 
-      <a id="runEngine"
-         class="btn primary"
-         target="_blank"
-         rel="noopener">
+
+      <a
+        id="runEngine"
+        class="btn primary"
+        target="_blank"
+        rel="noopener">
         Run EarPrint
       </a>
 
-      <button type="button"
-              onclick="openSettings()">
+
+      <button
+        type="button"
+        onclick="openSettings()">
         GitHub Access
       </button>
 
-      <button type="button"
-              onclick="loadAll()">
+
+      <button
+        type="button"
+        onclick="loadAll()">
         Refresh
       </button>
 
@@ -299,75 +342,157 @@ input{
   <div id="error"></div>
 
 
-  <!-- DASHBOARD -->
+  <!-- ========================================================
+       DASHBOARD
+       ========================================================= -->
 
   <div class="grid">
 
     <div class="card">
-      <div id="iemCount" class="num">—</div>
-      <div class="label">Independent IEM votes</div>
+
+      <div
+        id="iemCount"
+        class="num">
+        —
+      </div>
+
+      <div class="label">
+        Independent IEM votes
+      </div>
+
     </div>
 
-    <div class="card">
-      <div id="targetCount" class="num">—</div>
-      <div class="label">Targets</div>
-    </div>
 
     <div class="card">
-      <div id="outputCount" class="num">—</div>
-      <div class="label">Robust outputs</div>
+
+      <div
+        id="targetCount"
+        class="num">
+        —
+      </div>
+
+      <div class="label">
+        Targets
+      </div>
+
     </div>
 
+
     <div class="card">
-      <div id="buildState" class="num">—</div>
-      <div class="label">Build state</div>
+
+      <div
+        id="outputCount"
+        class="num">
+        —
+      </div>
+
+      <div class="label">
+        Robust outputs
+      </div>
+
+    </div>
+
+
+    <div class="card">
+
+      <div
+        id="buildState"
+        class="num">
+        —
+      </div>
+
+      <div class="label">
+        Build state
+      </div>
+
     </div>
 
   </div>
 
 
-  <!-- IEMS / TARGETS -->
+  <!-- ========================================================
+       IEMS / TARGETS
+       ========================================================= -->
 
   <div class="cols">
 
-    <div class="card">
-      <div class="section">
-        <h2>Preferred IEMs</h2>
-        <div id="iems" class="pillbox"></div>
-      </div>
-    </div>
 
     <div class="card">
+
       <div class="section">
-        <h2>Targets</h2>
-        <div id="targets" class="pillbox"></div>
+
+        <h2>
+          Preferred IEMs
+        </h2>
+
+        <div
+          id="iems"
+          class="pillbox">
+        </div>
+
       </div>
+
     </div>
+
+
+    <div class="card">
+
+      <div class="section">
+
+        <h2>
+          Targets
+        </h2>
+
+        <div
+          id="targets"
+          class="pillbox">
+        </div>
+
+      </div>
+
+    </div>
+
 
   </div>
 
 
-  <!-- TARGET RESULTS -->
+  <!-- ========================================================
+       TARGET RESULTS
+       ========================================================= -->
 
   <div class="card section">
 
-    <h2>Target results</h2>
+    <h2>
+      Target results
+    </h2>
+
 
     <div class="formrow">
 
-      <div class="field">
-        <label>Target</label>
 
-        <select id="targetSelect"
-                onchange="showTarget()">
+      <div class="field">
+
+        <label>
+          Target
+        </label>
+
+        <select
+          id="targetSelect"
+          onchange="showTarget()">
         </select>
+
       </div>
 
-      <div class="field">
-        <label>Result</label>
 
-        <select id="resultType"
-                onchange="showTarget()">
+      <div class="field">
+
+        <label>
+          Result
+        </label>
+
+        <select
+          id="resultType"
+          onchange="showTarget()">
 
           <option value="mask">
             Robust Mask
@@ -378,47 +503,67 @@ input{
           </option>
 
         </select>
+
       </div>
+
 
     </div>
 
 
     <div class="resultbar">
 
-      <button type="button"
-              class="primary"
-              onclick="downloadTargetResult()">
+
+      <button
+        type="button"
+        class="primary"
+        onclick="downloadTargetResult()">
+
         Download selected
+
       </button>
 
-      <span id="targetStatus"
-            class="status">
+
+      <span
+        id="targetStatus"
+        class="status">
       </span>
 
+
     </div>
 
 
-    <div id="targetChart"
-         class="chart">
+    <div
+      id="targetChart"
+      class="chart">
     </div>
+
 
   </div>
 
 
-  <!-- HYBRID -->
+  <!-- ========================================================
+       HYBRID BUILDER
+       ========================================================= -->
 
   <div class="card section">
 
-    <h2>Hybrid Builder</h2>
+    <h2>
+      Hybrid Builder
+    </h2>
+
 
     <div class="muted small">
+
       Choose any discovered target as the lower region.
       The selected target is preserved at/below the join;
-      Pure EarPrint is shifted above the join to make the join continuous.
+      Pure EarPrint is shifted above the join to make the
+      join continuous.
+
     </div>
 
 
     <div class="formrow">
+
 
       <div class="field">
 
@@ -426,7 +571,8 @@ input{
           Lower-end target
         </label>
 
-        <select id="hybridTarget">
+        <select
+          id="hybridTarget">
         </select>
 
       </div>
@@ -438,49 +584,68 @@ input{
           Join frequency (Hz)
         </label>
 
-        <input id="joinHz"
-               type="number"
-               min="20"
-               step="1"
-               value="1000">
+        <input
+          id="joinHz"
+          type="number"
+          min="20"
+          step="1"
+          value="1000">
 
       </div>
+
 
     </div>
 
 
     <div class="inline">
 
-      <button type="button"
-              class="primary"
-              onclick="generateHybrid()">
+
+      <button
+        type="button"
+        class="primary"
+        onclick="generateHybrid()">
+
         Generate Hybrid
+
       </button>
 
-      <button type="button"
-              onclick="downloadHybrid()">
+
+      <button
+        type="button"
+        onclick="downloadHybrid()">
+
         Download Hybrid
+
       </button>
 
-      <span id="hybridStatus"
-            class="status">
+
+      <span
+        id="hybridStatus"
+        class="status">
       </span>
 
+
     </div>
 
 
-    <div id="hybridChart"
-         class="chart">
+    <div
+      id="hybridChart"
+      class="chart">
     </div>
+
 
   </div>
 
 
-  <!-- INFO -->
+  <!-- ========================================================
+       INFO
+       ========================================================= -->
 
   <div class="card section">
 
-    <h2>How this app works</h2>
+    <h2>
+      How this app works
+    </h2>
 
     <div class="status">
 
@@ -492,124 +657,182 @@ input{
       GitHub Actions runs the deterministic Python engine
       and commits robust outputs/reports.
 
-      The web app is read-only for repository data
-      and performs only the selected Hybrid generation
-      in the browser.
+      The web app reads public repository data without a
+      GitHub token.
+
+      A GitHub token is only required when adding or updating
+      an IEM or target through the app.
 
     </div>
 
   </div>
 
+
 </div>
 
 
-<!-- MODAL -->
+<!-- ==========================================================
+     MODAL
+     =========================================================== -->
 
-<div id="modal"
-     class="modalBack"
-     hidden>
+<div
+  id="modal"
+  class="modalBack"
+  hidden>
 
-  <div class="modal card">
+
+  <div
+    class="modal card"
+    role="dialog"
+    aria-modal="true">
+
 
     <div class="top">
 
+
       <div>
 
-        <h2 id="modalTitle"
-            style="margin:0">
+        <h2
+          id="modalTitle"
+          style="margin:0">
+
           Add Input
+
         </h2>
 
-        <div id="modalHint"
-             class="status small">
+
+        <div
+          id="modalHint"
+          class="status small">
         </div>
 
       </div>
 
 
-      <button type="button"
-              onclick="closeModal()">
+      <!-- DIRECT CLOSE:
+           Does NOT depend on closeModal() -->
+
+      <button
+        type="button"
+        id="closeModalButton"
+        onclick="document.getElementById('modal').setAttribute('hidden','');"
+        style="cursor:pointer">
+
         Close
+
       </button>
+
 
     </div>
 
 
-    <!-- GITHUB ACCESS -->
+    <!-- ======================================================
+         GITHUB ACCESS PANEL
+         ====================================================== -->
 
     <div id="settingsPanel">
+
 
       <div class="field">
 
         <label>
+
           Fine-grained GitHub token
           (Contents: write for this repository)
+
         </label>
 
-        <input id="ghToken"
-               type="password"
-               autocomplete="off"
-               placeholder="github_pat_…">
+
+        <input
+          id="ghToken"
+          type="password"
+          autocomplete="off"
+          placeholder="github_pat_…">
 
       </div>
 
 
-      <div class="inline"
-           style="margin-top:10px">
+      <div
+        class="inline"
+        style="margin-top:10px">
 
-        <button type="button"
-                class="primary"
-                onclick="saveToken()">
+
+        <button
+          type="button"
+          class="primary"
+          onclick="saveToken()">
+
           Use Token
+
         </button>
 
-        <button type="button"
-                onclick="clearToken()">
+
+        <button
+          type="button"
+          onclick="clearToken()">
+
           Clear
+
         </button>
 
-      </div>
-
-
-      <div class="status small"
-           style="margin-top:10px">
-
-        The token is kept only in this browser tab
-        memory and is not written into the repository.
 
       </div>
 
 
-      <div class="status small"
-           style="margin-top:6px">
+      <div
+        class="status small"
+        style="margin-top:10px">
 
-        <a href="https://github.com/settings/personal-access-tokens/new"
-           target="_blank"
-           rel="noopener">
+        The token is kept only in this browser tab memory
+        and is not written into the repository.
+
+      </div>
+
+
+      <div
+        class="status small"
+        style="margin-top:6px">
+
+
+        <a
+          href="https://github.com/settings/personal-access-tokens/new"
+          target="_blank"
+          rel="noopener">
 
           Create a fine-grained token on GitHub
 
         </a>
 
+
       </div>
+
 
     </div>
 
 
-    <!-- ADD INPUT -->
+    <!-- ======================================================
+         ADD INPUT PANEL
+         ====================================================== -->
 
-    <div id="addPanel"
-         hidden>
+    <div
+      id="addPanel"
+      hidden>
+
 
       <div class="formrow">
 
+
         <div class="field">
 
-          <label>File</label>
+          <label>
+            File
+          </label>
 
-          <input id="addFile"
-                 type="file"
-                 accept=".txt,text/plain">
+
+          <input
+            id="addFile"
+            type="file"
+            accept=".txt,text/plain">
 
         </div>
 
@@ -620,62 +843,75 @@ input{
             Repository filename
           </label>
 
-          <input id="addName"
-                 type="text"
-                 placeholder="Example.txt">
+
+          <input
+            id="addName"
+            type="text"
+            placeholder="Example.txt">
 
         </div>
 
+
       </div>
 
 
-      <div id="addValidation"
-           class="status small">
+      <div
+        id="addValidation"
+        class="status small">
 
         Choose a TXT file.
-        The app will validate finite values
-        and strictly ascending frequencies
-        before saving.
+        The app will validate finite values and strictly
+        ascending frequencies before saving.
 
       </div>
 
 
-      <div class="inline"
-           style="margin-top:10px">
+      <div
+        class="inline"
+        style="margin-top:10px">
 
-        <button type="button"
-                class="primary"
-                onclick="saveInputToGitHub()">
+
+        <button
+          type="button"
+          class="primary"
+          onclick="saveInputToGitHub()">
 
           Save to GitHub
 
         </button>
 
 
-        <button type="button"
-                onclick="closeModal()">
+        <!-- DIRECT CANCEL -->
+
+        <button
+          type="button"
+          onclick="document.getElementById('modal').setAttribute('hidden','');">
 
           Cancel
 
         </button>
 
+
       </div>
 
 
-      <div class="status small"
-           style="margin-top:10px">
+      <div
+        class="status small"
+        style="margin-top:10px">
 
         Saving commits one file into
         <b>input/preferred/</b>
         or
         <b>input/targets/</b>.
 
-        Your existing engine workflow then
-        rebuilds results automatically.
+        Your existing engine workflow then rebuilds
+        results automatically.
 
       </div>
 
+
     </div>
+
 
   </div>
 
@@ -688,15 +924,16 @@ input{
    REPOSITORY DETECTION
    ============================================================
 
-   GitHub Pages URL:
+   Current GitHub Pages URL:
 
    https://ziyadizuhir-png.github.io/iem-earprint-engine/
 
-   becomes:
+   Correct repository:
 
    ziyadizuhir-png/iem-earprint-engine
 
    ============================================================ */
+
 
 const parts =
   location.pathname
@@ -705,9 +942,14 @@ const parts =
 
 
 let repo =
-  new URLSearchParams(location.search)
-    .get('repo') || '';
+  new URLSearchParams(
+    location.search
+  ).get('repo') || '';
 
+
+/*
+  GitHub Pages project-site detection.
+*/
 
 if(
   !repo &&
@@ -719,8 +961,10 @@ if(
     location.hostname
       .split('.')[0];
 
+
   const repoName =
     parts[0];
+
 
   repo =
     owner +
@@ -731,11 +975,7 @@ if(
 
 
 /*
-   Fallback for direct repository pages.
-
-   This also allows:
-
-   ?repo=OWNER/REPO
+  API endpoints.
 */
 
 const API =
@@ -755,29 +995,43 @@ const GH =
   repo;
 
 
+/*
+  Application state.
+*/
+
 let targets = [];
+
 let outputs = [];
+
 let pureCurve = null;
+
 let generatedHybrid = null;
+
 let githubToken = '';
+
 let addKind = 'iem';
 
 
 /* ============================================================
-   BASIC HELPERS
+   GENERAL HELPERS
    ============================================================ */
 
-function esc(s){
 
-  return String(s).replace(
+function esc(value){
+
+  return String(value).replace(
     /[&<>"']/g,
-    c => ({
+
+    character => ({
+
       '&':'&amp;',
       '<':'&lt;',
       '>':'&gt;',
       '"':'&quot;',
       "'":'&#39;'
-    }[c])
+
+    }[character])
+
   );
 
 }
@@ -785,13 +1039,19 @@ function esc(s){
 
 function showErr(message){
 
-  document.getElementById(
-    'error'
-  ).innerHTML =
+  const box =
+    document.getElementById(
+      'error'
+    );
+
+
+  box.innerHTML =
     message
+
       ? '<div class="error">' +
         esc(message) +
         '</div>'
+
       : '';
 
 }
@@ -800,18 +1060,36 @@ function showErr(message){
 function stem(name){
 
   return String(name)
-    .replace(/\.txt$/i,'')
-    .replace(/[^\w.-]+/g,'_')
-    .replace(/_+/g,'_')
-    .replace(/^[_\.]+|[_\.]+$/g,'')
+
+    .replace(
+      /\.txt$/i,
+      ''
+    )
+
+    .replace(
+      /[^\w.-]+/g,
+      '_'
+    )
+
+    .replace(
+      /_+/g,
+      '_'
+    )
+
+    .replace(
+      /^[_\.]+|[_\.]+$/g,
+      ''
+    )
+
     || 'target';
 
 }
 
 
 /* ============================================================
-   GITHUB PUBLIC READ
+   PUBLIC GITHUB READ
    ============================================================ */
+
 
 async function gh(path){
 
@@ -874,9 +1152,10 @@ async function rawText(path){
    CURVE PARSER
    ============================================================ */
 
+
 function parseXY(text){
 
-  const out = [];
+  const output = [];
 
 
   for(
@@ -884,31 +1163,33 @@ function parseXY(text){
     String(text).split(/\r?\n/)
   ){
 
-    const p =
-      line.trim().split(/\s+/);
+    const parts =
+      line
+        .trim()
+        .split(/\s+/);
 
 
-    if(p.length < 2)
+    if(parts.length < 2)
       continue;
 
 
-    const x =
-      Number(p[0]);
+    const frequency =
+      Number(parts[0]);
 
 
-    const y =
-      Number(p[1]);
+    const value =
+      Number(parts[1]);
 
 
     if(
-      Number.isFinite(x) &&
-      Number.isFinite(y) &&
-      x > 0
+      Number.isFinite(frequency) &&
+      Number.isFinite(value) &&
+      frequency > 0
     ){
 
-      out.push([
-        x,
-        y
+      output.push([
+        frequency,
+        value
       ]);
 
     }
@@ -916,7 +1197,7 @@ function parseXY(text){
   }
 
 
-  if(out.length < 2){
+  if(output.length < 2){
 
     throw Error(
       'Not enough numeric points.'
@@ -927,13 +1208,13 @@ function parseXY(text){
 
   for(
     let i=1;
-    i<out.length;
+    i<output.length;
     i++
   ){
 
     if(
-      out[i][0] <=
-      out[i-1][0]
+      output[i][0] <=
+      output[i-1][0]
     ){
 
       throw Error(
@@ -945,113 +1226,136 @@ function parseXY(text){
   }
 
 
-  return out;
+  return output;
 
 }
 
 
 /* ============================================================
-   LOG-FREQUENCY INTERPOLATION
+   LOG FREQUENCY INTERPOLATION
    ============================================================ */
 
-function logInterp(curve,f){
+
+function logInterp(
+  curve,
+  frequency
+){
 
   if(
-    f < curve[0][0] ||
-    f > curve[curve.length-1][0]
+    frequency < curve[0][0] ||
+    frequency >
+      curve[curve.length-1][0]
   ){
 
     throw Error(
       'Curve does not cover ' +
-      f +
+      frequency +
       ' Hz'
     );
 
   }
 
 
-  const lx =
-    Math.log10(f);
+  const logFrequency =
+    Math.log10(
+      frequency
+    );
 
 
-  let lo = 0;
-  let hi = curve.length - 1;
+  let low = 0;
+
+  let high =
+    curve.length - 1;
 
 
-  while(lo < hi){
+  while(low < high){
 
-    const mid =
+    const middle =
       Math.floor(
-        (lo + hi) / 2
+        (low + high) / 2
       );
 
 
-    const lm =
+    const middleFrequency =
       Math.log10(
-        curve[mid][0]
+        curve[middle][0]
       );
 
 
-    if(lm < lx)
-      lo = mid + 1;
-    else
-      hi = mid;
+    if(
+      middleFrequency <
+      logFrequency
+    ){
+
+      low =
+        middle + 1;
+
+    }else{
+
+      high =
+        middle;
+
+    }
 
   }
 
 
-  let i =
+  let index =
     Math.max(
       1,
-      lo
+      low
     );
 
 
   if(
-    curve[i][0] < f &&
-    i < curve.length - 1
+    curve[index][0] <
+    frequency &&
+    index <
+    curve.length - 1
   ){
 
-    i++;
+    index++;
 
   }
 
 
   const a =
-    curve[i-1];
+    curve[index-1];
 
 
   const b =
-    curve[i];
+    curve[index];
 
 
-  const la =
+  const logA =
     Math.log10(a[0]);
 
 
-  const lb =
+  const logB =
     Math.log10(b[0]);
 
 
-  const t =
-    (lx - la) /
-    (lb - la || 1);
+  const ratio =
+    (logFrequency - logA) /
+    (logB - logA || 1);
 
 
   return (
     a[1] +
-    (b[1] - a[1]) * t
+    (b[1] - a[1]) *
+    ratio
   );
 
 }
 
 
 /* ============================================================
-   HYBRID
+   HYBRID BUILDER
    ============================================================ */
 
+
 function buildHybrid(
-  freq,
+  frequencyGrid,
   pure,
   target,
   join
@@ -1076,17 +1380,17 @@ function buildHybrid(
     pureAtJoin;
 
 
-  const out = [];
+  const output = [];
 
 
   for(
     let i=0;
-    i<freq.length;
+    i<frequencyGrid.length;
     i++
   ){
 
-    const f =
-      freq[i];
+    const frequency =
+      frequencyGrid[i];
 
 
     const pureValue =
@@ -1096,22 +1400,27 @@ function buildHybrid(
     const targetValue =
       logInterp(
         target,
-        f
+        frequency
       );
 
 
-    out.push([
-      f,
-      f <= join
+    output.push([
+
+      frequency,
+
+      frequency <= join
+
         ? targetValue
+
         : pureValue + shift
+
     ]);
 
   }
 
 
   return {
-    curve:out,
+    curve:output,
     shift
   };
 
@@ -1119,8 +1428,9 @@ function buildHybrid(
 
 
 /* ============================================================
-   DRAW GRAPH
+   GRAPH
    ============================================================ */
+
 
 function draw(
   points,
@@ -1138,39 +1448,56 @@ function draw(
 
 
   const W = 1120;
+
   const H = 430;
+
   const L = 65;
+
   const R = 20;
+
   const T = 24;
+
   const B = 55;
 
 
-  const xs =
+  const xValues =
     points.map(
-      p => Math.log10(p[0])
+      point =>
+        Math.log10(
+          point[0]
+        )
     );
 
 
-  const ys =
+  const yValues =
     points.map(
-      p => p[1]
+      point =>
+        point[1]
     );
 
 
   const xmin =
-    Math.min(...xs);
+    Math.min(
+      ...xValues
+    );
 
 
   const xmax =
-    Math.max(...xs);
+    Math.max(
+      ...xValues
+    );
 
 
   const ymin =
-    Math.min(...ys);
+    Math.min(
+      ...yValues
+    );
 
 
   const ymax =
-    Math.max(...ys);
+    Math.max(
+      ...yValues
+    );
 
 
   function px(x){
@@ -1201,13 +1528,21 @@ function draw(
 
 
   points.forEach(
-    (p,i) => {
+    (point,index) => {
 
       path +=
-        (i ? 'L' : 'M') +
-        px(xs[i]).toFixed(1) +
+
+        (index ? 'L' : 'M') +
+
+        px(
+          xValues[index]
+        ).toFixed(1) +
+
         ',' +
-        py(ys[i]).toFixed(1);
+
+        py(
+          yValues[index]
+        ).toFixed(1);
 
     }
   );
@@ -1229,6 +1564,7 @@ function draw(
 
 
     grid +=
+
       `<line
         x1="${L}"
         x2="${W-R}"
@@ -1241,13 +1577,16 @@ function draw(
         y="${py(y)+4}"
         fill="#98a6bc"
         font-size="12">
+
         ${y.toFixed(1)}
+
        </text>`;
 
   }
 
 
   const frequencies = [
+
     20,
     50,
     100,
@@ -1258,16 +1597,22 @@ function draw(
     5000,
     10000,
     20000
+
   ];
 
 
   for(
-    const f of frequencies
+    const frequency of frequencies
   ){
 
     if(
-      f < points[0][0] ||
-      f > points[points.length-1][0]
+      frequency <
+      points[0][0] ||
+
+      frequency >
+      points[
+        points.length - 1
+      ][0]
     ){
 
       continue;
@@ -1277,11 +1622,14 @@ function draw(
 
     const x =
       px(
-        Math.log10(f)
+        Math.log10(
+          frequency
+        )
       );
 
 
     grid +=
+
       `<line
         x1="${x}"
         x2="${x}"
@@ -1294,7 +1642,13 @@ function draw(
         y="${H-20}"
         fill="#98a6bc"
         font-size="12">
-        ${f >= 1000 ? f/1000+'k' : f}
+
+        ${
+          frequency >= 1000
+            ? frequency / 1000 + 'k'
+            : frequency
+        }
+
        </text>`;
 
   }
@@ -1329,14 +1683,15 @@ function draw(
    DOWNLOAD
    ============================================================ */
 
+
 function blobDownload(
-  text,
+  content,
   filename
 ){
 
   const blob =
     new Blob(
-      [text],
+      [content],
       {
         type:
           'text/plain;charset=utf-8'
@@ -1345,28 +1700,41 @@ function blobDownload(
 
 
   const url =
-    URL.createObjectURL(blob);
+    URL.createObjectURL(
+      blob
+    );
 
 
-  const a =
-    document.createElement('a');
+  const anchor =
+    document.createElement(
+      'a'
+    );
 
 
-  a.href = url;
-  a.download = filename;
+  anchor.href =
+    url;
 
 
-  document.body.appendChild(a);
+  anchor.download =
+    filename;
 
 
-  a.click();
+  document.body.appendChild(
+    anchor
+  );
+
+
+  anchor.click();
 
 
   setTimeout(
     () => {
 
-      URL.revokeObjectURL(url);
-      a.remove();
+      URL.revokeObjectURL(
+        url
+      );
+
+      anchor.remove();
 
     },
     0
@@ -1376,10 +1744,17 @@ function blobDownload(
 
 
 /* ============================================================
-   MODAL
+   MODAL FUNCTIONS
    ============================================================ */
 
+
 function openSettings(){
+
+  const modal =
+    document.getElementById(
+      'modal'
+    );
+
 
   document.getElementById(
     'modalTitle'
@@ -1405,9 +1780,13 @@ function openSettings(){
   ).hidden = true;
 
 
-  document.getElementById(
-    'modal'
-  ).hidden = false;
+  modal.removeAttribute(
+    'hidden'
+  );
+
+
+  modal.style.display =
+    'flex';
 
 }
 
@@ -1479,27 +1858,58 @@ function openAdd(kind){
     'status small';
 
 
-  document.getElementById(
-    'modal'
-  ).hidden = false;
+  const modal =
+    document.getElementById(
+      'modal'
+    );
+
+
+  modal.removeAttribute(
+    'hidden'
+  );
+
+
+  modal.style.display =
+    'flex';
 
 }
 
+
+/*
+  Normal close function.
+*/
 
 function closeModal(){
 
-  document.getElementById(
-    'modal'
-  ).hidden = true;
+  const modal =
+    document.getElementById(
+      'modal'
+    );
+
+
+  if(!modal)
+    return;
+
+
+  modal.setAttribute(
+    'hidden',
+    ''
+  );
+
+
+  modal.style.display =
+    'none';
 
 }
 
 
-/* ESC CLOSE */
+/*
+  ESC closes modal.
+*/
 
 document.addEventListener(
   'keydown',
-  event => {
+  function(event){
 
     if(
       event.key === 'Escape'
@@ -1513,16 +1923,24 @@ document.addEventListener(
 );
 
 
-/* CLICK OUTSIDE CLOSE */
+/*
+  Clicking dark area closes modal.
+*/
 
-document.getElementById(
-  'modal'
-).addEventListener(
+document.addEventListener(
   'click',
-  event => {
+  function(event){
+
+    const modal =
+      document.getElementById(
+        'modal'
+      );
+
 
     if(
-      event.target.id === 'modal'
+      modal &&
+      !modal.hasAttribute('hidden') &&
+      event.target === modal
     ){
 
       closeModal();
@@ -1537,12 +1955,17 @@ document.getElementById(
    TOKEN
    ============================================================ */
 
+
 function saveToken(){
 
-  const token =
+  const input =
     document.getElementById(
       'ghToken'
-    ).value.trim();
+    );
+
+
+  const token =
+    input.value.trim();
 
 
   if(!token){
@@ -1560,9 +1983,8 @@ function saveToken(){
     token;
 
 
-  document.getElementById(
-    'ghToken'
-  ).value = '';
+  input.value =
+    '';
 
 
   closeModal();
@@ -1581,12 +2003,14 @@ function saveToken(){
 
 function clearToken(){
 
-  githubToken = '';
+  githubToken =
+    '';
 
 
   document.getElementById(
     'ghToken'
-  ).value = '';
+  ).value =
+    '';
 
 
   document.getElementById(
@@ -1606,6 +2030,7 @@ function clearToken(){
 /* ============================================================
    BASE64
    ============================================================ */
+
 
 function b64(text){
 
@@ -1635,14 +2060,17 @@ function b64(text){
   }
 
 
-  return btoa(binary);
+  return btoa(
+    binary
+  );
 
 }
 
 
 /* ============================================================
-   AUTHENTICATED GITHUB ACCESS
+   AUTHENTICATED GITHUB WRITE
    ============================================================ */
+
 
 async function ghAuth(
   path,
@@ -1662,9 +2090,11 @@ async function ghAuth(
     await fetch(
       API + path,
       {
+
         ...options,
 
         headers:{
+
           Accept:
             'application/vnd.github+json',
 
@@ -1676,12 +2106,15 @@ async function ghAuth(
             githubToken,
 
           ...(options.headers || {})
+
         }
+
       }
     );
 
 
-  let data = null;
+  let data =
+    null;
 
 
   try{
@@ -1696,8 +2129,10 @@ async function ghAuth(
 
     throw Error(
       (data && data.message) ||
-      ('GitHub API ' +
-       response.status)
+      (
+        'GitHub API ' +
+        response.status
+      )
     );
 
   }
@@ -1709,8 +2144,9 @@ async function ghAuth(
 
 
 /* ============================================================
-   EXISTING FILE SHA
+   GET EXISTING FILE SHA
    ============================================================ */
+
 
 async function fileSha(path){
 
@@ -1723,17 +2159,27 @@ async function fileSha(path){
       );
 
 
-    return data.sha || null;
+    return (
+      data.sha ||
+      null
+    );
 
   }catch(error){
 
     const message =
-      String(error.message);
+      String(
+        error.message
+      );
 
 
     if(
-      message.includes('Not Found') ||
-      message.includes('404')
+      message.includes(
+        'Not Found'
+      ) ||
+
+      message.includes(
+        '404'
+      )
     ){
 
       return null;
@@ -1749,8 +2195,9 @@ async function fileSha(path){
 
 
 /* ============================================================
-   SAVE IEM / TARGET
+   ADD / UPDATE IEM OR TARGET
    ============================================================ */
+
 
 async function saveInputToGitHub(){
 
@@ -1771,39 +2218,45 @@ async function saveInputToGitHub(){
     }
 
 
-    let name =
+    let filename =
       document.getElementById(
         'addName'
       ).value.trim();
 
 
-    if(!name){
+    if(!filename){
 
-      name =
+      filename =
         file.name;
 
     }
 
 
     if(
-      !/\.txt$/i.test(name)
+      !/\.txt$/i.test(
+        filename
+      )
     ){
 
-      name += '.txt';
+      filename +=
+        '.txt';
 
     }
 
 
-    name =
-      name
+    filename =
+      filename
+
         .replace(
           /[^A-Za-z0-9._-]+/g,
           '_'
         )
+
         .replace(
           /^\.+/,
           ''
         )
+
         .replace(
           /\.{2,}/g,
           '.'
@@ -1811,8 +2264,8 @@ async function saveInputToGitHub(){
 
 
     if(
-      !name ||
-      name.toLowerCase() === 'txt'
+      !filename ||
+      filename.toLowerCase() === 'txt'
     ){
 
       throw Error(
@@ -1827,10 +2280,12 @@ async function saveInputToGitHub(){
 
 
     /*
-      Validate before uploading.
+      Validate curve.
     */
 
-    parseXY(text);
+    parseXY(
+      text
+    );
 
 
     const folder =
@@ -1843,32 +2298,42 @@ async function saveInputToGitHub(){
       'input/' +
       folder +
       '/' +
-      name;
+      filename;
 
 
     const existingSha =
-      await fileSha(path);
+      await fileSha(
+        path
+      );
 
 
     const body = {
 
       message:
-        (existingSha
-          ? 'Update '
-          : 'Add ') +
 
-        (addKind === 'iem'
-          ? 'IEM '
-          : 'target ') +
+        (
+          existingSha
+            ? 'Update '
+            : 'Add '
+        ) +
 
-        name,
+        (
+          addKind === 'iem'
+            ? 'IEM '
+            : 'target '
+        ) +
+
+        filename,
+
 
       content:
+
         b64(
           text.endsWith('\n')
             ? text
             : text + '\n'
         ),
+
 
       branch:
         'main'
@@ -1887,9 +2352,15 @@ async function saveInputToGitHub(){
     await ghAuth(
       path,
       {
-        method:'PUT',
+
+        method:
+          'PUT',
+
         body:
-          JSON.stringify(body)
+          JSON.stringify(
+            body
+          )
+
       }
     );
 
@@ -1914,10 +2385,6 @@ async function saveInputToGitHub(){
       ' · GitHub Actions should rebuild automatically.';
 
 
-    /*
-      Reload repository data.
-    */
-
     await loadAll();
 
   }catch(error){
@@ -1939,8 +2406,9 @@ async function saveInputToGitHub(){
 
 
 /* ============================================================
-   LOAD ALL REPOSITORY DATA
+   LOAD REPOSITORY
    ============================================================ */
+
 
 async function loadAll(){
 
@@ -1974,7 +2442,7 @@ async function loadAll(){
 
 
   /*
-    Display detected repository.
+    Show repository.
   */
 
   document.getElementById(
@@ -1984,7 +2452,7 @@ async function loadAll(){
 
 
   /*
-    Link to engine workflow.
+    Run engine link.
   */
 
   document.getElementById(
@@ -2019,35 +2487,47 @@ async function loadAll(){
 
 
     const iems =
-      Array.isArray(preferred)
+      Array.isArray(
+        preferred
+      )
+
         ? preferred.filter(
             item =>
               item.name
                 .toLowerCase()
                 .endsWith('.txt')
           )
+
         : [];
 
 
     targets =
-      Array.isArray(targetData)
+      Array.isArray(
+        targetData
+      )
+
         ? targetData.filter(
             item =>
               item.name
                 .toLowerCase()
                 .endsWith('.txt')
           )
+
         : [];
 
 
     outputs =
-      Array.isArray(outputData)
+      Array.isArray(
+        outputData
+      )
+
         ? outputData.filter(
             item =>
               item.name
                 .toLowerCase()
                 .endsWith('.txt')
           )
+
         : [];
 
 
@@ -2080,7 +2560,7 @@ async function loadAll(){
 
 
     /*
-      IEM list.
+      IEM pills.
     */
 
     document.getElementById(
@@ -2089,20 +2569,23 @@ async function loadAll(){
       iems
         .map(
           item =>
-            `<span class="pill">${
-              esc(
-                item.name.replace(
-                  /\.txt$/i,
-                  ''
-                )
+
+            `<span class="pill">` +
+
+            esc(
+              item.name.replace(
+                /\.txt$/i,
+                ''
               )
-            }</span>`
+            ) +
+
+            `</span>`
         )
         .join('');
 
 
     /*
-      Target list.
+      Target pills.
     */
 
     document.getElementById(
@@ -2111,14 +2594,17 @@ async function loadAll(){
       targets
         .map(
           item =>
-            `<span class="pill">${
-              esc(
-                item.name.replace(
-                  /\.txt$/i,
-                  ''
-                )
+
+            `<span class="pill">` +
+
+            esc(
+              item.name.replace(
+                /\.txt$/i,
+                ''
               )
-            }</span>`
+            ) +
+
+            `</span>`
         )
         .join('');
 
@@ -2134,7 +2620,7 @@ async function loadAll(){
 
 
     /*
-      Show first target.
+      Show target result.
     */
 
     await showTarget();
@@ -2160,38 +2646,49 @@ async function loadAll(){
    TARGET SELECTS
    ============================================================ */
 
+
 function populateTargetSelects(){
 
-  const selects = [
+  const ids = [
+
     'targetSelect',
+
     'hybridTarget'
+
   ];
 
 
   for(
-    const id of selects
+    const id of ids
   ){
 
     const select =
-      document.getElementById(id);
+      document.getElementById(
+        id
+      );
 
 
     select.innerHTML =
       targets
         .map(
           item =>
-            `<option value="${
-              encodeURIComponent(
-                item.name
+
+            `<option value="` +
+
+            encodeURIComponent(
+              item.name
+            ) +
+
+            `">` +
+
+            esc(
+              item.name.replace(
+                /\.txt$/i,
+                ''
               )
-            }">${
-              esc(
-                item.name.replace(
-                  /\.txt$/i,
-                  ''
-                )
-              )
-            }</option>`
+            ) +
+
+            `</option>`
         )
         .join('');
 
@@ -2204,6 +2701,7 @@ function populateTargetSelects(){
    PURE EARPRINT
    ============================================================ */
 
+
 async function loadPure(){
 
   const text =
@@ -2213,22 +2711,28 @@ async function loadPure(){
 
 
   pureCurve =
-    parseXY(text);
+    parseXY(
+      text
+    );
 
 }
 
 
 /* ============================================================
-   SHOW TARGET RESULT
+   TARGET RESULT
    ============================================================ */
+
 
 async function showTarget(){
 
-  if(!targets.length){
+  if(
+    !targets.length
+  ){
 
     document.getElementById(
       'targetChart'
-    ).innerHTML = '';
+    ).innerHTML =
+      '';
 
 
     return;
@@ -2273,11 +2777,15 @@ async function showTarget(){
 
 
     const text =
-      await rawText(path);
+      await rawText(
+        path
+      );
 
 
     const curve =
-      parseXY(text);
+      parseXY(
+        text
+      );
 
 
     draw(
@@ -2303,8 +2811,9 @@ async function showTarget(){
 
 
 /* ============================================================
-   DOWNLOAD TARGET RESULT
+   DOWNLOAD TARGET
    ============================================================ */
+
 
 async function downloadTargetResult(){
 
@@ -2341,7 +2850,9 @@ async function downloadTargetResult(){
 
 
     const text =
-      await rawText(path);
+      await rawText(
+        path
+      );
 
 
     blobDownload(
@@ -2363,8 +2874,9 @@ async function downloadTargetResult(){
 
 
 /* ============================================================
-   GENERATE HYBRID
+   HYBRID
    ============================================================ */
+
 
 async function generateHybrid(){
 
@@ -2426,14 +2938,12 @@ async function generateHybrid(){
     }
 
 
-    /*
-      Make sure the target covers
-      the requested join.
-    */
-
     if(
       join < target[0][0] ||
-      join > target[target.length-1][0]
+      join >
+        target[
+          target.length - 1
+        ][0]
     ){
 
       throw Error(
@@ -2443,37 +2953,34 @@ async function generateHybrid(){
     }
 
 
-    /*
-      Pure EarPrint frequency grid.
-    */
-
-    const freq =
+    const frequencyGrid =
       pureCurve.map(
-        point => point[0]
+        point =>
+          point[0]
       );
 
 
     /*
-      Ensure the target covers the
-      frequencies required by the hybrid.
+      Target must cover the lower region.
     */
 
-    const requiredMin =
+    const lowerMax =
       Math.min(
-        ...freq
-      );
-
-
-    const requiredMax =
-      Math.min(
-        Math.max(...freq),
-        join
+        join,
+        Math.max(
+          ...frequencyGrid
+        )
       );
 
 
     if(
-      requiredMin < target[0][0] ||
-      requiredMax > target[target.length-1][0]
+      frequencyGrid[0] <
+      target[0][0] ||
+
+      lowerMax >
+      target[
+        target.length - 1
+      ][0]
     ){
 
       throw Error(
@@ -2484,37 +2991,45 @@ async function generateHybrid(){
 
 
     /*
-      Interpolate target onto Pure EarPrint grid
-      only where needed.
+      Build target curve on Pure grid.
     */
 
     const targetOnPure =
-      freq.map(
-        f => {
+      frequencyGrid.map(
+        frequency => {
 
-          /*
-            Above join is not actually used
-            as the target is replaced by Pure EarPrint.
-          */
-
-          if(f > join){
+          if(
+            frequency <= join
+          ){
 
             return [
-              f,
-              target[
-                target.length - 1
-              ][1]
+
+              frequency,
+
+              logInterp(
+                target,
+                frequency
+              )
+
             ];
 
           }
 
 
+          /*
+            Value is not used above the join,
+            but a valid placeholder keeps the
+            curve structurally complete.
+          */
+
           return [
-            f,
-            logInterp(
-              target,
-              f
-            )
+
+            frequency,
+
+            target[
+              target.length - 1
+            ][1]
+
           ];
 
         }
@@ -2523,7 +3038,7 @@ async function generateHybrid(){
 
     const result =
       buildHybrid(
-        freq,
+        frequencyGrid,
         pureCurve,
         targetOnPure,
         join
@@ -2535,9 +3050,11 @@ async function generateHybrid(){
       curve:
         result.curve,
 
-      targetName,
+      targetName:
+        targetName,
 
-      join,
+      join:
+        join,
 
       shift:
         result.shift
@@ -2554,6 +3071,7 @@ async function generateHybrid(){
     document.getElementById(
       'hybridStatus'
     ).textContent =
+
       'shift ' +
       result.shift.toFixed(6) +
       ' dB · join ' +
@@ -2575,6 +3093,7 @@ async function generateHybrid(){
    DOWNLOAD HYBRID
    ============================================================ */
 
+
 function downloadHybrid(){
 
   if(!generatedHybrid){
@@ -2590,37 +3109,47 @@ function downloadHybrid(){
 
   const lines =
     generatedHybrid.curve
+
       .map(
         ([frequency,value]) =>
+
           Number(
             frequency
           ).toPrecision(12) +
+
           '\t' +
+
           value.toFixed(12)
       )
+
       .join('\n') +
+
       '\n';
 
 
-  const base =
+  const filename =
+
     stem(
       generatedHybrid.targetName
-    );
+    ) +
+
+    '__hybrid_' +
+
+    generatedHybrid.join +
+
+    'Hz.txt';
 
 
   blobDownload(
     lines,
-    base +
-    '__hybrid_' +
-    generatedHybrid.join +
-    'Hz.txt'
+    filename
   );
 
 }
 
 
 /* ============================================================
-   START APP
+   START
    ============================================================ */
 
 loadAll();
