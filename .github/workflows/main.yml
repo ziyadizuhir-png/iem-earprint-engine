@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -42,7 +44,11 @@ jobs:
 
           if git diff --cached --quiet; then
             echo "No generated result changes."
-          else
-            git commit -m "Update EarPrint results"
-            git push
+            exit 0
           fi
+
+          git commit -m "Update EarPrint results"
+
+          git pull --rebase origin main
+
+          git push origin HEAD:main
