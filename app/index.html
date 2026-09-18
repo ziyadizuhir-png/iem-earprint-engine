@@ -467,6 +467,48 @@ select,input{
   .brand h1{font-size:21px}
 }
 
+
+.target-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:5px 6px 5px 9px;
+}
+
+.target-pill-name{
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+
+.target-delete{
+  width:26px;
+  height:26px;
+  min-height:26px!important;
+  padding:0!important;
+  border-radius:50%;
+  border:1px solid rgba(255,120,120,.35);
+  background:rgba(130,35,45,.22);
+  color:#ffb8bf;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  line-height:1;
+  font-size:18px!important;
+  cursor:pointer;
+}
+
+.target-delete:hover{
+  background:rgba(180,45,55,.4);
+}
+
+@media(max-width:520px){
+  .target-delete{
+    width:32px;
+    height:32px;
+    min-height:32px!important;
+    font-size:20px!important;
+  }
+}
 </style>
 </head>
 
@@ -1421,29 +1463,55 @@ function parseXY(text){
 
   const output = [];
 
+  /*
+    Accept the common frequency-response TXT formats:
+    - whitespace / tab separated: 20 68.3
+    - CSV / semicolon separated: 20,68.3
+    - unit-labelled lines: 20 Hz 68.3 dB
+
+    Header/comment lines are ignored because they contain
+    fewer than two numeric values.
+  */
+
+  const numberPattern =
+    /[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?/g;
 
   for(
-    const line of
-    String(text).split(/\r?\n/)
+    const rawLine of
+    String(text)
+      .replace(/^\uFEFF/, '')
+      .split(/\r?\n/)
   ){
 
-    const parts =
-      line
-        .trim()
-        .split(/\s+/);
+    const line =
+      rawLine.trim();
 
-
-    if(parts.length < 2)
+    if(
+      !line ||
+      line.startsWith('#') ||
+      line.startsWith('//') ||
+      line.startsWith(';')
+    )
       continue;
 
+    const matches =
+      line.match(numberPattern);
 
+    if(
+      !matches ||
+      matches.length < 2
+    )
+      continue;
+
+    /*
+      First two numeric fields are frequency and response.
+      This supports TXT, TSV, CSV and unit-labelled exports.
+    */
     const frequency =
-      Number(parts[0]);
-
+      Number(matches[0]);
 
     const value =
-      Number(parts[1]);
-
+      Number(matches[1]);
 
     if(
       Number.isFinite(frequency) &&
@@ -1460,15 +1528,14 @@ function parseXY(text){
 
   }
 
-
   if(output.length < 2){
 
     throw Error(
-      'Not enough numeric points.'
+      'Not enough numeric points. ' +
+      'Expected at least two frequency/value pairs, e.g. 20 68.3.'
     );
 
   }
-
 
   for(
     let i=1;
@@ -1482,13 +1549,13 @@ function parseXY(text){
     ){
 
       throw Error(
-        'Frequencies are not strictly ascending.'
+        'Frequencies are not strictly ascending. ' +
+        'Please sort the file by frequency before uploading.'
       );
 
     }
 
   }
-
 
   return output;
 
@@ -2350,6 +2417,89 @@ document.addEventListener(
 
 
 /* ============================================================
+   LIVE FILE VALIDATION
+   ============================================================ */
+
+document.addEventListener(
+  'change',
+  async function(event){
+
+    if(
+      !event.target ||
+      event.target.id !== 'addFile'
+    )
+      return;
+
+    const file =
+      event.target.files &&
+      event.target.files[0];
+
+    const box =
+      document.getElementById(
+        'addValidation'
+      );
+
+    if(!file){
+      box.textContent =
+        'Choose a TXT file.';
+      box.className =
+        'status small';
+      return;
+    }
+
+    try{
+
+      const text =
+        await file.text();
+
+      const curve =
+        parseXY(text);
+
+      box.textContent =
+        'Valid target: ' +
+        curve.length.toLocaleString() +
+        ' numeric points · ' +
+        curve[0][0] +
+        '–' +
+        curve[curve.length-1][0] +
+        ' Hz.';
+
+      box.className =
+        'status small ok';
+
+      const name =
+        document.getElementById(
+          'addName'
+        );
+
+      if(
+        name &&
+        !name.value.trim()
+      ){
+
+        name.value =
+          file.name.replace(
+            /\.txt$/i,
+            ''
+          );
+
+      }
+
+    }catch(error){
+
+      box.textContent =
+        error.message;
+
+      box.className =
+        'status small warn';
+
+    }
+
+  }
+);
+
+
+/* ============================================================
    TOKEN
    ============================================================ */
 
@@ -2808,6 +2958,63 @@ async function saveInputToGitHub(){
    ============================================================ */
 
 
+
+async function deleteTarget(filename){
+
+  if(!filename) return;
+
+  if(!githubToken){
+    showErr('GitHub token required. Open GitHub Access first.');
+    return;
+  }
+
+  const label=filename.replace(/\.txt$/i,'');
+
+  if(!window.confirm(
+    'Delete target "'+label+'"?\n\n' +
+    'This deletes the target input from input/targets/. ' +
+    'GitHub Actions will rebuild the generated results.'
+  )){
+    return;
+  }
+
+  try{
+
+    const path='input/targets/'+filename;
+
+    const meta=await ghAuth(
+      path+'?ref=main'
+    );
+
+    await ghAuth(
+      path,
+      {
+        method:'DELETE',
+        body:JSON.stringify({
+          message:'Delete target '+filename,
+          sha:meta.sha,
+          branch:'main'
+        })
+      }
+    );
+
+    document.getElementById('targetStatus').textContent=
+      'Deleted '+label+'. GitHub Actions will rebuild results.';
+
+    await loadAll();
+
+  }catch(error){
+
+    showErr(
+      'Could not delete target: '+
+      error.message
+    );
+
+  }
+
+}
+
+
 async function loadAll(){
 
   showErr('');
@@ -2991,18 +3198,33 @@ async function loadAll(){
     ).innerHTML =
       targets
         .map(
-          item =>
+          item => {
 
-            `<span class="pill">` +
+            const safeName =
+              item.name
+                .replace(/\\/g,'\\\\')
+                .replace(/'/g,"\\'");
 
-            esc(
-              item.name.replace(
-                /\.txt$/i,
-                ''
-              )
-            ) +
+            return (
+              `<span class="pill target-pill">` +
+                `<span class="target-pill-name">` +
+                  esc(
+                    item.name.replace(
+                      /\.txt$/i,
+                      ''
+                    )
+                  ) +
+                `</span>` +
+                `<button type="button"` +
+                  ` class="target-delete"` +
+                  ` onclick="deleteTarget('${safeName}')"` +
+                  ` title="Delete target"` +
+                  ` aria-label="Delete ${esc(item.name.replace(/\.txt$/i,''))}"` +
+                `>×</button>` +
+              `</span>`
+            );
 
-            `</span>`
+          }
         )
         .join('');
 
