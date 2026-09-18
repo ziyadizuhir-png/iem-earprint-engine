@@ -1,0 +1,13 @@
+IEM EarPrint Engine validation report
+Dynamic preferred discovery: *.txt
+Dynamic target discovery: *.txt
+Independent preferred-response votes discovered: 8
+Targets discovered: 5
+Vote rule: one IEM file = one vote.
+Preferred-response files are consumed directly; PEQ gains are not averaged.
+Master grid: IEF2025.txt
+Alignment scenarios: [200,1000], [200,500], [500,1000] Hz; median used.
+Pure EarPrint: LF reference <=1 kHz; one Gaussian pass in strict >1 to <12 kHz; -6 dB/octave display extension >=12 kHz.
+Robust masks: independently computed for every discovered target; no universal mask.
+Target processing: dynamic; no target filename list is embedded in Python.
+Validation status: PASS

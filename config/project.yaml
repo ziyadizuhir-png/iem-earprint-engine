@@ -1,0 +1,64 @@
+# Deterministic EarPrint project configuration.
+# DATA DISCOVERY IS DYNAMIC:
+#   - every .txt in input/preferred = one independent IEM vote
+#   - every .txt in input/targets = one independent target
+#
+# Only the low-frequency reference needs an explicit choice because the
+# Pure EarPrint definition requires one declared LF reference.
+
+project_name: IEM EarPrint Engine
+version: 1.1.0
+
+discovery:
+  preferred_glob: "*.txt"
+  target_glob: "*.txt"
+  ignore_files: []
+
+low_frequency_reference:
+  file: IEF2025.txt
+
+frequency:
+  personal_start_hz: 1000
+  personal_end_hz: 12000
+  output_start_hz: 20
+  output_end_hz: 20186.382308152035
+
+alignment:
+  bands_hz:
+    - [200, 1000]
+    - [200, 500]
+    - [500, 1000]
+  statistic: median
+
+smoothing:
+  method: gaussian
+  sigma_indices: 16
+  radius_indices: 64
+  padding: nearest
+  # Applied exactly once, only for strict >1 kHz and <12 kHz.
+
+high_frequency_extension:
+  method: log_frequency
+  slope_db_per_octave: -6
+  # Display-only extension above 12 kHz. It is not personalized.
+
+robust_mask:
+  enabled: true
+  retention_formula: abs(centre) / (abs(centre) + total_uncertainty)
+  total_uncertainty: max(cross_iem_mad, alignment_uncertainty)
+  # Mask is forced to zero at/below 1 kHz and at/above 12 kHz.
+  # No arbitrary gain cap or final normalization.
+
+hybrids:
+  enabled: true
+  # A hybrid is generated automatically for EVERY discovered target:
+  # target <=1 kHz + Pure EarPrint >1 kHz.
+
+output:
+  delimiter: "\t"
+  decimals: 12
+  write_masks: true
+  write_robust_targets: true
+  write_pure_earprint: true
+  write_hybrids: true
+  write_reports: true
