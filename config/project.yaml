@@ -1,13 +1,6 @@
-# Deterministic EarPrint project configuration.
-# DATA DISCOVERY IS DYNAMIC:
-#   - every .txt in input/preferred = one independent IEM vote
-#   - every .txt in input/targets = one independent target
-#
-# Only the low-frequency reference needs an explicit choice because the
-# Pure EarPrint definition requires one declared LF reference.
-
-project_name: IEM EarPrint Engine
-version: 1.1.0
+project_name: IEM EarPrint Personal Web App
+version: 3.0.0
+specification: General_Prompt_EarPrint_8_MATH_LOCKED.txt
 
 discovery:
   preferred_glob: "*.txt"
@@ -35,24 +28,32 @@ smoothing:
   sigma_indices: 16
   radius_indices: 64
   padding: nearest
-  # Applied exactly once, only for strict >1 kHz and <12 kHz.
+  passes: 1
 
 high_frequency_extension:
   method: log_frequency
   slope_db_per_octave: -6
-  # Display-only extension above 12 kHz. It is not personalized.
+  display_only: true
+
+repeatability:
+  enabled: false
+  method: null
+  note: "Inactive until valid same-IEM repeats exist and a prompt-defined estimator is supplied."
 
 robust_mask:
   enabled: true
-  retention_formula: abs(centre) / (abs(centre) + total_uncertainty)
-  total_uncertainty: max(cross_iem_mad, alignment_uncertainty)
-  # Mask is forced to zero at/below 1 kHz and at/above 12 kHz.
-  # No arbitrary gain cap or final normalization.
+  retention_formula: "abs(centre)/(abs(centre)+total_uncertainty)"
+  zero_zero_rule: "Retention=0 and RawMask=0 when both centre and total_uncertainty are exactly zero."
+  total_uncertainty_components:
+    - cross_iem_mad
+    - alignment_uncertainty
+    - repeatability_floor
 
 hybrids:
   enabled: true
-  # A hybrid is generated automatically for EVERY discovered target:
-  # target <=1 kHz + Pure EarPrint >1 kHz.
+  mode: on_demand
+  default_join_hz: 1000
+  rule: "Selected target is preserved at/below join; pure EarPrint is shifted above join by the exact log-frequency join difference."
 
 output:
   delimiter: "\t"
@@ -60,5 +61,4 @@ output:
   write_masks: true
   write_robust_targets: true
   write_pure_earprint: true
-  write_hybrids: true
-  write_reports: true
+  write_hybrids: false
