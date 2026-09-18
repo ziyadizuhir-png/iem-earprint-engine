@@ -6,116 +6,1820 @@
 <title>EarPrint — Personal</title>
 <style>
 :root{--bg:#0a0e17;--panel:#111827;--panel2:#0d1422;--text:#eef4ff;--muted:#98a6bc;--line:#27344d;--accent:#7ea7ff;--ok:#62d39a;--warn:#f2c66d;--bad:#ef8795}
-*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#090d15,#0d1420);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}.wrap{max-width:1240px;margin:auto;padding:20px}.top{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}.brand h1{margin:0;font-size:28px}.brand p{margin:3px 0 0;color:var(--muted)}.actions{display:flex;flex-wrap:wrap;gap:8px}button,a.btn{border:1px solid var(--line);background:#162239;color:var(--text);padding:9px 12px;border-radius:9px;text-decoration:none;cursor:pointer}button.primary,a.primary{background:#214a92;border-color:#3264bd}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0}.card{background:rgba(17,24,39,.95);border:1px solid var(--line);border-radius:13px;padding:14px}.num{font-size:25px;font-weight:700}.label,.muted,.status{color:var(--muted)}.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}.section{margin-top:12px}.section h2{margin:0 0 10px;font-size:18px}.pillbox{display:flex;flex-wrap:wrap;gap:7px}.pill{background:#152137;border:1px solid var(--line);border-radius:999px;padding:6px 9px;color:#dce8ff}.formrow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:9px 0}.field{display:flex;flex-direction:column;gap:5px}.field label{font-size:12px;color:var(--muted)}select,input{background:#0f1726;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px}.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.resultbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.chart{margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#090f1c}.chart svg{width:100%;height:auto;display:block}.download{display:inline-block}.error{margin-top:10px;padding:11px;border-radius:9px;background:#341923;border:1px solid #6b3041;color:#ffdbe1}.ok{color:var(--ok)}.warn{color:var(--warn)}.small{font-size:12px}.hr{height:1px;background:var(--line);margin:13px 0}@media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.cols{grid-template-columns:1fr}}@media(max-width:520px){.grid{grid-template-columns:1fr 1fr}.formrow{grid-template-columns:1fr}.wrap{padding:12px}.brand h1{font-size:24px}}
-.modalBack{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}.modal{width:min(700px,100%);max-height:90vh;overflow:auto}.modal[hidden]{display:none}
+*{box-sizing:border-box}
+body{margin:0;background:linear-gradient(180deg,#090d15,#0d1420);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1240px;margin:auto;padding:20px}
+.top{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.brand h1{margin:0;font-size:28px}
+.brand p{margin:3px 0 0;color:var(--muted)}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+button,a.btn{border:1px solid var(--line);background:#162239;color:var(--text);padding:9px 12px;border-radius:9px;text-decoration:none;cursor:pointer}
+button.primary,a.primary{background:#214a92;border-color:#3264bd}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0}
+.card{background:rgba(17,24,39,.95);border:1px solid var(--line);border-radius:13px;padding:14px}
+.num{font-size:25px;font-weight:700}
+.label,.muted,.status{color:var(--muted)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.section{margin-top:12px}
+.section h2{margin:0 0 10px;font-size:18px}
+.pillbox{display:flex;flex-wrap:wrap;gap:7px}
+.pill{background:#152137;border:1px solid var(--line);border-radius:999px;padding:6px 9px;color:#dce8ff}
+.formrow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:9px 0}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:12px;color:var(--muted)}
+select,input{background:#0f1726;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px}
+.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.resultbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.chart{margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#090f1c}
+.chart svg{width:100%;height:auto;display:block}
+.download{display:inline-block}
+.error{margin-top:10px;padding:11px;border-radius:9px;background:#341923;border:1px solid #6b3041;color:#ffdbe1}
+.ok{color:var(--ok)}
+.warn{color:var(--warn)}
+.small{font-size:12px}
+.hr{height:1px;background:var(--line);margin:13px 0}
+@media(max-width:850px){
+.grid{grid-template-columns:repeat(2,1fr)}
+.cols{grid-template-columns:1fr}
+}
+@media(max-width:520px){
+.grid{grid-template-columns:1fr 1fr}
+.formrow{grid-template-columns:1fr}
+.wrap{padding:12px}
+.brand h1{font-size:24px}
+}
+.modalBack{
+position:fixed;
+inset:0;
+background:rgba(0,0,0,.65);
+display:flex;
+align-items:center;
+justify-content:center;
+padding:16px;
+z-index:20
+}
+.modal{
+width:min(700px,100%);
+max-height:90vh;
+overflow:auto
+}
+.modal[hidden]{display:none}
 </style>
 </head>
+
 <body>
+
 <div class="wrap">
+
   <div class="top">
-    <div class="brand"><h1>EarPrint — Personal</h1><p id="repoLabel">Loading repository…</p></div>
-    <div class="actions">
-      <button class="btn" onclick="openAdd('iem')">Add IEM</button>
-      <button class="btn" onclick="openAdd('target')">Add Target</button>
-      <a id="runEngine" class="btn primary" target="_blank">Run EarPrint</a>
-      <button onclick="openSettings()">GitHub Access</button>
-      <button onclick="loadAll()">Refresh</button>
+
+    <div class="brand">
+      <h1>EarPrint — Personal</h1>
+      <p id="repoLabel">Loading repository…</p>
     </div>
+
+    <div class="actions">
+
+      <button class="btn" onclick="openAdd('iem')">
+        Add IEM
+      </button>
+
+      <button class="btn" onclick="openAdd('target')">
+        Add Target
+      </button>
+
+      <a id="runEngine"
+         class="btn primary"
+         target="_blank">
+        Run EarPrint
+      </a>
+
+      <button onclick="openSettings()">
+        GitHub Access
+      </button>
+
+      <button onclick="loadAll()">
+        Refresh
+      </button>
+
+    </div>
+
   </div>
+
   <div id="error"></div>
 
   <div class="grid">
-    <div class="card"><div id="iemCount" class="num">—</div><div class="label">Independent IEM votes</div></div>
-    <div class="card"><div id="targetCount" class="num">—</div><div class="label">Targets</div></div>
-    <div class="card"><div id="outputCount" class="num">—</div><div class="label">Robust outputs</div></div>
-    <div class="card"><div id="buildState" class="num">—</div><div class="label">Build state</div></div>
+
+    <div class="card">
+      <div id="iemCount" class="num">—</div>
+      <div class="label">Independent IEM votes</div>
+    </div>
+
+    <div class="card">
+      <div id="targetCount" class="num">—</div>
+      <div class="label">Targets</div>
+    </div>
+
+    <div class="card">
+      <div id="outputCount" class="num">—</div>
+      <div class="label">Robust outputs</div>
+    </div>
+
+    <div class="card">
+      <div id="buildState" class="num">—</div>
+      <div class="label">Build state</div>
+    </div>
+
   </div>
 
   <div class="cols">
-    <div class="card"><div class="section"><h2>Preferred IEMs</h2><div id="iems" class="pillbox"></div></div></div>
-    <div class="card"><div class="section"><h2>Targets</h2><div id="targets" class="pillbox"></div></div></div>
-  </div>
 
-  <div class="card section">
-    <h2>Target results</h2>
-    <div class="formrow">
-      <div class="field"><label>Target</label><select id="targetSelect" onchange="showTarget()"></select></div>
-      <div class="field"><label>Result</label><select id="resultType" onchange="showTarget()"><option value="mask">Robust Mask</option><option value="robust">Robust Target</option></select></div>
-    </div>
-    <div class="resultbar">
-      <button class="primary" onclick="downloadTargetResult()">Download selected</button>
-      <span id="targetStatus" class="status"></span>
-    </div>
-    <div id="targetChart" class="chart"></div>
-  </div>
-
-  <div class="card section">
-    <h2>Hybrid Builder</h2>
-    <div class="muted small">Choose any discovered target as the lower region. The selected target is preserved at/below the join; Pure EarPrint is shifted above the join to make the join continuous.</div>
-    <div class="formrow">
-      <div class="field"><label>Lower-end target</label><select id="hybridTarget"></select></div>
-      <div class="field"><label>Join frequency (Hz)</label><input id="joinHz" type="number" min="20" step="1" value="1000"></div>
-    </div>
-    <div class="inline"><button class="primary" onclick="generateHybrid()">Generate Hybrid</button><button onclick="downloadHybrid()">Download Hybrid</button><span id="hybridStatus" class="status"></span></div>
-    <div id="hybridChart" class="chart"></div>
-  </div>
-
-  <div class="card section">
-    <h2>How this app works</h2>
-    <div class="status">Inputs live in <b>input/preferred/</b> and <b>input/targets/</b>. GitHub Actions runs the deterministic Python engine and commits robust outputs/reports. The web app is read-only for repository data and performs only the selected Hybrid generation in the browser.</div>
-  </div>
-</div>
-
-<div id="modal" class="modalBack" hidden>
-  <div class="modal card">
-    <div class="top"><div><h2 id="modalTitle" style="margin:0">Add Input</h2><div id="modalHint" class="status small"></div></div><button onclick="closeModal()">Close</button></div>
-    <div id="settingsPanel">
-      <div class="field"><label>Fine-grained GitHub token (Contents: write for this repository)</label><input id="ghToken" type="password" autocomplete="off" placeholder="github_pat_…"></div>
-      <div class="inline" style="margin-top:10px"><button class="primary" onclick="saveToken()">Use Token</button><button onclick="clearToken()">Clear</button></div>
-      <div class="status small" style="margin-top:10px">The token is kept only in this browser tab memory and is not written into the repository.</div>
-      <div class="status small" style="margin-top:6px"><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Create a fine-grained token on GitHub</a></div>
-    </div>
-    <div id="addPanel" hidden>
-      <div class="formrow">
-        <div class="field"><label>File</label><input id="addFile" type="file" accept=".txt,text/plain"></div>
-        <div class="field"><label>Repository filename</label><input id="addName" type="text" placeholder="Example.txt"></div>
+    <div class="card">
+      <div class="section">
+        <h2>Preferred IEMs</h2>
+        <div id="iems" class="pillbox"></div>
       </div>
-      <div id="addValidation" class="status small">Choose a TXT file. The app will validate finite values and strictly ascending frequencies before saving.</div>
-      <div class="inline" style="margin-top:10px"><button class="primary" onclick="saveInputToGitHub()">Save to GitHub</button><button onclick="closeModal()">Cancel</button></div>
-      <div class="status small" style="margin-top:10px">Saving commits one file into <b>input/preferred/</b> or <b>input/targets/</b>. Your existing engine workflow then rebuilds results automatically.</div>
     </div>
+
+    <div class="card">
+      <div class="section">
+        <h2>Targets</h2>
+        <div id="targets" class="pillbox"></div>
+      </div>
+    </div>
+
   </div>
+
+  <div class="card section">
+
+    <h2>Target results</h2>
+
+    <div class="formrow">
+
+      <div class="field">
+        <label>Target</label>
+        <select id="targetSelect"
+                onchange="showTarget()">
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Result</label>
+        <select id="resultType"
+                onchange="showTarget()">
+          <option value="mask">Robust Mask</option>
+          <option value="robust">Robust Target</option>
+        </select>
+      </div>
+
+    </div>
+
+    <div class="resultbar">
+
+      <button class="primary"
+              onclick="downloadTargetResult()">
+        Download selected
+      </button>
+
+      <span id="targetStatus"
+            class="status">
+      </span>
+
+    </div>
+
+    <div id="targetChart"
+         class="chart">
+    </div>
+
+  </div>
+
+  <div class="card section">
+
+    <h2>Hybrid Builder</h2>
+
+    <div class="muted small">
+      Choose any discovered target as the lower region.
+      The selected target is preserved at/below the join;
+      Pure EarPrint is shifted above the join to make the join continuous.
+    </div>
+
+    <div class="formrow">
+
+      <div class="field">
+
+        <label>Lower-end target</label>
+
+        <select id="hybridTarget">
+        </select>
+
+      </div>
+
+      <div class="field">
+
+        <label>Join frequency (Hz)</label>
+
+        <input id="joinHz"
+               type="number"
+               min="20"
+               step="1"
+               value="1000">
+
+      </div>
+
+    </div>
+
+    <div class="inline">
+
+      <button class="primary"
+              onclick="generateHybrid()">
+        Generate Hybrid
+      </button>
+
+      <button onclick="downloadHybrid()">
+        Download Hybrid
+      </button>
+
+      <span id="hybridStatus"
+            class="status">
+      </span>
+
+    </div>
+
+    <div id="hybridChart"
+         class="chart">
+    </div>
+
+  </div>
+
+  <div class="card section">
+
+    <h2>How this app works</h2>
+
+    <div class="status">
+      Inputs live in <b>input/preferred/</b> and
+      <b>input/targets/</b>.
+      GitHub Actions runs the deterministic Python engine
+      and commits robust outputs/reports.
+      The web app is read-only for repository data
+      and performs only the selected Hybrid generation
+      in the browser.
+    </div>
+
+  </div>
+
 </div>
+
+
+<div id="modal"
+     class="modalBack"
+     hidden>
+
+  <div class="modal card">
+
+    <div class="top">
+
+      <div>
+
+        <h2 id="modalTitle"
+            style="margin:0">
+          Add Input
+        </h2>
+
+        <div id="modalHint"
+             class="status small">
+        </div>
+
+      </div>
+
+      <button type="button"
+              onclick="closeModal()">
+        Close
+      </button>
+
+    </div>
+
+
+    <div id="settingsPanel">
+
+      <div class="field">
+
+        <label>
+          Fine-grained GitHub token
+          (Contents: write for this repository)
+        </label>
+
+        <input id="ghToken"
+               type="password"
+               autocomplete="off"
+               placeholder="github_pat_…">
+
+      </div>
+
+      <div class="inline"
+           style="margin-top:10px">
+
+        <button class="primary"
+                onclick="saveToken()">
+          Use Token
+        </button>
+
+        <button onclick="clearToken()">
+          Clear
+        </button>
+
+      </div>
+
+      <div class="status small"
+           style="margin-top:10px">
+
+        The token is kept only in this browser tab
+        memory and is not written into the repository.
+
+      </div>
+
+      <div class="status small"
+           style="margin-top:6px">
+
+        <a href="https://github.com/settings/personal-access-tokens/new"
+           target="_blank"
+           rel="noopener">
+          Create a fine-grained token on GitHub
+        </a>
+
+      </div>
+
+    </div>
+
+
+    <div id="addPanel"
+         hidden>
+
+      <div class="formrow">
+
+        <div class="field">
+
+          <label>File</label>
+
+          <input id="addFile"
+                 type="file"
+                 accept=".txt,text/plain">
+
+        </div>
+
+        <div class="field">
+
+          <label>Repository filename</label>
+
+          <input id="addName"
+                 type="text"
+                 placeholder="Example.txt">
+
+        </div>
+
+      </div>
+
+      <div id="addValidation"
+           class="status small">
+
+        Choose a TXT file.
+        The app will validate finite values
+        and strictly ascending frequencies
+        before saving.
+
+      </div>
+
+      <div class="inline"
+           style="margin-top:10px">
+
+        <button class="primary"
+                onclick="saveInputToGitHub()">
+          Save to GitHub
+        </button>
+
+        <button type="button"
+                onclick="closeModal()">
+          Cancel
+        </button>
+
+      </div>
+
+      <div class="status small"
+           style="margin-top:10px">
+
+        Saving commits one file into
+        <b>input/preferred/</b> or
+        <b>input/targets/</b>.
+        Your existing engine workflow then
+        rebuilds results automatically.
+
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
 
 <script>
-const parts=location.pathname.split('/').filter(Boolean);
-let repo=new URLSearchParams(location.search).get('repo')||'';
-if(!repo&&location.hostname.endsWith('github.io')&&parts.length>=2)repo=parts[0]+'/'+parts[1];
-const API='https://api.github.com/repos/'+repo+'/contents/';
-const RAW='https://raw.githubusercontent.com/'+repo+'/main/';
-const GH='https://github.com/'+repo;
-let targets=[];let outputs=[];let pureCurve=null;let generatedHybrid=null;let githubToken='';let addKind='iem';
 
-function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function showErr(s){document.getElementById('error').innerHTML=s?'<div class="error">'+esc(s)+'</div>':'';}
-async function gh(path){const r=await fetch(API+path);if(!r.ok)throw Error('GitHub API '+r.status+' for '+path);return r.json();}
-function stem(name){return name.replace(/\.txt$/i,'').replace(/[^\w.-]+/g,'_').replace(/_+/g,'_').replace(/^[_\.]+|[_\.]+$/g,'')||'target';}
-function parseXY(text){const out=[];for(const line of text.split(/\r?\n/)){const p=line.trim().split(/\s+/);if(p.length<2)continue;const x=Number(p[0]),y=Number(p[1]);if(Number.isFinite(x)&&Number.isFinite(y)&&x>0)out.push([x,y]);}if(out.length<2)throw Error('Not enough numeric points.');for(let i=1;i<out.length;i++)if(out[i][0]<=out[i-1][0])throw Error('Frequencies are not strictly ascending.');return out;}
-async function rawText(path){const r=await fetch(RAW+path+'?t='+Date.now());if(!r.ok)throw Error('Could not read '+path);return r.text();}
-function logInterp(curve, f){if(f<curve[0][0]||f>curve[curve.length-1][0])throw Error('Curve does not cover '+f+' Hz');const lx=Math.log(f)/Math.LN10;let lo=0,hi=curve.length-1;while(lo<hi){const m=Math.floor((lo+hi)/2);const lm=Math.log(curve[m][0])/Math.LN10;if(lm<f)lo=m+1;else hi=m;}let i=Math.max(1,lo);if(curve[i][0]<f)i++;const a=curve[i-1],b=curve[i];const la=Math.log(a[0])/Math.LN10,lb=Math.log(b[0])/Math.LN10;const t=(lx-la)/(lb-la||1);return a[1]+(b[1]-a[1])*t;}
-function interpolateCurve(src, destFreq){return destFreq.map(f=>logInterp(src,f));}
-function buildHybrid(freq,pure,target,join){const tj=logInterp(target,join);const pj=logInterp(pure,join);const shift=tj-pj;const out=[];for(let i=0;i<freq.length;i++){const f=freq[i];const pv=pure[i][1];const tv=logInterp(target,f);out.push([f,f<=join?tv:pv+shift]);}return {curve:out,shift};}
-function draw(points,containerId,label){if(!points||points.length<2)return;const W=1120,H=430,L=65,R=20,T=24,B=55;const xs=points.map(p=>Math.log10(p[0])),ys=points.map(p=>p[1]);const xmin=Math.min(...xs),xmax=Math.max(...xs),ymin=Math.min(...ys),ymax=Math.max(...ys);const px=x=>L+(x-xmin)/(xmax-xmin||1)*(W-L-R),py=y=>T+(ymax-y)/(ymax-ymin||1)*(H-T-B);let path='';points.forEach((p,i)=>path+=(i?'L':'M')+px(xs[i]).toFixed(1)+','+py(ys[i]).toFixed(1));let g='';for(let i=0;i<7;i++){const y=ymin+(ymax-ymin)*i/6;g+=`<line x1="${L}" x2="${W-R}" y1="${py(y)}" y2="${py(y)}" stroke="#26334a"/><text x="8" y="${py(y)+4}" fill="#98a6bc" font-size="12">${y.toFixed(1)}</text>`}for(const f of [20,50,100,200,500,1000,2000,5000,10000,20000]){if(f<points[0][0]||f>points.at(-1)[0])continue;const x=px(Math.log10(f));g+=`<line x1="${x}" x2="${x}" y1="${T}" y2="${H-B}" stroke="#1a263a"/><text x="${x-12}" y="${H-20}" fill="#98a6bc" font-size="12">${f>=1000?f/1000+'k':f}</text>`}document.getElementById(containerId).innerHTML=`<svg viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#090f1c"/>${g}<path d="${path}" fill="none" stroke="#7ea7ff" stroke-width="2.5"/></svg>`;}
-function blobDownload(text,name){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0);}
-function openSettings(){document.getElementById('modalTitle').textContent='GitHub Access';document.getElementById('modalHint').textContent=githubToken?'Token loaded for this tab.':'No token loaded.';document.getElementById('settingsPanel').hidden=false;document.getElementById('addPanel').hidden=true;document.getElementById('modal').hidden=false;}\nfunction openAdd(kind){if(!repo){showErr('Repository not detected. Open this from GitHub Pages or add ?repo=OWNER/REPO.');return;}addKind=kind;document.getElementById('modalTitle').textContent=kind==='iem'?'Add IEM':'Add Target';document.getElementById('modalHint').textContent=githubToken?'GitHub write access ready.':'Enter a token with Contents: write before saving.';document.getElementById('settingsPanel').hidden=true;document.getElementById('addPanel').hidden=false;document.getElementById('addFile').value='';document.getElementById('addName').value='';document.getElementById('addValidation').textContent='Choose a TXT file. The app will validate finite values and strictly ascending frequencies before saving.';document.getElementById('modal').hidden=false;}\nfunction closeModal(){document.getElementById('modal').hidden=true;}\nfunction saveToken(){const t=document.getElementById('ghToken').value.trim();if(!t){showErr('Token is empty.');return;}githubToken=t;document.getElementById('ghToken').value='';closeModal();showErr('');document.getElementById('buildState').textContent='CONNECTED';}\nfunction clearToken(){githubToken='';document.getElementById('ghToken').value='';document.getElementById('modalHint').textContent='No token loaded.';document.getElementById('buildState').textContent='READY';}\nfunction b64(text){const bytes=new TextEncoder().encode(text);let bin='';for(let i=0;i<bytes.length;i+=0x8000)bin+=String.fromCharCode(...bytes.subarray(i,i+0x8000));return btoa(bin);}\nasync function ghAuth(path,opts={}){if(!githubToken)throw Error('GitHub token required. Open GitHub Access first.');const r=await fetch(API+path,{...opts,headers:{Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2026-03-10',Authorization:'Bearer '+githubToken,...(opts.headers||{})}});let data=null;try{data=await r.json()}catch{}if(!r.ok)throw Error((data&&data.message)||('GitHub API '+r.status));return data;}\nasync function fileSha(path){try{const d=await ghAuth(path+'?ref=main');return d.sha||null}catch(e){if(String(e.message).includes('Not Found')||String(e.message).includes('404'))return null;throw e;}}\nasync function saveInputToGitHub(){try{const file=document.getElementById('addFile').files[0];if(!file)throw Error('Choose a TXT file first.');let name=document.getElementById('addName').value.trim()||file.name;if(!/\.txt$/i.test(name))name+='.txt';name=name.replace(/[^A-Za-z0-9._-]+/g,'_').replace(/^\.+/,'').replace(/\.{2,}/g,'.');if(!name||name.toLowerCase()==='txt')throw Error('Invalid filename.');const text=await file.text();parseXY(text);const sub=addKind==='iem'?'preferred':'targets';const path='input/'+sub+'/'+name;const sha=await fileSha(path);const body={message:(sha?'Update ':'Add ')+(addKind==='iem'?'IEM ':'target ')+name,content:b64(text.endsWith('\\n')?text:text+'\\n'),branch:'main'};if(sha)body.sha=sha;await ghAuth(path,{method:'PUT',body:JSON.stringify(body)});closeModal();showErr('');await loadAll();document.getElementById('buildState').textContent='SAVED';document.getElementById('targetStatus').textContent='Saved '+path+' · GitHub Actions should rebuild automatically.';}catch(e){document.getElementById('addValidation').textContent=e.message;document.getElementById('addValidation').className='status small warn';}}\n\nasync function loadAll(){showErr('');if(!repo){showErr('Repository not detected. Open this from GitHub Pages or add ?repo=OWNER/REPO.');return;}document.getElementById('repoLabel').textContent=repo;document.getElementById('runEngine').href=GH+'/actions/workflows/main.yml';try{const [i,t,o]=await Promise.all([gh('input/preferred'),gh('input/targets'),gh('output')]);const iems=i.filter(x=>x.name.toLowerCase().endsWith('.txt'));targets=t.filter(x=>x.name.toLowerCase().endsWith('.txt'));outputs=o.filter(x=>x.name.toLowerCase().endsWith('.txt'));document.getElementById('iemCount').textContent=iems.length;document.getElementById('targetCount').textContent=targets.length;document.getElementById('outputCount').textContent=outputs.length;document.getElementById('buildState').textContent='READY';document.getElementById('iems').innerHTML=iems.map(x=>`<span class="pill">${esc(x.name.replace(/\.txt$/i,''))}</span>`).join('');document.getElementById('targets').innerHTML=targets.map(x=>`<span class="pill">${esc(x.name.replace(/\.txt$/i,''))}</span>`).join('');populateTargetSelects();await loadPure();await showTarget();}catch(e){document.getElementById('buildState').textContent='ERROR';showErr(e.message);}}
-function populateTargetSelects(){for(const id of ['targetSelect','hybridTarget']){const s=document.getElementById(id);s.innerHTML=targets.map(x=>`<option value="${encodeURIComponent(x.name)}">${esc(x.name.replace(/\.txt$/i,''))}</option>`).join('');}}
-async function loadPure(){const text=await rawText('output/pure_earprint_dynamic.txt');pureCurve=parseXY(text);}
-async function selectedTarget(){return parseXY(await rawText('input/targets/'+decodeURIComponent(document.getElementById('targetSelect').value)));}
-async function showTarget(){if(!targets.length)return;try{const name=decodeURIComponent(document.getElementById('targetSelect').value);const type=document.getElementById('resultType').value;const path=type==='mask'?'output/'+stem(name)+'__mask.txt':'output/'+stem(name)+'__robust_target.txt';const text=await rawText(path);const curve=parseXY(text);draw(curve,'targetChart',name);document.getElementById('targetStatus').textContent=path;}catch(e){showErr(e.message);}}
-async function downloadTargetResult(){try{const name=decodeURIComponent(document.getElementById('targetSelect').value);const type=document.getElementById('resultType').value;const path=type==='mask'?'output/'+stem(name)+'__mask.txt':'output/'+stem(name)+'__robust_target.txt';const text=await rawText(path);blobDownload(text,path.split('/').pop());}catch(e){showErr(e.message);}}
-async function generateHybrid(){try{if(!pureCurve)await loadPure();const targetName=decodeURIComponent(document.getElementById('hybridTarget').value);const target=parseXY(await rawText('input/targets/'+encodeURIComponent(targetName)));const join=Number(document.getElementById('joinHz').value);if(!(join>0))throw Error('Join frequency must be > 0 Hz.');const freq=pureCurve.map(p=>p[0]);const tOnPure=freq.map(f=>[f,logInterp(target,f)]);const {curve,shift}=buildHybrid(freq,pureCurve,tOnPure,join);generatedHybrid={curve,targetName,join,shift};draw(curve,'hybridChart',targetName);document.getElementById('hybridStatus').textContent='shift '+shift.toFixed(6)+' dB · join '+join+' Hz';}catch(e){showErr(e.message);}}
-function downloadHybrid(){if(!generatedHybrid){showErr('Generate the hybrid first.');return;}const lines=generatedHybrid.curve.map(([f,y])=>`${Number(f).toPrecision(12)}\t${y.toFixed(12)}`).join('\n')+'\n';const base=stem(generatedHybrid.targetName);blobDownload(lines,base+'__hybrid_'+generatedHybrid.join+'Hz.txt');}
+const parts =
+  location.pathname.split('/').filter(Boolean);
+
+let repo =
+  new URLSearchParams(location.search).get('repo') || '';
+
+if (
+  !repo &&
+  location.hostname.endsWith('github.io') &&
+  parts.length >= 2
+) {
+  repo = parts[0] + '/' + parts[1];
+}
+
+const API =
+  'https://api.github.com/repos/' +
+  repo +
+  '/contents/';
+
+const RAW =
+  'https://raw.githubusercontent.com/' +
+  repo +
+  '/main/';
+
+const GH =
+  'https://github.com/' + repo;
+
+
+let targets = [];
+let outputs = [];
+let pureCurve = null;
+let generatedHybrid = null;
+let githubToken = '';
+let addKind = 'iem';
+
+
+function esc(s){
+
+  return s.replace(
+    /[&<>"']/g,
+    c => ({
+      '&':'&amp;',
+      '<':'&lt;',
+      '>':'&gt;',
+      '"':'&quot;',
+      "'":'&#39;'
+    }[c])
+  );
+
+}
+
+
+function showErr(s){
+
+  document.getElementById('error').innerHTML =
+    s
+    ? '<div class="error">' +
+      esc(s) +
+      '</div>'
+    : '';
+
+}
+
+
+async function gh(path){
+
+  const r =
+    await fetch(API + path);
+
+  if(!r.ok)
+    throw Error(
+      'GitHub API ' +
+      r.status +
+      ' for ' +
+      path
+    );
+
+  return r.json();
+
+}
+
+
+function stem(name){
+
+  return name
+    .replace(/\.txt$/i,'')
+    .replace(/[^\w.-]+/g,'_')
+    .replace(/_+/g,'_')
+    .replace(/^[_\.]+|[_\.]+$/g,'')
+    || 'target';
+
+}
+
+
+function parseXY(text){
+
+  const out = [];
+
+  for(
+    const line of text.split(/\r?\n/)
+  ){
+
+    const p =
+      line.trim().split(/\s+/);
+
+    if(p.length < 2)
+      continue;
+
+    const x = Number(p[0]);
+    const y = Number(p[1]);
+
+    if(
+      Number.isFinite(x) &&
+      Number.isFinite(y) &&
+      x > 0
+    ){
+      out.push([x,y]);
+    }
+
+  }
+
+  if(out.length < 2)
+    throw Error(
+      'Not enough numeric points.'
+    );
+
+  for(
+    let i=1;
+    i<out.length;
+    i++
+  ){
+
+    if(
+      out[i][0] <=
+      out[i-1][0]
+    ){
+      throw Error(
+        'Frequencies are not strictly ascending.'
+      );
+    }
+
+  }
+
+  return out;
+
+}
+
+
+async function rawText(path){
+
+  const r =
+    await fetch(
+      RAW +
+      path +
+      '?t=' +
+      Date.now()
+    );
+
+  if(!r.ok)
+    throw Error(
+      'Could not read ' + path
+    );
+
+  return r.text();
+
+}
+
+
+function logInterp(curve,f){
+
+  if(
+    f < curve[0][0] ||
+    f > curve[curve.length-1][0]
+  ){
+    throw Error(
+      'Curve does not cover ' +
+      f +
+      ' Hz'
+    );
+  }
+
+  const lx =
+    Math.log(f) /
+    Math.LN10;
+
+  let lo = 0;
+  let hi = curve.length - 1;
+
+  while(lo < hi){
+
+    const m =
+      Math.floor(
+        (lo + hi) / 2
+      );
+
+    const lm =
+      Math.log(curve[m][0]) /
+      Math.LN10;
+
+    if(lm < lx)
+      lo = m + 1;
+    else
+      hi = m;
+
+  }
+
+  let i =
+    Math.max(1,lo);
+
+  if(curve[i][0] < f)
+    i++;
+
+  const a = curve[i-1];
+  const b = curve[i];
+
+  const la =
+    Math.log(a[0]) /
+    Math.LN10;
+
+  const lb =
+    Math.log(b[0]) /
+    Math.LN10;
+
+  const t =
+    (lx-la) /
+    (lb-la || 1);
+
+  return (
+    a[1] +
+    (b[1]-a[1]) * t
+  );
+
+}
+
+
+function interpolateCurve(
+  src,
+  destFreq
+){
+
+  return destFreq.map(
+    f => logInterp(src,f)
+  );
+
+}
+
+
+function buildHybrid(
+  freq,
+  pure,
+  target,
+  join
+){
+
+  const tj =
+    logInterp(target,join);
+
+  const pj =
+    logInterp(pure,join);
+
+  const shift =
+    tj - pj;
+
+  const out = [];
+
+  for(
+    let i=0;
+    i<freq.length;
+    i++
+  ){
+
+    const f = freq[i];
+
+    const pv =
+      pure[i][1];
+
+    const tv =
+      logInterp(target,f);
+
+    out.push([
+      f,
+      f <= join
+        ? tv
+        : pv + shift
+    ]);
+
+  }
+
+  return {
+    curve:out,
+    shift
+  };
+
+}
+
+
+function draw(
+  points,
+  containerId,
+  label
+){
+
+  if(
+    !points ||
+    points.length < 2
+  )
+    return;
+
+  const W = 1120;
+  const H = 430;
+  const L = 65;
+  const R = 20;
+  const T = 24;
+  const B = 55;
+
+  const xs =
+    points.map(
+      p => Math.log10(p[0])
+    );
+
+  const ys =
+    points.map(
+      p => p[1]
+    );
+
+  const xmin =
+    Math.min(...xs);
+
+  const xmax =
+    Math.max(...xs);
+
+  const ymin =
+    Math.min(...ys);
+
+  const ymax =
+    Math.max(...ys);
+
+  const px =
+    x =>
+      L +
+      (x-xmin) /
+      (xmax-xmin || 1) *
+      (W-L-R);
+
+  const py =
+    y =>
+      T +
+      (ymax-y) /
+      (ymax-ymin || 1) *
+      (H-T-B);
+
+
+  let path = '';
+
+  points.forEach(
+    (p,i) => {
+
+      path +=
+        (i ? 'L' : 'M') +
+        px(xs[i]).toFixed(1) +
+        ',' +
+        py(ys[i]).toFixed(1);
+
+    }
+  );
+
+
+  let g = '';
+
+
+  for(let i=0;i<7;i++){
+
+    const y =
+      ymin +
+      (ymax-ymin) *
+      i / 6;
+
+    g +=
+      `<line
+        x1="${L}"
+        x2="${W-R}"
+        y1="${py(y)}"
+        y2="${py(y)}"
+        stroke="#26334a"/>
+       <text
+        x="8"
+        y="${py(y)+4}"
+        fill="#98a6bc"
+        font-size="12">
+        ${y.toFixed(1)}
+       </text>`;
+
+  }
+
+
+  for(
+    const f of [
+      20,
+      50,
+      100,
+      200,
+      500,
+      1000,
+      2000,
+      5000,
+      10000,
+      20000
+    ]
+  ){
+
+    if(
+      f < points[0][0] ||
+      f > points.at(-1)[0]
+    )
+      continue;
+
+    const x =
+      px(Math.log10(f));
+
+    g +=
+      `<line
+        x1="${x}"
+        x2="${x}"
+        y1="${T}"
+        y2="${H-B}"
+        stroke="#1a263a"/>
+
+       <text
+        x="${x-12}"
+        y="${H-20}"
+        fill="#98a6bc"
+        font-size="12">
+        ${f>=1000 ? f/1000+'k' : f}
+       </text>`;
+
+  }
+
+
+  document.getElementById(
+    containerId
+  ).innerHTML =
+
+    `<svg viewBox="0 0 ${W} ${H}">
+
+      <rect
+        width="${W}"
+        height="${H}"
+        fill="#090f1c"/>
+
+      ${g}
+
+      <path
+        d="${path}"
+        fill="none"
+        stroke="#7ea7ff"
+        stroke-width="2.5"/>
+
+    </svg>`;
+
+}
+
+
+function blobDownload(
+  text,
+  name
+){
+
+  const a =
+    document.createElement('a');
+
+  a.href =
+    URL.createObjectURL(
+      new Blob(
+        [text],
+        {
+          type:
+            'text/plain;charset=utf-8'
+        }
+      )
+    );
+
+  a.download = name;
+
+  document.body.appendChild(a);
+
+  a.click();
+
+  setTimeout(
+    () => {
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    },
+    0
+  );
+
+}
+
+
+function openSettings(){
+
+  document.getElementById(
+    'modalTitle'
+  ).textContent =
+    'GitHub Access';
+
+  document.getElementById(
+    'modalHint'
+  ).textContent =
+    githubToken
+      ? 'Token loaded for this tab.'
+      : 'No token loaded.';
+
+  document.getElementById(
+    'settingsPanel'
+  ).hidden = false;
+
+  document.getElementById(
+    'addPanel'
+  ).hidden = true;
+
+  document.getElementById(
+    'modal'
+  ).hidden = false;
+
+}
+
+
+function openAdd(kind){
+
+  if(!repo){
+
+    showErr(
+      'Repository not detected. ' +
+      'Open this from GitHub Pages ' +
+      'or add ?repo=OWNER/REPO.'
+    );
+
+    return;
+
+  }
+
+  addKind = kind;
+
+  document.getElementById(
+    'modalTitle'
+  ).textContent =
+    kind === 'iem'
+      ? 'Add IEM'
+      : 'Add Target';
+
+  document.getElementById(
+    'modalHint'
+  ).textContent =
+    githubToken
+      ? 'GitHub write access ready.'
+      : 'Enter a token with Contents: write before saving.';
+
+  document.getElementById(
+    'settingsPanel'
+  ).hidden = true;
+
+  document.getElementById(
+    'addPanel'
+  ).hidden = false;
+
+  document.getElementById(
+    'addFile'
+  ).value = '';
+
+  document.getElementById(
+    'addName'
+  ).value = '';
+
+  document.getElementById(
+    'addValidation'
+  ).textContent =
+    'Choose a TXT file. The app will validate finite values and strictly ascending frequencies before saving.';
+
+  document.getElementById(
+    'addValidation'
+  ).className =
+    'status small';
+
+  document.getElementById(
+    'modal'
+  ).hidden = false;
+
+}
+
+
+function closeModal(){
+
+  document.getElementById(
+    'modal'
+  ).hidden = true;
+
+}
+
+
+document.addEventListener(
+  'keydown',
+  e => {
+
+    if(e.key === 'Escape')
+      closeModal();
+
+  }
+);
+
+
+document.getElementById(
+  'modal'
+).addEventListener(
+  'click',
+  e => {
+
+    if(
+      e.target.id === 'modal'
+    ){
+      closeModal();
+    }
+
+  }
+);
+
+
+function saveToken(){
+
+  const t =
+    document.getElementById(
+      'ghToken'
+    ).value.trim();
+
+  if(!t){
+
+    showErr(
+      'Token is empty.'
+    );
+
+    return;
+
+  }
+
+  githubToken = t;
+
+  document.getElementById(
+    'ghToken'
+  ).value = '';
+
+  closeModal();
+
+  showErr('');
+
+  document.getElementById(
+    'buildState'
+  ).textContent =
+    'CONNECTED';
+
+}
+
+
+function clearToken(){
+
+  githubToken = '';
+
+  document.getElementById(
+    'ghToken'
+  ).value = '';
+
+  document.getElementById(
+    'modalHint'
+  ).textContent =
+    'No token loaded.';
+
+  document.getElementById(
+    'buildState'
+  ).textContent =
+    'READY';
+
+}
+
+
+function b64(text){
+
+  const bytes =
+    new TextEncoder().encode(text);
+
+  let bin = '';
+
+  for(
+    let i=0;
+    i<bytes.length;
+    i+=0x8000
+  ){
+
+    bin +=
+      String.fromCharCode(
+        ...bytes.subarray(
+          i,
+          i+0x8000
+        )
+      );
+
+  }
+
+  return btoa(bin);
+
+}
+
+
+async function ghAuth(
+  path,
+  opts={}
+){
+
+  if(!githubToken)
+    throw Error(
+      'GitHub token required. Open GitHub Access first.'
+    );
+
+  const r =
+    await fetch(
+      API + path,
+      {
+        ...opts,
+        headers:{
+          Accept:
+            'application/vnd.github+json',
+          'X-GitHub-Api-Version':
+            '2026-03-10',
+          Authorization:
+            'Bearer ' + githubToken,
+          ...(opts.headers || {})
+        }
+      }
+    );
+
+  let data = null;
+
+  try{
+    data = await r.json();
+  }catch{}
+
+  if(!r.ok)
+    throw Error(
+      (data && data.message) ||
+      ('GitHub API ' + r.status)
+    );
+
+  return data;
+
+}
+
+
+async function fileSha(path){
+
+  try{
+
+    const d =
+      await ghAuth(
+        path + '?ref=main'
+      );
+
+    return d.sha || null;
+
+  }catch(e){
+
+    if(
+      String(e.message).includes(
+        'Not Found'
+      ) ||
+      String(e.message).includes(
+        '404'
+      )
+    ){
+      return null;
+    }
+
+    throw e;
+
+  }
+
+}
+
+
+async function saveInputToGitHub(){
+
+  try{
+
+    const file =
+      document.getElementById(
+        'addFile'
+      ).files[0];
+
+    if(!file)
+      throw Error(
+        'Choose a TXT file first.'
+      );
+
+
+    let name =
+      document.getElementById(
+        'addName'
+      ).value.trim()
+      || file.name;
+
+
+    if(!/\.txt$/i.test(name))
+      name += '.txt';
+
+
+    name =
+      name
+        .replace(
+          /[^A-Za-z0-9._-]+/g,
+          '_'
+        )
+        .replace(
+          /^\.+/,
+          ''
+        )
+        .replace(
+          /\.{2,}/g,
+          '.'
+        );
+
+
+    if(
+      !name ||
+      name.toLowerCase() === 'txt'
+    ){
+      throw Error(
+        'Invalid filename.'
+      );
+    }
+
+
+    const text =
+      await file.text();
+
+
+    parseXY(text);
+
+
+    const sub =
+      addKind === 'iem'
+        ? 'preferred'
+        : 'targets';
+
+
+    const path =
+      'input/' +
+      sub +
+      '/' +
+      name;
+
+
+    const sha =
+      await fileSha(path);
+
+
+    const body = {
+
+      message:
+        (sha ? 'Update ' : 'Add ') +
+        (addKind === 'iem'
+          ? 'IEM '
+          : 'target ') +
+        name,
+
+      content:
+        b64(
+          text.endsWith('\n')
+            ? text
+            : text + '\n'
+        ),
+
+      branch:'main'
+
+    };
+
+
+    if(sha)
+      body.sha = sha;
+
+
+    await ghAuth(
+      path,
+      {
+        method:'PUT',
+        body:JSON.stringify(body)
+      }
+    );
+
+
+    closeModal();
+
+    showErr('');
+
+    await loadAll();
+
+    document.getElementById(
+      'buildState'
+    ).textContent =
+      'SAVED';
+
+    document.getElementById(
+      'targetStatus'
+    ).textContent =
+      'Saved ' +
+      path +
+      ' · GitHub Actions should rebuild automatically.';
+
+  }catch(e){
+
+    document.getElementById(
+      'addValidation'
+    ).textContent =
+      e.message;
+
+    document.getElementById(
+      'addValidation'
+    ).className =
+      'status small warn';
+
+  }
+
+}
+
+
+async function loadAll(){
+
+  showErr('');
+
+  if(!repo){
+
+    showErr(
+      'Repository not detected. ' +
+      'Open this from GitHub Pages ' +
+      'or add ?repo=OWNER/REPO.'
+    );
+
+    return;
+
+  }
+
+
+  document.getElementById(
+    'repoLabel'
+  ).textContent =
+    repo;
+
+
+  document.getElementById(
+    'runEngine'
+  ).href =
+    GH +
+    '/actions/workflows/main.yml';
+
+
+  try{
+
+    const [
+      i,
+      t,
+      o
+    ] =
+      await Promise.all([
+        gh('input/preferred'),
+        gh('input/targets'),
+        gh('output')
+      ]);
+
+
+    const iems =
+      i.filter(
+        x =>
+          x.name
+            .toLowerCase()
+            .endsWith('.txt')
+      );
+
+
+    targets =
+      t.filter(
+        x =>
+          x.name
+            .toLowerCase()
+            .endsWith('.txt')
+      );
+
+
+    outputs =
+      o.filter(
+        x =>
+          x.name
+            .toLowerCase()
+            .endsWith('.txt')
+      );
+
+
+    document.getElementById(
+      'iemCount'
+    ).textContent =
+      iems.length;
+
+
+    document.getElementById(
+      'targetCount'
+    ).textContent =
+      targets.length;
+
+
+    document.getElementById(
+      'outputCount'
+    ).textContent =
+      outputs.length;
+
+
+    document.getElementById(
+      'buildState'
+    ).textContent =
+      'READY';
+
+
+    document.getElementById(
+      'iems'
+    ).innerHTML =
+      iems.map(
+        x =>
+          `<span class="pill">${
+            esc(
+              x.name.replace(
+                /\.txt$/i,
+                ''
+              )
+            )
+          }</span>`
+      ).join('');
+
+
+    document.getElementById(
+      'targets'
+    ).innerHTML =
+      targets.map(
+        x =>
+          `<span class="pill">${
+            esc(
+              x.name.replace(
+                /\.txt$/i,
+                ''
+              )
+            )
+          }</span>`
+      ).join('');
+
+
+    populateTargetSelects();
+
+    await loadPure();
+
+    await showTarget();
+
+  }catch(e){
+
+    document.getElementById(
+      'buildState'
+    ).textContent =
+      'ERROR';
+
+    showErr(
+      e.message
+    );
+
+  }
+
+}
+
+
+function populateTargetSelects(){
+
+  for(
+    const id of [
+      'targetSelect',
+      'hybridTarget'
+    ]
+  ){
+
+    const s =
+      document.getElementById(id);
+
+    s.innerHTML =
+      targets.map(
+        x =>
+          `<option
+             value="${encodeURIComponent(x.name)}">
+             ${esc(
+               x.name.replace(
+                 /\.txt$/i,
+                 ''
+               )
+             )}
+           </option>`
+      ).join('');
+
+  }
+
+}
+
+
+async function loadPure(){
+
+  const text =
+    await rawText(
+      'output/pure_earprint_dynamic.txt'
+    );
+
+  pureCurve =
+    parseXY(text);
+
+}
+
+
+async function selectedTarget(){
+
+  return parseXY(
+    await rawText(
+      'input/targets/' +
+      decodeURIComponent(
+        document.getElementById(
+          'targetSelect'
+        ).value
+      )
+    )
+  );
+
+}
+
+
+async function showTarget(){
+
+  if(!targets.length)
+    return;
+
+  try{
+
+    const name =
+      decodeURIComponent(
+        document.getElementById(
+          'targetSelect'
+        ).value
+      );
+
+    const type =
+      document.getElementById(
+        'resultType'
+      ).value;
+
+
+    const path =
+      type === 'mask'
+        ? 'output/' +
+          stem(name) +
+          '__mask.txt'
+        : 'output/' +
+          stem(name) +
+          '__robust_target.txt';
+
+
+    const text =
+      await rawText(path);
+
+
+    const curve =
+      parseXY(text);
+
+
+    draw(
+      curve,
+      'targetChart',
+      name
+    );
+
+
+    document.getElementById(
+      'targetStatus'
+    ).textContent =
+      path;
+
+  }catch(e){
+
+    showErr(
+      e.message
+    );
+
+  }
+
+}
+
+
+async function downloadTargetResult(){
+
+  try{
+
+    const name =
+      decodeURIComponent(
+        document.getElementById(
+          'targetSelect'
+        ).value
+      );
+
+    const type =
+      document.getElementById(
+        'resultType'
+      ).value;
+
+
+    const path =
+      type === 'mask'
+        ? 'output/' +
+          stem(name) +
+          '__mask.txt'
+        : 'output/' +
+          stem(name) +
+          '__robust_target.txt';
+
+
+    const text =
+      await rawText(path);
+
+
+    blobDownload(
+      text,
+      path.split('/').pop()
+    );
+
+  }catch(e){
+
+    showErr(
+      e.message
+    );
+
+  }
+
+}
+
+
+async function generateHybrid(){
+
+  try{
+
+    if(!pureCurve)
+      await loadPure();
+
+
+    const targetName =
+      decodeURIComponent(
+        document.getElementById(
+          'hybridTarget'
+        ).value
+      );
+
+
+    const target =
+      parseXY(
+        await rawText(
+          'input/targets/' +
+          encodeURIComponent(
+            targetName
+          )
+        )
+      );
+
+
+    const join =
+      Number(
+        document.getElementById(
+          'joinHz'
+        ).value
+      );
+
+
+    if(!(join > 0))
+      throw Error(
+        'Join frequency must be > 0 Hz.'
+      );
+
+
+    const freq =
+      pureCurve.map(
+        p => p[0]
+      );
+
+
+    const tOnPure =
+      freq.map(
+        f =>
+          [
+            f,
+            logInterp(
+              target,
+              f
+            )
+          ]
+      );
+
+
+    const {
+      curve,
+      shift
+    } =
+      buildHybrid(
+        freq,
+        pureCurve,
+        tOnPure,
+        join
+      );
+
+
+    generatedHybrid = {
+      curve,
+      targetName,
+      join,
+      shift
+    };
+
+
+    draw(
+      curve,
+      'hybridChart',
+      targetName
+    );
+
+
+    document.getElementById(
+      'hybridStatus'
+    ).textContent =
+      'shift ' +
+      shift.toFixed(6) +
+      ' dB · join ' +
+      join +
+      ' Hz';
+
+  }catch(e){
+
+    showErr(
+      e.message
+    );
+
+  }
+
+}
+
+
+function downloadHybrid(){
+
+  if(!generatedHybrid){
+
+    showErr(
+      'Generate the hybrid first.'
+    );
+
+    return;
+
+  }
+
+
+  const lines =
+    generatedHybrid.curve
+      .map(
+        ([f,y]) =>
+          `${Number(f).toPrecision(12)}\t${y.toFixed(12)}`
+      )
+      .join('\n') +
+      '\n';
+
+
+  const base =
+    stem(
+      generatedHybrid.targetName
+    );
+
+
+  blobDownload(
+    lines,
+    base +
+    '__hybrid_' +
+    generatedHybrid.join +
+    'Hz.txt'
+  );
+
+}
+
+
 loadAll();
+
 </script>
+
 </body>
 </html>
