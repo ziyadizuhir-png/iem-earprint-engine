@@ -251,20 +251,124 @@ input{
 
 @media(max-width:520px){
 
+  html{
+    -webkit-text-size-adjust:100%;
+  }
+
+  body{
+    overflow-x:hidden;
+  }
+
+  .wrap{
+    width:100%;
+    padding:12px;
+  }
+
+  .top{
+    gap:10px;
+  }
+
+  .brand{
+    width:100%;
+  }
+
+  .brand h1{
+    font-size:24px;
+    line-height:1.2;
+  }
+
+  .brand p{
+    font-size:13px;
+    overflow-wrap:anywhere;
+  }
+
+  .actions{
+    width:100%;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+  }
+
+  .actions button,
+  .actions a.btn{
+    width:100%;
+    min-height:44px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    padding:10px 8px;
+  }
+
   .grid{
     grid-template-columns:1fr 1fr;
+    gap:8px;
+  }
+
+  .card{
+    padding:12px;
+    min-width:0;
+  }
+
+  .num{
+    font-size:21px;
+  }
+
+  .label{
+    font-size:12px;
+    line-height:1.3;
   }
 
   .formrow{
     grid-template-columns:1fr;
   }
 
-  .wrap{
-    padding:12px;
+  .field{
+    min-width:0;
   }
 
-  .brand h1{
-    font-size:24px;
+  select,
+  input,
+  button,
+  a.btn{
+    min-height:44px;
+    font-size:16px;
+  }
+
+  select,
+  input{
+    width:100%;
+  }
+
+  .inline,
+  .resultbar{
+    width:100%;
+  }
+
+  .inline button,
+  .resultbar button{
+    flex:1 1 100%;
+    min-height:44px;
+  }
+
+  .chart{
+    width:100%;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  .chart svg{
+    min-width:520px;
+  }
+
+  .modalBack{
+    align-items:flex-start;
+    padding:8px;
+  }
+
+  .modal{
+    width:100%;
+    max-height:calc(100vh - 16px);
+    margin-top:0;
   }
 
 }
@@ -1361,6 +1465,15 @@ function buildHybrid(
   join
 ){
 
+  /*
+    Hybrid rule:
+    - target is used only at/below the join
+    - Pure EarPrint is used above the join
+    - the upper Pure EarPrint segment receives one
+      constant shift so its value at the join matches
+      the target exactly
+  */
+
   const targetAtJoin =
     logInterp(
       target,
@@ -1393,27 +1506,20 @@ function buildHybrid(
       frequencyGrid[i];
 
 
-    const pureValue =
-      pure[i][1];
+    const value =
+      frequency <= join
 
+        ? logInterp(
+            target,
+            frequency
+          )
 
-    const targetValue =
-      logInterp(
-        target,
-        frequency
-      );
+        : pure[i][1] + shift;
 
 
     output.push([
-
       frequency,
-
-      frequency <= join
-
-        ? targetValue
-
-        : pureValue + shift
-
+      value
     ]);
 
   }
@@ -2991,56 +3097,18 @@ async function generateHybrid(){
 
 
     /*
-      Build target curve on Pure grid.
+      Build the hybrid directly from the original target curve.
+
+      Do NOT create a placeholder target curve above the join.
+      The target is evaluated only where it is actually needed:
+      at/below the join and at the join itself.
     */
-
-    const targetOnPure =
-      frequencyGrid.map(
-        frequency => {
-
-          if(
-            frequency <= join
-          ){
-
-            return [
-
-              frequency,
-
-              logInterp(
-                target,
-                frequency
-              )
-
-            ];
-
-          }
-
-
-          /*
-            Value is not used above the join,
-            but a valid placeholder keeps the
-            curve structurally complete.
-          */
-
-          return [
-
-            frequency,
-
-            target[
-              target.length - 1
-            ][1]
-
-          ];
-
-        }
-      );
-
 
     const result =
       buildHybrid(
         frequencyGrid,
         pureCurve,
-        targetOnPure,
+        target,
         join
       );
 
