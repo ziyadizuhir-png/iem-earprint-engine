@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-09-18T11:47:26.096501+00:00",
+  "generated_utc": "2026-09-18T12:31:45.662267+00:00",
   "engine": "IEM EarPrint Engine 2.0.0",
   "specification": "General_Prompt_EarPrint_8_MATH_LOCKED.txt",
   "dynamic_discovery": true,
@@ -21,9 +21,10 @@
     "IEF2025.txt",
     "JM1_B4.txt",
     "JM1_Robust.txt",
+    "Rtings.txt",
     "SoundGuys.txt"
   ],
-  "target_count": 5,
+  "target_count": 6,
   "low_frequency_reference": "IEF2025.txt",
   "alignment_bands_hz": [
     [
@@ -81,6 +82,7 @@
     "input/targets/IEF2025.txt": "399e5129d80087ff4330e1f75da505f9799fe0cddc28b3a34aaaf68eef5b87d8",
     "input/targets/JM1_B4.txt": "3995b075510bbed8b747e600fe11a6ec1c1f7efdd628f93589916a85bc45206c",
     "input/targets/JM1_Robust.txt": "f19e834b05aafc5a420cbbba5cdbce3da0cde8617df892223673bb2e2d29cf5a",
+    "input/targets/Rtings.txt": "8382ee851514b690e22f0b23fb49e47af375740f31dba2635e469881b5aa3cf2",
     "input/targets/SoundGuys.txt": "b8bfa7e67a9263634b78485bbfca8b6b750182e27b52d1ae7bf1debcf9dbabb4"
   },
   "output_sha256": {
@@ -92,8 +94,10 @@
     "JM1_B4__robust_target.txt": "fcf54d98301f67c5dba8c04947f5e6f43fd63d2a7cc88830d048278e6f890151",
     "JM1_Robust__mask.txt": "c0d4f5f7a1f47b0ab8af1c588d00b8e31a938ce19384930d81a09cc4a3579c17",
     "JM1_Robust__robust_target.txt": "20b2db9dc6b5a9196c1e81145e2669a2f90347d2442494fac335aec190bc91ff",
+    "Rtings__mask.txt": "e085a1fcdc552e7106b1368ab9ea4aa2903d3ff549f23c2cd9088e37b2346223",
+    "Rtings__robust_target.txt": "2e1077b3b94a62fbd3040114c3b0f9376c8d3e1a13a8487159ae9e30d39a3316",
     "SoundGuys__mask.txt": "7dba2fa5108805577d6d11cfcf7f74e2eef1ff35f480ad4d369fde28fb534fd9",
     "SoundGuys__robust_target.txt": "7bca06e5bbfc5a3f53119598589ded0d5d757bf311f4a2c8a4e3e4619f05019b",
-    "pure_earprint_dynamic.txt": "80b984484ba6eb3240ca11e07eb2dd3eb79bf0be53157a6a0a8255f8eb6d7d15"
+    "pure_earprint_dynamic.txt": "cb2033197d88c25ef4448740f260bd57375ae597435acbea36b652434dfc52d8"
   }
 }
