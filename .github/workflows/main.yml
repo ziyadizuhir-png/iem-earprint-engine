@@ -14,13 +14,16 @@ on:
 permissions:
   contents: write
 
+# Only one build may publish at a time.
+# If a newer input commit arrives, the older build is cancelled.
 concurrency:
   group: earprint-build-main
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -42,15 +45,54 @@ jobs:
       - name: Run math-locked EarPrint engine
         run: python engine/earprint_engine.py
 
+      # Never publish results calculated from an old input state.
+      - name: Verify source revision is still current
+        run: |
+          git fetch origin main
+
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          REMOTE_SHA="$(git rev-parse origin/main)"
+
+          if [ "$SOURCE_SHA" != "$REMOTE_SHA" ]; then
+            echo "Source changed while this build was running."
+            echo "This build is stale and will not publish generated results."
+            echo "A newer workflow run owns the current main state."
+            exit 0
+          fi
+
       - name: Commit generated results
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           git add output/ reports/
+
           if git diff --cached --quiet; then
             echo "No generated result changes."
             exit 0
           fi
+
           git commit -m "Update EarPrint results"
-          git pull --rebase origin main
-          git push origin HEAD:main
+
+          # Do not pull/rebase generated files. That was the source of
+          # manifest/robust_statistics merge conflicts in the old workflow.
+          BASE_SHA="$(git rev-parse HEAD^)"
+
+          if git push origin HEAD:main; then
+            echo "Generated results published successfully."
+            exit 0
+          fi
+
+          # A concurrent main update means this build is stale.
+          echo "Push was rejected because main changed during publication."
+          git fetch origin main
+          REMOTE_SHA="$(git rev-parse origin/main)"
+
+          if [ "$REMOTE_SHA" != "$BASE_SHA" ]; then
+            echo "A newer commit is now on main."
+            echo "This generated result is stale; leaving publication to the newer build."
+            exit 0
+          fi
+
+          echo "Push failed for a reason other than a concurrent main update."
+          exit 1
