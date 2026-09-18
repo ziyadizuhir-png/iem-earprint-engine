@@ -1430,7 +1430,7 @@ select,input{
 
 
     <div class="muted small">
-      Target ≤1 kHz · Pure EarPrint 1–12 kHz · HF extension ≥12 kHz
+      Target at/below join · Pure EarPrint above join · one constant shift
     </div>
 
 
@@ -4511,13 +4511,14 @@ function downloadRobustTarget(){
       .map(
         ([frequency,value]) =>
           Number(frequency).toPrecision(12) +
-          '\\t' +
+          '\t' +
           Number(value).toFixed(12)
       )
-      .join('\\n');
+      .join('\n') +
+    '\n';
 
   blobDownload(
-    lines + '\\n',
+    lines,
     stem(name) + '__robust_target.txt'
   );
 }
@@ -4598,7 +4599,7 @@ async function generateHybrid(){
     draw(result.curve,'hybridChart');
 
     document.getElementById('hybridStatus').textContent=
-      'shift '+result.shift.toFixed(6)+' dB · target ≤1k · EarPrint 1–12k · HF ≥12k';
+      'shift '+result.shift.toFixed(6)+' dB · target ≤join · EarPrint >join · constant shift';
 
   }catch(error){
     showErr(error.message);
