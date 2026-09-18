@@ -1,13 +1,28 @@
-IEM EarPrint Engine validation report
-Dynamic preferred discovery: *.txt
-Dynamic target discovery: *.txt
-Independent preferred-response votes discovered: 8
+IEM EarPrint Engine validation / specification conformance
+Status: PASS
+Specification: General_Prompt_EarPrint_8_MATH_LOCKED.txt
+
+Independent IEM votes discovered: 8
 Targets discovered: 6
-Vote rule: one IEM file = one vote.
-Preferred-response files are consumed directly; PEQ gains are not averaged.
-Master grid: IEF2025.txt
-Alignment scenarios: [200,1000], [200,500], [500,1000] Hz; median used.
-Pure EarPrint: LF reference <=1 kHz; one Gaussian pass in strict >1 to <12 kHz; -6 dB/octave display extension >=12 kHz.
-Robust masks: independently computed for every discovered target; no universal mask.
-Target processing: dynamic; no target filename list is embedded in Python.
-Validation status: PASS
+One IEM file = one equal vote.
+Interpolation: log-frequency.
+Alignment bands: [(200.0, 1000.0), (200.0, 500.0), (500.0, 1000.0)]
+Per-IEM scenario centre: pointwise median of 3 aligned scenarios.
+Per-IEM alignment uncertainty: pointwise max absolute distance from scenario centre.
+Pure EarPrint direct centre: pointwise median across selected median-aligned IEM curves.
+Pure EarPrint smoothing: exactly one Gaussian pass, strict >1 kHz and <12 kHz.
+Gaussian parameters: sigma=16 grid indices, radius=64, nearest-endpoint padding.
+LF reference: preserved exactly at/below 1 kHz.
+HF extension: display-only -6 dB/octave log-frequency at/above 12 kHz.
+Robust Centre: pointwise median across IEM Delta_i.
+CrossIEM_MAD: pointwise median absolute deviation across IEM Delta_i.
+AlignmentUncertainty: pointwise median across IEM per-IEM uncertainty curves.
+RepeatabilityFloor: inactive because no valid same-IEM repeat data are supplied.
+TotalUncertainty: max(CrossIEM_MAD, AlignmentUncertainty, RepeatabilityFloor).
+Retention: abs(Centre)/(abs(Centre)+TotalUncertainty).
+RawMask: Centre*Retention.
+Mask smoothing: exactly one Gaussian pass inside strict personal domain.
+Mask taper: fixed quarter-octave sin-squared boundaries.
+Mask forced to zero at/below 1 kHz and at/above 12 kHz.
+No final normalization, manual tonal edit, arbitrary gain cap or extra tilt.
+Dynamic targets receive robust mask + robust target outputs; hybrids are generated on demand from any selected target.

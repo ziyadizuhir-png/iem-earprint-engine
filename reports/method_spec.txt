@@ -1,0 +1,9 @@
+METHOD SPECIFICATION LOCK
+Source: user-supplied General_Prompt_EarPrint_8 + explicit math-lock definitions.
+
+This repository treats the supplied prompt as the mathematical source of truth.
+No undocumented robust-mask constants are introduced.
+When repeatability data are absent, the prompt's conditional RepeatabilityFloor term is inactive.
+Hybrid generation is on demand; any discovered target may be selected without changing robust-target mathematics.
+
+Input policy: authoritative preferred-response curves are the calculation source.
