@@ -731,6 +731,316 @@ select,input{
   .buildTitle{font-size:16px}
   .buildMessage{font-size:13px}
 }
+
+/* ============================================================
+   v14 TOOL UI
+   Utility-first presentation. Graph rendering/calculation untouched.
+   ============================================================ */
+
+:root{
+  --bg:#0b0f14;
+  --panel:#11171f;
+  --panel2:#0d131a;
+  --text:#e7edf5;
+  --muted:#8794a5;
+  --line:#27313d;
+  --accent:#6fa7e8;
+  --accent2:#67c79a;
+  --mask:#d77b99;
+  --original:#c9d1db;
+  --ok:#67c79a;
+  --warn:#d7b46a;
+  --bad:#d7808c;
+}
+
+/* Flat application background. */
+html,body{
+  background:#0b0f14!important;
+}
+
+body{
+  color:var(--text);
+}
+
+/* Compact header. */
+.wrap{
+  width:min(1180px,100%);
+  padding:14px;
+}
+
+.top{
+  align-items:center;
+  gap:12px;
+  padding-bottom:10px;
+  border-bottom:1px solid var(--line);
+}
+
+.brand h1{
+  font-size:21px;
+  font-weight:650;
+  letter-spacing:0;
+}
+
+.brand p{
+  margin-top:2px;
+  font-size:11px;
+  color:var(--muted);
+}
+
+.actions{
+  gap:6px;
+}
+
+button,a.btn{
+  background:#151c24!important;
+  border:1px solid #303b48!important;
+  border-radius:6px!important;
+  box-shadow:none!important;
+  padding:7px 10px;
+  color:var(--text);
+}
+
+button.primary,a.primary{
+  background:#1b2a3d!important;
+  border-color:#38536f!important;
+}
+
+button:hover,a.btn:hover{
+  background:#1a232d!important;
+}
+
+button:active,a.btn:active{
+  transform:none!important;
+}
+
+/* Replace decorative cards with compact utility panels. */
+.card{
+  background:#11171f!important;
+  border:1px solid var(--line)!important;
+  border-radius:7px!important;
+  box-shadow:none!important;
+  padding:12px;
+}
+
+.section{
+  margin-top:10px;
+}
+
+.section h2{
+  font-size:14px;
+  font-weight:600;
+}
+
+/* Compact counts: no pill/chip styling. */
+.miniStats{
+  margin:9px 0 6px;
+  padding:0;
+  gap:18px;
+}
+
+.miniStat{
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  gap:6px;
+}
+
+.miniStatLabel{
+  font-size:11px;
+  color:var(--muted);
+}
+
+.miniStat strong{
+  font-size:13px;
+  font-weight:600;
+}
+
+/* IEM/Target source list: flat labels instead of decorative pills. */
+.cols{
+  gap:10px;
+}
+
+.cols > .card{
+  background:#0f151c!important;
+  border-radius:7px!important;
+  padding:10px 11px;
+}
+
+.pillbox{
+  gap:5px;
+}
+
+.pill{
+  background:#151c24!important;
+  border:1px solid #2b3540!important;
+  border-radius:4px!important;
+  padding:4px 7px;
+  color:#cbd5e1;
+  font-size:12px;
+  line-height:1.35;
+}
+
+/* Make target delete control utilitarian. */
+.target-pill{
+  gap:5px;
+}
+
+.target-delete{
+  border-radius:4px!important;
+  width:28px!important;
+  height:28px!important;
+  min-width:28px!important;
+  min-height:28px!important;
+  font-size:16px!important;
+  background:#171d25!important;
+  border:1px solid #394451!important;
+  color:#c98a95!important;
+}
+
+@media(max-width:520px){
+  .target-delete{
+    width:38px!important;
+    height:38px!important;
+    min-width:38px!important;
+    min-height:38px!important;
+  }
+}
+
+/* Inputs are tool controls, not decorative cards. */
+select,input{
+  background:#0c1218!important;
+  border:1px solid #303a45!important;
+  border-radius:5px!important;
+  padding:8px 9px;
+  box-shadow:none!important;
+}
+
+.field label,
+.viz-control label{
+  color:#7f8b99;
+  font-size:11px;
+}
+
+/* Target visualizer outer shell: graph itself remains unchanged. */
+.visualizer{
+  margin-top:8px;
+}
+
+.visualizer-head{
+  margin-bottom:7px;
+}
+
+.visualizer-head h2{
+  font-size:15px!important;
+  font-weight:600;
+}
+
+.visualizer-subtitle{
+  color:#778391!important;
+  font-size:10px!important;
+}
+
+.resultbar{
+  min-height:34px;
+  justify-content:space-between;
+}
+
+#targetStatus{
+  font-size:11px;
+}
+
+/* Keep graph dimensions/visual exactly as approved. */
+.chart.squig-graph{
+  border-radius:5px!important;
+}
+
+/* Utility panels around the graph: flat, dense, no decorative treatment. */
+.viz-panel{
+  background:#0e141b!important;
+  border:1px solid #28323d!important;
+  border-radius:5px!important;
+  box-shadow:none!important;
+}
+
+.legend{
+  font-size:10px;
+  color:#9aa6b4;
+}
+
+.viz-footer{
+  display:none!important;
+}
+
+/* Hybrid builder as a compact utility panel. */
+#hybridChart{
+  margin-top:9px;
+}
+
+#hybridStatus{
+  font-size:11px;
+}
+
+/* Loading overlay: clear progress, no "fancy" modal styling. */
+.buildPanel{
+  width:min(440px,100%);
+  background:#11171f!important;
+  border:1px solid #34404c!important;
+  border-radius:7px!important;
+  box-shadow:0 12px 32px rgba(0,0,0,.28)!important;
+  padding:14px!important;
+}
+
+.buildTitle{
+  font-size:15px!important;
+  font-weight:600!important;
+}
+
+.buildMessage{
+  color:#c4ced9!important;
+  font-size:12px!important;
+}
+
+.buildTrack{
+  height:8px!important;
+  border-radius:4px!important;
+  background:#0b1015!important;
+  border:1px solid #2d3742!important;
+}
+
+.buildBar{
+  border-radius:3px!important;
+  background:#6fa7e8!important;
+  transition:width .25s linear!important;
+}
+
+.buildMeta{
+  margin-top:6px!important;
+  font-size:10px!important;
+  color:#7f8a98!important;
+}
+
+.buildActions{
+  margin-top:10px!important;
+}
+
+@media(max-width:600px){
+  .wrap{padding:9px}
+  .brand h1{font-size:19px}
+  .top{padding-bottom:8px}
+  .actions{
+    gap:5px;
+  }
+  .actions button,.actions a.btn{
+    min-height:40px;
+  }
+  .miniStats{
+    gap:12px;
+  }
+  .card{
+    padding:10px;
+  }
+}
 </style>
 </head>
 
