@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-09-18T13:13:08.236483+00:00",
+  "generated_utc": "2026-09-18T15:30:19.773161+00:00",
   "engine": "IEM EarPrint Engine 2.0.0",
   "specification": "General_Prompt_EarPrint_8_MATH_LOCKED.txt",
   "dynamic_discovery": true,
@@ -21,9 +21,10 @@
     "IEF2025.txt",
     "JM1_B4.txt",
     "JM1_Robust.txt",
-    "SoundGuys.txt"
+    "SoundGuys.txt",
+    "_Headphones.com_IEM_DF_Tilt__-0.8dB_Oct_B_2dB_Target_1_.txt"
   ],
-  "target_count": 5,
+  "target_count": 6,
   "low_frequency_reference": "IEF2025.txt",
   "alignment_bands_hz": [
     [
@@ -81,9 +82,12 @@
     "input/targets/IEF2025.txt": "399e5129d80087ff4330e1f75da505f9799fe0cddc28b3a34aaaf68eef5b87d8",
     "input/targets/JM1_B4.txt": "3995b075510bbed8b747e600fe11a6ec1c1f7efdd628f93589916a85bc45206c",
     "input/targets/JM1_Robust.txt": "f19e834b05aafc5a420cbbba5cdbce3da0cde8617df892223673bb2e2d29cf5a",
-    "input/targets/SoundGuys.txt": "b8bfa7e67a9263634b78485bbfca8b6b750182e27b52d1ae7bf1debcf9dbabb4"
+    "input/targets/SoundGuys.txt": "b8bfa7e67a9263634b78485bbfca8b6b750182e27b52d1ae7bf1debcf9dbabb4",
+    "input/targets/_Headphones.com_IEM_DF_Tilt__-0.8dB_Oct_B_2dB_Target_1_.txt": "ec13bec9c52e2f3eb893c70133a0db321bf9a00785a9991ddd0b840c37c2b325"
   },
   "output_sha256": {
+    "Headphones.com_IEM_DF_Tilt_-0.8dB_Oct_B_2dB_Target_1__mask.txt": "252261baf0dcd6eb102ecb9b58c6e02b482060f704472b221b96e84e50fd07c0",
+    "Headphones.com_IEM_DF_Tilt_-0.8dB_Oct_B_2dB_Target_1__robust_target.txt": "d40162b23d7c87bd933e4d4cbfa20d7abf81ccc3f09979f8ac93ae7889d3a4db",
     "Headphones_IEM_DF_Robust__mask.txt": "252261baf0dcd6eb102ecb9b58c6e02b482060f704472b221b96e84e50fd07c0",
     "Headphones_IEM_DF_Robust__robust_target.txt": "d40162b23d7c87bd933e4d4cbfa20d7abf81ccc3f09979f8ac93ae7889d3a4db",
     "IEF2025__mask.txt": "84de03b1000c0a4972f1de7a0f3de6cc2eb047532e6bc252a3567c510115a8bb",
@@ -94,6 +98,6 @@
     "JM1_Robust__robust_target.txt": "20b2db9dc6b5a9196c1e81145e2669a2f90347d2442494fac335aec190bc91ff",
     "SoundGuys__mask.txt": "7dba2fa5108805577d6d11cfcf7f74e2eef1ff35f480ad4d369fde28fb534fd9",
     "SoundGuys__robust_target.txt": "7bca06e5bbfc5a3f53119598589ded0d5d757bf311f4a2c8a4e3e4619f05019b",
-    "pure_earprint_dynamic.txt": "cb2033197d88c25ef4448740f260bd57375ae597435acbea36b652434dfc52d8"
+    "pure_earprint_dynamic.txt": "80b984484ba6eb3240ca11e07eb2dd3eb79bf0be53157a6a0a8255f8eb6d7d15"
   }
 }
