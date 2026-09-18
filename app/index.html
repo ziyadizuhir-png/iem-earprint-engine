@@ -1430,7 +1430,7 @@ select,input{
 
 
     <div class="muted small">
-      Target below join · Pure EarPrint above join
+      Target ≤1 kHz · Pure EarPrint 1–12 kHz · HF extension ≥12 kHz
     </div>
 
 
@@ -2324,6 +2324,8 @@ function buildHybrid(
   join
 ){
 
+  const personalEnd = 12000;
+
   const targetAtJoin =
     logInterp(
       target,
@@ -2332,13 +2334,26 @@ function buildHybrid(
 
   const pureAtJoin =
     logInterp(
-      pure,
+      pure.filter(([f]) => f >= 1000 && f <= personalEnd),
       join
     );
 
   const shift =
     targetAtJoin -
     pureAtJoin;
+
+  const personal =
+    pure.filter(([f]) => f > join && f < personalEnd);
+
+  if(personal.length < 2){
+    throw Error('Pure EarPrint must contain valid 1–12 kHz data for the hybrid.');
+  }
+
+  const pureAt12k =
+    logInterp(
+      pure.filter(([f]) => f >= 1000 && f <= personalEnd),
+      personalEnd
+    ) + shift;
 
   const output = [];
 
@@ -2351,27 +2366,20 @@ function buildHybrid(
     const frequency =
       frequencyGrid[i];
 
-    const pureValue =
-      pure[i][1];
+    let value;
 
-    /*
-      IMPORTANT:
-      The selected target is used only at/below the join.
-      Above the join the hybrid is Pure EarPrint plus one
-      constant vertical shift. We deliberately do not
-      interpolate the target above the join.
-    */
+    if(frequency <= join){
+      /* Selected target is locked exactly through 1 kHz. */
+      value = logInterp(target, frequency);
+    }else if(frequency < personalEnd){
+      /* 1–12 kHz = Pure EarPrint only, with hybrid-only continuity shift. */
+      value = logInterp(personal, frequency) + shift;
+    }else{
+      /* >=12 kHz = display-only HF extension from the hybrid 12 kHz endpoint. */
+      value = pureAt12k - 6 * Math.log2(frequency / personalEnd);
+    }
 
-    const value =
-      frequency <= join
-        ? logInterp(target, frequency)
-        : pureValue + shift;
-
-    output.push([
-      frequency,
-      value
-    ]);
-
+    output.push([frequency, value]);
   }
 
   return {
@@ -4416,6 +4424,25 @@ async function showTarget(){
     if(results[2].status==='fulfilled') mask=parseXY(results[2].value);
     if(!pure && results[3].status==='fulfilled') pure=parseXY(results[3].value);
 
+    /*
+      MASK CONSISTENCY LOCK:
+      Robust Target is authoritative for the displayed engine result.
+      The displayed Mask Δ must be exactly Robust Target - Original Target
+      on the common log-frequency grid. This prevents a stale/mismatched
+      mask artifact from disagreeing with the Robust curve and point readout.
+      The downloaded Robust Target is never modified.
+    */
+    if(original && robust){
+      const robustMinusOriginal=[];
+      for(const [f,rv] of robust){
+        const ov=curveValue(original,f);
+        if(Number.isFinite(rv) && Number.isFinite(ov)){
+          robustMinusOriginal.push([f,rv-ov]);
+        }
+      }
+      if(robustMinusOriginal.length) mask=robustMinusOriginal;
+    }
+
     pureCurve=pure || pureCurve;
 
     targetViz={
@@ -4550,8 +4577,8 @@ async function generateHybrid(){
 
     /*
       Locked hybrid logic:
-      target at/below join; Pure EarPrint + ONE constant shift above join.
-      Do not feed a placeholder target curve into buildHybrid.
+      target <=1 kHz; Pure EarPrint >1 kHz and <12 kHz; HF extension >=12 kHz.
+      Continuity shift is applied only inside the Hybrid output.
     */
 
     const result=buildHybrid(
@@ -4571,7 +4598,7 @@ async function generateHybrid(){
     draw(result.curve,'hybridChart');
 
     document.getElementById('hybridStatus').textContent=
-      'shift '+result.shift.toFixed(6)+' dB · join '+join+' Hz';
+      'shift '+result.shift.toFixed(6)+' dB · target ≤1k · EarPrint 1–12k · HF ≥12k';
 
   }catch(error){
     showErr(error.message);
