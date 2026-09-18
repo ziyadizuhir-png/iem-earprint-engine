@@ -1796,14 +1796,48 @@ function pathForCurve(curve, px, py, minHz, maxHz){
   return d;
 }
 
+function targetDisplayShift(){
+  /*
+    DISPLAY ONLY:
+    Target files may use different absolute offsets (e.g. 0 dB-normalized
+    delta targets vs absolute 5128 targets). The engine/output files are NOT
+    modified. For visual comparison only, align Original + Robust to the
+    Pure EarPrint at the common 1 kHz anchor. This preserves each target's
+    shape while putting all curves into the same vertical frame.
+  */
+  const anchorHz=1000;
+  const pureAt=curveValue(targetViz.pure,anchorHz);
+  const originalAt=curveValue(targetViz.original,anchorHz);
+  if(Number.isFinite(pureAt) && Number.isFinite(originalAt)){
+    return pureAt-originalAt;
+  }
+  return 0;
+}
+
+function shiftedCurve(curve,shift){
+  if(!curve || !Number.isFinite(shift) || Math.abs(shift)<1e-12) return curve;
+  return curve.map(([f,v])=>[f,v+shift]);
+}
+
+function getDisplayCurves(){
+  const shift=targetDisplayShift();
+  return {
+    original:shiftedCurve(targetViz.original,shift),
+    robust:shiftedCurve(targetViz.robust,shift),
+    pure:targetViz.pure,
+    shift
+  };
+}
+
 function drawTargetMain(){
   const container=document.getElementById('targetChart');
   if(!container) return;
 
+  const display=getDisplayCurves();
   const curves=[
-    targetViz.original,
-    targetViz.robust,
-    targetViz.pure
+    display.original,
+    display.robust,
+    display.pure
   ].filter(Boolean);
 
   if(!curves.length){
@@ -1826,9 +1860,9 @@ function drawTargetMain(){
   const PW=W-L-R, PH=H-T-B;
 
   const visible=[];
-  if(document.getElementById('showOriginal')?.checked && targetViz.original) visible.push(targetViz.original);
-  if(document.getElementById('showRobust')?.checked && targetViz.robust) visible.push(targetViz.robust);
-  if(document.getElementById('showPure')?.checked && targetViz.pure) visible.push(targetViz.pure);
+  if(document.getElementById('showOriginal')?.checked && display.original) visible.push(display.original);
+  if(document.getElementById('showRobust')?.checked && display.robust) visible.push(display.robust);
+  if(document.getElementById('showPure')?.checked && display.pure) visible.push(display.pure);
   if(!visible.length) visible.push(...curves);
 
   const vals=finiteValues(visible,minHz,maxHz);
@@ -1885,20 +1919,20 @@ function drawTargetMain(){
   }
 
   /* curves */
-  if(document.getElementById('showOriginal')?.checked && targetViz.original){
-    const d=pathForCurve(targetViz.original,px,py,minHz,maxHz);
+  if(document.getElementById('showOriginal')?.checked && display.original){
+    const d=pathForCurve(display.original,px,py,minHz,maxHz);
     parts.push(`<path d="${d}" fill="none" stroke="${VIZ_COLORS.original}" stroke-width="2" stroke-dasharray="7 5" stroke-linejoin="round"/>`);
   }
-  if(document.getElementById('showRobust')?.checked && targetViz.robust){
-    const d=pathForCurve(targetViz.robust,px,py,minHz,maxHz);
+  if(document.getElementById('showRobust')?.checked && display.robust){
+    const d=pathForCurve(display.robust,px,py,minHz,maxHz);
     parts.push(`<path d="${d}" fill="none" stroke="${VIZ_COLORS.robust}" stroke-width="2.6" stroke-linejoin="round"/>`);
   }
-  if(document.getElementById('showPure')?.checked && targetViz.pure){
-    const d=pathForCurve(targetViz.pure,px,py,minHz,maxHz);
+  if(document.getElementById('showPure')?.checked && display.pure){
+    const d=pathForCurve(display.pure,px,py,minHz,maxHz);
     parts.push(`<path d="${d}" fill="none" stroke="${VIZ_COLORS.pure}" stroke-width="2.3" stroke-linejoin="round"/>`);
   }
 
-  parts.push(`<text x="${L}" y="${H-2}" fill="#6f819a" font-size="9">Frequency (Hz, log)</text>`);
+  parts.push(`<text x="${L}" y="${H-2}" fill="#6f819a" font-size="9">Frequency (Hz, log) · Target display aligned to Pure EarPrint @ 1 kHz</text>`);
   parts.push(`<text x="12" y="${T}" fill="#6f819a" font-size="9" transform="rotate(-90 12 ${T})">Level (dB)</text>`);
 
   /* transparent hit target for touch/mouse readout */
@@ -2003,10 +2037,11 @@ function updateReadout(frequency){
     if(el) el.textContent=value;
   };
 
+  const display=getDisplayCurves();
   put('readFreq',fmtHz(frequency)+' Hz');
-  put('readOriginal',fmtDb(curveValue(targetViz.original,frequency)));
-  put('readRobust',fmtDb(curveValue(targetViz.robust,frequency)));
-  put('readPure',fmtDb(curveValue(targetViz.pure,frequency)));
+  put('readOriginal',fmtDb(curveValue(display.original,frequency)));
+  put('readRobust',fmtDb(curveValue(display.robust,frequency)));
+  put('readPure',fmtDb(curveValue(display.pure,frequency)));
   put('readMask',fmtDb(curveValue(targetViz.mask,frequency)));
 }
 
