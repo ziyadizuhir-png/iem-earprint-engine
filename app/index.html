@@ -3608,7 +3608,8 @@ async function saveInputToGitHub(){
       expectedSha:commitSha || '',
       sourceLabel:
         (addKind === 'iem' ? 'IEM' : 'target') +
-        ' upload'
+        ' upload',
+      alreadyBusy:true
     });
 
   }catch(error){
@@ -3761,30 +3762,22 @@ function finishBuildOverlay(success, message, detail){
 
 async function fetchWorkflowRuns(){
 
-  const url =
-    'https://api.github.com/repos/' +
-    repo +
+  return ghAuthRoot(
     '/actions/workflows/main.yml/runs?branch=main&per_page=20&_=' +
-    Date.now();
+    Date.now()
+  );
 
-  const response = await fetch(url,{cache:'no-store'});
-  if(!response.ok)
-    throw Error('GitHub Actions API '+response.status);
-  return response.json();
 }
 
 async function fetchWorkflowRun(runId){
 
-  const url =
-    'https://api.github.com/repos/' +
-    repo +
+  return ghAuthRoot(
     '/actions/runs/' +
-    runId + '?_=' + Date.now();
+    runId +
+    '?_=' +
+    Date.now()
+  );
 
-  const response=await fetch(url,{cache:'no-store'});
-  if(!response.ok)
-    throw Error('GitHub Actions run API '+response.status);
-  return response.json();
 }
 
 function isoMs(value){
@@ -3792,9 +3785,19 @@ function isoMs(value){
   return Number.isFinite(t) ? t : 0;
 }
 
-async function waitForEarprintBuild({expectedSha='',sourceLabel='EarPrint build',manual=false}={}){
+async function waitForEarprintBuild({
+  expectedSha='',
+  sourceLabel='EarPrint build',
+  manual=false,
+  alreadyBusy=false
+}={}){
 
-  if(window.__buildBusy)
+  /*
+    saveInputToGitHub may already hold the build lock while the
+    upload is being committed. It must still be allowed to enter
+    the build-monitoring phase.
+  */
+  if(window.__buildBusy && !alreadyBusy)
     return;
 
   window.__buildBusy=true;
