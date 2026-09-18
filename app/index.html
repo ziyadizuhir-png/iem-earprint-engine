@@ -666,26 +666,11 @@ select,input{
       <div>
         <h2 style="margin:0">Target Visualizer</h2>
         <div class="visualizer-subtitle">
-          Original target vs robust masked target, with your Pure EarPrint as reference.
+          Original target vs robust masked target. The blue curve is always the engine’s Robust Target (Masked).
         </div>
       </div>
       <div class="viz-actions">
-        <label class="toggle">
-          <input id="showOriginal" type="checkbox" checked onchange="rerenderTargetViz()">
-          Original
-        </label>
-        <label class="toggle">
-          <input id="showRobust" type="checkbox" checked onchange="rerenderTargetViz()">
-          Robust
-        </label>
-        <label class="toggle">
-          <input id="showPure" type="checkbox" checked onchange="rerenderTargetViz()">
-          EarPrint
-        </label>
-        <label class="toggle">
-          <input id="showMask" type="checkbox" checked onchange="rerenderTargetViz()">
-          Mask Δ
-        </label>
+        <span class="status">Original + Robust Target (Masked)ed Target</span>
       </div>
     </div>
 
@@ -694,14 +679,6 @@ select,input{
       <div class="viz-control">
         <label for="targetSelect">Target</label>
         <select id="targetSelect" onchange="showTarget()"></select>
-      </div>
-
-      <div class="viz-control">
-        <label for="resultType">Selected result</label>
-        <select id="resultType" onchange="showTarget()">
-          <option value="mask">Robust Mask</option>
-          <option value="robust">Robust Target</option>
-        </select>
       </div>
 
       <div class="viz-control">
@@ -721,10 +698,10 @@ select,input{
     </div>
 
     <div class="resultbar">
-      <button type="button" class="primary" onclick="downloadTargetResult()">
-        Download selected
-      </button>
       <span id="targetStatus" class="status"></span>
+      <button type="button" id="downloadRobustButton" class="primary" onclick="downloadRobustTarget()" disabled>
+        Download Robust Target
+      </button>
     </div>
 
     <div class="viz-grid visualizer">
@@ -739,12 +716,6 @@ select,input{
           </span>
           <span class="legend-item" style="color:#66a3ff">
             <span class="legend-line"></span> Robust Target
-          </span>
-          <span class="legend-item" style="color:#4de0a7">
-            <span class="legend-line"></span> Pure EarPrint
-          </span>
-          <span class="legend-item" style="color:#ff5f8f">
-            <span class="legend-line"></span> Mask Δ
           </span>
         </div>
 
@@ -772,10 +743,6 @@ select,input{
             <span id="readOriginal" class="v">—</span>
             <span class="k">Robust</span>
             <span id="readRobust" class="v">—</span>
-            <span class="k">EarPrint</span>
-            <span id="readPure" class="v">—</span>
-            <span class="k">Mask Δ</span>
-            <span id="readMask" class="v">—</span>
           </div>
         </div>
 
@@ -814,9 +781,8 @@ select,input{
         <div class="viz-panel">
           <h3>What you're seeing</h3>
           <div class="small muted">
-            The original target is shown as supplied. The robust target and mask are
-            the engine's exported results. The Pure EarPrint is a reference only;
-            this visualizer does not alter any engine output.
+            The original target is shown as supplied. The blue curve is always the engine's
+            Robust Target (Masked). The visualizer does not alter any engine output.
           </div>
         </div>
 
@@ -1824,7 +1790,7 @@ function getDisplayCurves(){
   return {
     original:shiftedCurve(targetViz.original,shift),
     robust:shiftedCurve(targetViz.robust,shift),
-    pure:targetViz.pure,
+    pure:null,
     shift
   };
 }
@@ -1836,8 +1802,7 @@ function drawTargetMain(){
   const display=getDisplayCurves();
   const curves=[
     display.original,
-    display.robust,
-    display.pure
+    display.robust
   ].filter(Boolean);
 
   if(!curves.length){
@@ -1859,11 +1824,10 @@ function drawTargetMain(){
   const L=58,R=18,T=48,B=42;
   const PW=W-L-R, PH=H-T-B;
 
-  const visible=[];
-  if(document.getElementById('showOriginal')?.checked && display.original) visible.push(display.original);
-  if(document.getElementById('showRobust')?.checked && display.robust) visible.push(display.robust);
-  if(document.getElementById('showPure')?.checked && display.pure) visible.push(display.pure);
-  if(!visible.length) visible.push(...curves);
+  const visible=[
+    display.original,
+    display.robust
+  ].filter(Boolean);
 
   const vals=finiteValues(visible,minHz,maxHz);
   let ymin=Math.min(...vals);
@@ -1919,17 +1883,13 @@ function drawTargetMain(){
   }
 
   /* curves */
-  if(document.getElementById('showOriginal')?.checked && display.original){
+  if(display.original){
     const d=pathForCurve(display.original,px,py,minHz,maxHz);
     parts.push(`<path d="${d}" fill="none" stroke="${VIZ_COLORS.original}" stroke-width="2" stroke-dasharray="7 5" stroke-linejoin="round"/>`);
   }
-  if(document.getElementById('showRobust')?.checked && display.robust){
+  if(display.robust){
     const d=pathForCurve(display.robust,px,py,minHz,maxHz);
-    parts.push(`<path d="${d}" fill="none" stroke="${VIZ_COLORS.robust}" stroke-width="2.6" stroke-linejoin="round"/>`);
-  }
-  if(document.getElementById('showPure')?.checked && display.pure){
-    const d=pathForCurve(display.pure,px,py,minHz,maxHz);
-    parts.push(`<path d="${d}" fill="none" stroke="${VIZ_COLORS.pure}" stroke-width="2.3" stroke-linejoin="round"/>`);
+    parts.push(`<path d="${d}" fill="none" stroke="${VIZ_COLORS.robust}" stroke-width="2.8" stroke-linejoin="round"/>`);
   }
 
   parts.push(`<text x="${L}" y="${H-2}" fill="#6f819a" font-size="9">Frequency (Hz, log) · Target display aligned to Pure EarPrint @ 1 kHz</text>`);
@@ -2041,8 +2001,7 @@ function updateReadout(frequency){
   put('readFreq',fmtHz(frequency)+' Hz');
   put('readOriginal',fmtDb(curveValue(display.original,frequency)));
   put('readRobust',fmtDb(curveValue(display.robust,frequency)));
-  put('readPure',fmtDb(curveValue(display.pure,frequency)));
-  put('readMask',fmtDb(curveValue(targetViz.mask,frequency)));
+
 }
 
 function updateMaskSummary(){
@@ -2073,7 +2032,7 @@ function updateMaskSummary(){
 }
 
 function rerenderTargetViz(){
-  if(!targetViz.original && !targetViz.robust && !targetViz.pure) return;
+  if(!targetViz.original && !targetViz.robust) return;
   drawTargetMain();
   drawMaskChart();
 }
@@ -3179,7 +3138,7 @@ async function showTarget(){
     const robustPath='output/'+stem(name)+'__robust_target.txt';
     const maskPath='output/'+stem(name)+'__mask.txt';
 
-    document.getElementById('vizDataStatus').textContent='Loading target, robust target, mask and Pure EarPrint…';
+    document.getElementById('vizDataStatus').textContent='Loading original target and robust masked target…';
 
     const results=await Promise.allSettled([
       rawText(basePath),
@@ -3207,23 +3166,30 @@ async function showTarget(){
       pure:pureCurve
     };
 
-    const type=document.getElementById('resultType').value;
-    const selectedPath=type==='mask' ? maskPath : robustPath;
+    const downloadButton =
+      document.getElementById(
+        'downloadRobustButton'
+      );
+
+    if(downloadButton){
+      downloadButton.disabled = !robust;
+    }
+
+    const selectedPath=robustPath;
 
     const missing=[];
     if(!original) missing.push('original target');
     if(!robust) missing.push('robust target');
-    if(!mask) missing.push('mask');
 
     document.getElementById('targetStatus').textContent=
       missing.length
         ? selectedPath+' · missing: '+missing.join(', ')
-        : selectedPath;
+        : selectedPath+' · Robust Target (Masked)';
 
     document.getElementById('vizDataStatus').textContent=
       missing.length
         ? 'Loaded with '+missing.join(', ')+' unavailable. Engine outputs were not changed.'
-        : 'Original + robust target + mask + Pure EarPrint loaded.';
+        : 'Original + robust target loaded. Robust Target is the only downloadable target; mask is display-only.';
 
     updateMaskSummary();
     rerenderTargetViz();
@@ -3235,72 +3201,44 @@ async function showTarget(){
 
 
 /* ============================================================
-   DOWNLOAD TARGET
+   DOWNLOAD ROBUST TARGET ONLY
    ============================================================ */
 
+function downloadRobustTarget(){
 
-async function downloadTargetResult(){
-
-  try{
-
-    const encodedName =
-      document.getElementById(
-        'targetSelect'
-      ).value;
-
-
-    const name =
-      decodeURIComponent(
-        encodedName
-      );
-
-
-    const type =
-      document.getElementById(
-        'resultType'
-      ).value;
-
-
-    const path =
-      type === 'mask'
-
-        ? 'output/' +
-          stem(name) +
-          '__mask.txt'
-
-        : 'output/' +
-          stem(name) +
-          '__robust_target.txt';
-
-
-    const text =
-      await rawText(
-        path
-      );
-
-
-    blobDownload(
-      text,
-      path
-        .split('/')
-        .pop()
-    );
-
-  }catch(error){
+  if(!targetViz || !targetViz.robust){
 
     showErr(
-      error.message
+      'Robust Target (Masked) is not available yet.'
     );
+
+    return;
 
   }
 
+  const name =
+    targetViz.name || 'target';
+
+  const lines =
+    targetViz.robust
+      .map(
+        ([frequency,value]) =>
+          Number(frequency).toPrecision(12) +
+          '\\t' +
+          Number(value).toFixed(12)
+      )
+      .join('\\n');
+
+  blobDownload(
+    lines + '\\n',
+    stem(name) + '__robust_target.txt'
+  );
 }
 
 
 /* ============================================================
    HYBRID
    ============================================================ */
-
 
 async function generateHybrid(){
 
