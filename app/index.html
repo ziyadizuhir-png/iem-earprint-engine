@@ -2324,7 +2324,11 @@ function buildHybrid(
   join
 ){
 
-  const personalEnd = 12000;
+  if(!Array.isArray(frequencyGrid) || frequencyGrid.length < 2)
+    throw Error('Pure EarPrint frequency grid is not available.');
+
+  if(!Array.isArray(pure) || pure.length !== frequencyGrid.length)
+    throw Error('Pure EarPrint frequency grid is invalid.');
 
   const targetAtJoin =
     logInterp(
@@ -2334,26 +2338,13 @@ function buildHybrid(
 
   const pureAtJoin =
     logInterp(
-      pure.filter(([f]) => f >= 1000 && f <= personalEnd),
+      pure,
       join
     );
 
   const shift =
     targetAtJoin -
     pureAtJoin;
-
-  const personal =
-    pure.filter(([f]) => f > join && f < personalEnd);
-
-  if(personal.length < 2){
-    throw Error('Pure EarPrint must contain valid 1–12 kHz data for the hybrid.');
-  }
-
-  const pureAt12k =
-    logInterp(
-      pure.filter(([f]) => f >= 1000 && f <= personalEnd),
-      personalEnd
-    ) + shift;
 
   const output = [];
 
@@ -2366,20 +2357,21 @@ function buildHybrid(
     const frequency =
       frequencyGrid[i];
 
-    let value;
+    /*
+      Locked hybrid math:
+      - selected target at/below join
+      - Pure EarPrint above join
+      - ONE constant continuity shift applied only to the Pure EarPrint side
+    */
+    const value =
+      frequency <= join
+        ? logInterp(target, frequency)
+        : pure[i][1] + shift;
 
-    if(frequency <= join){
-      /* Selected target is locked exactly through 1 kHz. */
-      value = logInterp(target, frequency);
-    }else if(frequency < personalEnd){
-      /* 1–12 kHz = Pure EarPrint only, with hybrid-only continuity shift. */
-      value = logInterp(personal, frequency) + shift;
-    }else{
-      /* >=12 kHz = display-only HF extension from the hybrid 12 kHz endpoint. */
-      value = pureAt12k - 6 * Math.log2(frequency / personalEnd);
-    }
-
-    output.push([frequency, value]);
+    output.push([
+      frequency,
+      value
+    ]);
   }
 
   return {
@@ -4279,10 +4271,18 @@ async function loadAll(){
 
 
     /*
-      Load Pure EarPrint.
+      Load Pure EarPrint when available.
+      The target visualizer must not depend on Pure EarPrint loading:
+      original/robust target visualization remains usable even if the
+      personal curve is temporarily unavailable.
     */
 
-    await loadPure();
+    try{
+      await loadPure();
+    }catch(error){
+      pureCurve = null;
+      document.getElementById('buildState').textContent='READY';
+    }
 
 
     /*
