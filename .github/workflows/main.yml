@@ -1,0 +1,43 @@
+name: Build IEM EarPrint
+
+on:
+  push:
+    paths:
+      - "input/**"
+      - "config/**"
+      - "engine/**"
+      - "requirements.txt"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run deterministic EarPrint engine
+        run: python engine/earprint_engine.py
+
+      - name: Upload TXT results and reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: earprint-results
+          path: |
+            output/*.txt
+            reports/*
+          if-no-files-found: error
