@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'nonce-9HKSOsB546xzOv-LNV9nGCiZix5pNLIC'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.github.com https://raw.githubusercontent.com; media-src 'none';">
 <title>EarPrint — Personal</title>
 
 <style>
@@ -1100,6 +1101,21 @@ select,input{
     min-height:42px;
   }
 }
+
+/* v16 session token status */
+#buildState[hidden]{display:none!important}
+
+.session-status{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  font-size:10px;
+  color:#7f8b99;
+}
+
+.session-status.connected{
+  color:#7dbb9b;
+}
 </style>
 </head>
 
@@ -1132,14 +1148,14 @@ select,input{
 
       <button
         type="button"
-        onclick="openAdd('iem')">
+        id="addIemButton">
         Add IEM
       </button>
 
 
       <button
         type="button"
-        onclick="openAdd('target')">
+        id="addTargetButton">
         Add Target
       </button>
 
@@ -1148,7 +1164,6 @@ select,input{
         type="button"
         id="runEngine"
         class="primary"
-        onclick="runEarPrint()"
         hidden
         aria-hidden="true">
         Run EarPrint
@@ -1157,14 +1172,14 @@ select,input{
 
       <button
         type="button"
-        onclick="openSettings()">
+        id="githubAccessButton">
         GitHub Access
       </button>
 
 
       <button
         type="button"
-        onclick="loadAll()">
+        id="refreshButton">
         Refresh
       </button>
 
@@ -1188,7 +1203,7 @@ select,input{
         <span id="buildPercent">0%</span>
       </div>
       <div class="buildActions">
-        <button type="button" id="buildClose" onclick="hideBuildOverlay()" hidden>Close</button>
+        <button type="button" id="buildClose"  hidden>Close</button>
       </div>
     </div>
   </div>
@@ -1285,12 +1300,12 @@ select,input{
 
       <div class="viz-control">
         <label for="targetSelect">Target</label>
-        <select id="targetSelect" onchange="showTarget()"></select>
+        <select id="targetSelect" ></select>
       </div>
 
       <div class="viz-control">
         <label for="vizRange">View</label>
-        <select id="vizRange" onchange="rerenderTargetViz()">
+        <select id="vizRange" >
           <option value="full">20 Hz – 20 kHz</option>
           <option value="music">20 Hz – 12 kHz</option>
           <option value="mid">200 Hz – 12 kHz</option>
@@ -1299,14 +1314,14 @@ select,input{
 
       <div class="viz-control">
         <label>&nbsp;</label>
-        <button type="button" onclick="resetVizView()">Reset view</button>
+        <button type="button" id="resetVizViewButton">Reset view</button>
       </div>
 
     </div>
 
     <div class="resultbar">
       <span id="targetStatus" class="status"></span>
-      <button type="button" id="downloadRobustButton" class="primary" onclick="downloadRobustTarget()" disabled>
+      <button type="button" id="downloadRobustButton" class="primary"  disabled>
         Download Robust Target
       </button>
     </div>
@@ -1460,7 +1475,7 @@ select,input{
       <button
         type="button"
         class="primary"
-        onclick="generateHybrid()">
+        id="generateHybridButton">
 
         Generate Hybrid
 
@@ -1469,7 +1484,7 @@ select,input{
 
       <button
         type="button"
-        onclick="downloadHybrid()">
+        id="downloadHybridButton">
 
         Download Hybrid
 
@@ -1538,7 +1553,7 @@ select,input{
       <button
         type="button"
         id="closeModalButton"
-        onclick="document.getElementById('modal').setAttribute('hidden','');"
+        id="closeModalButton"
         style="cursor:pointer">
 
         Close
@@ -1583,7 +1598,7 @@ select,input{
         <button
           type="button"
           class="primary"
-          onclick="saveToken()">
+          id="useTokenButton">
 
           Use Token
 
@@ -1592,7 +1607,7 @@ select,input{
 
         <button
           type="button"
-          onclick="clearToken()">
+          id="clearTokenButton">
 
           Clear
 
@@ -1607,7 +1622,7 @@ select,input{
         style="margin-top:10px">
 
         The token is kept only in this browser tab memory
-        and is not written into the repository. It is used for uploads, deletes, and manual EarPrint runs.
+        and is not written into the repository. It is used for uploads, deletes, for uploads and deletes.
 
       </div>
 
@@ -1697,7 +1712,7 @@ select,input{
         <button
           type="button"
           class="primary"
-          onclick="saveInputToGitHub()">
+          id="saveInputButton">
 
           Save to GitHub
 
@@ -1708,7 +1723,7 @@ select,input{
 
         <button
           type="button"
-          onclick="document.getElementById('modal').setAttribute('hidden','');">
+          id="cancelAddButton">
 
           Cancel
 
@@ -1741,7 +1756,7 @@ select,input{
 </div>
 
 
-<script>
+<script nonce="9HKSOsB546xzOv-LNV9nGCiZix5pNLIC">
 
 /* ============================================================
    REPOSITORY DETECTION
@@ -1843,6 +1858,71 @@ let targetViz = {
 };
 
 let githubToken = '';
+
+/* ============================================================
+   SESSION-BOUND GITHUB TOKEN
+   - Survives refreshes in the current browser tab/session.
+   - Not persisted to localStorage.
+   - Never written to the repository.
+   ============================================================ */
+
+const TOKEN_STORAGE_KEY =
+  'iem_earprint_github_token';
+
+function restoreSessionToken(){
+
+  try{
+
+    const saved =
+      sessionStorage.getItem(
+        TOKEN_STORAGE_KEY
+      );
+
+    if(saved){
+
+      githubToken =
+        saved;
+
+    }
+
+  }catch(_){
+
+    /* Storage may be unavailable; in-memory mode still works. */
+
+  }
+
+}
+
+function persistSessionToken(token){
+
+  try{
+
+    sessionStorage.setItem(
+      TOKEN_STORAGE_KEY,
+      token
+    );
+
+  }catch(_){
+
+    /* Continue with in-memory token if storage is unavailable. */
+
+  }
+
+}
+
+function removeSessionToken(){
+
+  try{
+
+    sessionStorage.removeItem(
+      TOKEN_STORAGE_KEY
+    );
+
+  }catch(_){}
+
+}
+
+restoreSessionToken();
 
 let addKind = 'iem';
 
@@ -2730,7 +2810,7 @@ function openSettings(){
     'modalHint'
   ).textContent =
     githubToken
-      ? 'Token loaded for this tab.'
+      ? '✓ GitHub connected for this browser session.'
       : 'No token loaded.';
 
 
@@ -3003,17 +3083,15 @@ document.addEventListener(
    ============================================================ */
 
 
-function saveToken(){
+async function saveToken(){
 
   const input =
     document.getElementById(
       'ghToken'
     );
 
-
   const token =
     input.value.trim();
-
 
   if(!token){
 
@@ -3025,25 +3103,112 @@ function saveToken(){
 
   }
 
+  const button =
+    input
+      .closest('#settingsPanel')
+      ?.querySelector(
+        'button.primary'
+      );
 
-  githubToken =
-    token;
+  if(button){
 
+    button.disabled = true;
+    button.textContent =
+      'Checking…';
 
-  input.value =
-    '';
+  }
 
+  try{
 
-  closeModal();
+    /*
+      Verify the token against the configured repository before binding it.
+      The token is only persisted after GitHub accepts it.
+    */
 
+    const response =
+      await fetch(
+        API + '',
+        {
+          headers:{
+            Accept:
+              'application/vnd.github+json',
 
-  showErr('');
+            'X-GitHub-Api-Version':
+              '2022-11-28',
 
+            Authorization:
+              'Bearer ' + token
+          },
+          cache:'no-store'
+        }
+      );
 
-  document.getElementById(
-    'buildState'
-  ).textContent =
-    'CONNECTED';
+    let data = null;
+
+    try{
+      data =
+        await response.json();
+    }catch(_){}
+
+    if(!response.ok){
+
+      throw Error(
+        (data && data.message) ||
+        ('GitHub API ' + response.status)
+      );
+
+    }
+
+    githubToken =
+      token;
+
+    persistSessionToken(
+      token
+    );
+
+    input.value = '';
+
+    closeModal();
+
+    showErr('');
+
+    const state =
+      document.getElementById(
+        'buildState'
+      );
+
+    if(state)
+      state.textContent =
+        'CONNECTED';
+
+    /*
+      Reload repository data after authentication so the UI immediately
+      reflects the authenticated state.
+    */
+    await loadAll();
+
+  }catch(error){
+
+    githubToken = '';
+
+    removeSessionToken();
+
+    showErr(
+      'GitHub token could not be verified: ' +
+      error.message
+    );
+
+  }finally{
+
+    if(button){
+
+      button.disabled = false;
+      button.textContent =
+        'Use Token';
+
+    }
+
+  }
 
 }
 
@@ -3053,23 +3218,34 @@ function clearToken(){
   githubToken =
     '';
 
+  removeSessionToken();
 
-  document.getElementById(
-    'ghToken'
-  ).value =
-    '';
+  const input =
+    document.getElementById(
+      'ghToken'
+    );
 
+  if(input)
+    input.value =
+      '';
 
-  document.getElementById(
-    'modalHint'
-  ).textContent =
-    'No token loaded.';
+  const hint =
+    document.getElementById(
+      'modalHint'
+    );
 
+  if(hint)
+    hint.textContent =
+      'No token loaded.';
 
-  document.getElementById(
-    'buildState'
-  ).textContent =
-    'READY';
+  const state =
+    document.getElementById(
+      'buildState'
+    );
+
+  if(state)
+    state.textContent =
+      'READY';
 
 }
 
@@ -3914,11 +4090,6 @@ async function loadAll(){
         .map(
           item => {
 
-            const safeName =
-              item.name
-                .replace(/\\/g,'\\\\')
-                .replace(/'/g,"\\'");
-
             return (
               `<span class="pill target-pill">` +
                 `<span class="target-pill-name">` +
@@ -3931,7 +4102,9 @@ async function loadAll(){
                 `</span>` +
                 `<button type="button"` +
                   ` class="target-delete"` +
-                  ` onclick="deleteTarget('${safeName}')"` +
+                  ` data-target-name="` +
+                    esc(item.name) +
+                  `"` +
                   ` title="Delete target"` +
                   ` aria-label="Delete ${esc(item.name.replace(/\.txt$/i,''))}"` +
                 `>×</button>` +
@@ -4314,10 +4487,78 @@ function downloadHybrid(){
 }
 
 
+
+/* ============================================================
+   UI EVENT BINDINGS
+   Strict CSP-compatible event wiring.
+   ============================================================ */
+
+function bindUiEvents(){
+
+  const get=(id)=>document.getElementById(id);
+
+  const on=(id,event,handler)=>{
+    const el=get(id);
+    if(el) el.addEventListener(event,handler);
+  };
+
+  on('addIemButton','click',()=>openAdd('iem'));
+  on('addTargetButton','click',()=>openAdd('target'));
+  on('githubAccessButton','click',openSettings);
+  on('refreshButton','click',loadAll);
+
+  on('buildClose','click',hideBuildOverlay);
+  on('targetSelect','change',showTarget);
+  on('vizRange','change',rerenderTargetViz);
+  on('resetVizViewButton','click',resetVizView);
+  on('downloadRobustButton','click',downloadRobustTarget);
+
+  on('generateHybridButton','click',generateHybrid);
+  on('downloadHybridButton','click',downloadHybrid);
+
+  on('closeModalButton','click',closeModal);
+  on('useTokenButton','click',saveToken);
+  on('clearTokenButton','click',clearToken);
+  on('saveInputButton','click',saveInputToGitHub);
+  on('cancelAddButton','click',closeModal);
+
+  const targetList=get('targets');
+
+  if(targetList){
+
+    targetList.addEventListener(
+      'click',
+      function(event){
+
+        const button =
+          event.target.closest('.target-delete');
+
+        if(
+          !button ||
+          !targetList.contains(button)
+        )
+          return;
+
+        const filename =
+          button.getAttribute(
+            'data-target-name'
+          );
+
+        if(filename)
+          deleteTarget(filename);
+
+      }
+    );
+
+  }
+
+}
+
 /* ============================================================
    START
    ============================================================ */
 
+bindUiEvents();
 loadAll();
 
 </script>
