@@ -3823,24 +3823,75 @@ async function waitForEarprintBuild({
         ? data.workflow_runs
         : [];
 
+      /*
+        Primary match:
+          - Uploads: exact commit SHA.
+          - Manual run: recent repository_dispatch event.
+
+        Robust fallback:
+        GitHub can expose a newly-created push run before all run
+        metadata is fully settled. Do not remain stuck at 20% just
+        because head_sha did not match on the first few polls.
+        The workflow is serialized by the repository's concurrency
+        group, so the newest recent run after this action started is
+        the correct build candidate when an exact SHA match is not
+        yet visible.
+      */
       if(expectedSha){
-        run=runs.find(r =>
-          String(r.head_sha || '') === String(expectedSha)
-        ) || null;
+
+        run =
+          runs.find(r =>
+            String(r.head_sha || '') ===
+            String(expectedSha)
+          ) || null;
+
+        if(!run){
+
+          const recentPushRuns =
+            runs
+              .filter(r =>
+                r.event === 'push' &&
+                r.head_branch === 'main' &&
+                isoMs(r.created_at) >=
+                  startedAt - 30000
+              )
+              .sort(
+                (a,b) =>
+                  isoMs(b.created_at) -
+                  isoMs(a.created_at)
+              );
+
+          run =
+            recentPushRuns[0] ||
+            null;
+
+        }
+
       }else if(manual){
-        run=runs.find(r =>
-          r.event === 'repository_dispatch' &&
-          isoMs(r.created_at) >= startedAt - 8000
-        ) || null;
+
+        run =
+          runs.find(r =>
+            r.event === 'repository_dispatch' &&
+            isoMs(r.created_at) >=
+              startedAt - 30000
+          ) || null;
+
       }
 
       if(!run){
+
         setBuildProgress(
           20,
           'Waiting for GitHub Actions to start…',
-          expectedSha ? 'Commit saved · waiting for workflow run' : 'Dispatch sent · waiting for workflow run'
+          expectedSha
+            ? 'Commit saved · checking for workflow run'
+            : 'Dispatch sent · checking for workflow run'
         );
-        await new Promise(r=>setTimeout(r,5000));
+
+        await new Promise(
+          r => setTimeout(r,3000)
+        );
+
       }
     }
 
@@ -3856,11 +3907,48 @@ async function waitForEarprintBuild({
 
     while(Date.now()<timeoutAt){
 
-      const current=await fetchWorkflowRun(run.id);
-      const status=current.status || 'queued';
-      const conclusion=current.conclusion || '';
+      let current;
 
-      if(status === 'queued' || status === 'waiting' || status === 'pending'){
+      try{
+
+        current =
+          await fetchWorkflowRun(
+            run.id
+          );
+
+      }catch(error){
+
+        /*
+          A transient Actions API response should not kill the
+          whole build monitor. Keep polling the same run.
+        */
+        setBuildProgress(
+          35,
+          'Refreshing GitHub Actions status…',
+          error.message
+        );
+
+        await new Promise(
+          r => setTimeout(r,3000)
+        );
+
+        continue;
+
+      }
+
+      const status =
+        current.status ||
+        'queued';
+
+      const conclusion =
+        current.conclusion ||
+        '';
+
+      if(
+        status === 'queued' ||
+        status === 'waiting' ||
+        status === 'pending'
+      ){
         document.getElementById('buildState').textContent='QUEUED';
         setBuildProgress(35,'GitHub Actions queued…','Run #'+current.run_number);
       }else if(status === 'in_progress'){
@@ -3893,7 +3981,7 @@ async function waitForEarprintBuild({
         return;
       }
 
-      await new Promise(r=>setTimeout(r,5000));
+      await new Promise(r=>setTimeout(r,3000));
     }
 
     document.getElementById('buildState').textContent='TIMEOUT';
