@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-09-18T15:48:57.089795+00:00",
+  "generated_utc": "2026-09-18T15:49:26.962239+00:00",
   "engine": "IEM EarPrint Engine 2.0.0",
   "specification": "General_Prompt_EarPrint_8_MATH_LOCKED.txt",
   "dynamic_discovery": true,
@@ -19,9 +19,10 @@
   "targets_discovered": [
     "IEF2025.txt",
     "SoundGuys.txt",
-    "_Headphones.com_IEM_DF_Tilt__-0.8dB_Oct_B_2dB_Target_1_.txt"
+    "_Headphones.com_IEM_DF_Tilt__-0.8dB_Oct_B_2dB_Target_1_.txt",
+    "_JM-1_DF_Tilt__-1dB_Oct_B_4dB_Target.txt"
   ],
-  "target_count": 3,
+  "target_count": 4,
   "low_frequency_reference": "IEF2025.txt",
   "alignment_bands_hz": [
     [
@@ -77,13 +78,16 @@
     "input/preferred/Yuan_Li.txt": "b22e7c519d4fd963e82d834735e8a8005be6d0d854c92f75ef6be4776a4ff7c4",
     "input/targets/IEF2025.txt": "399e5129d80087ff4330e1f75da505f9799fe0cddc28b3a34aaaf68eef5b87d8",
     "input/targets/SoundGuys.txt": "b8bfa7e67a9263634b78485bbfca8b6b750182e27b52d1ae7bf1debcf9dbabb4",
-    "input/targets/_Headphones.com_IEM_DF_Tilt__-0.8dB_Oct_B_2dB_Target_1_.txt": "ec13bec9c52e2f3eb893c70133a0db321bf9a00785a9991ddd0b840c37c2b325"
+    "input/targets/_Headphones.com_IEM_DF_Tilt__-0.8dB_Oct_B_2dB_Target_1_.txt": "ec13bec9c52e2f3eb893c70133a0db321bf9a00785a9991ddd0b840c37c2b325",
+    "input/targets/_JM-1_DF_Tilt__-1dB_Oct_B_4dB_Target.txt": "153a4cd5046eef6e75dad142899805cc77be4077faec770825d1cbc55afaa7df"
   },
   "output_sha256": {
     "Headphones.com_IEM_DF_Tilt_-0.8dB_Oct_B_2dB_Target_1__mask.txt": "252261baf0dcd6eb102ecb9b58c6e02b482060f704472b221b96e84e50fd07c0",
     "Headphones.com_IEM_DF_Tilt_-0.8dB_Oct_B_2dB_Target_1__robust_target.txt": "d40162b23d7c87bd933e4d4cbfa20d7abf81ccc3f09979f8ac93ae7889d3a4db",
     "IEF2025__mask.txt": "84de03b1000c0a4972f1de7a0f3de6cc2eb047532e6bc252a3567c510115a8bb",
     "IEF2025__robust_target.txt": "6dd0bb7e84a1bd4ca82b5ce46ae74c6bae2819bb4d107bc40db3815f703f08d1",
+    "JM-1_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "c0d4f5f7a1f47b0ab8af1c588d00b8e31a938ce19384930d81a09cc4a3579c17",
+    "JM-1_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "20b2db9dc6b5a9196c1e81145e2669a2f90347d2442494fac335aec190bc91ff",
     "SoundGuys__mask.txt": "7dba2fa5108805577d6d11cfcf7f74e2eef1ff35f480ad4d369fde28fb534fd9",
     "SoundGuys__robust_target.txt": "7bca06e5bbfc5a3f53119598589ded0d5d757bf311f4a2c8a4e3e4619f05019b",
     "pure_earprint_dynamic.txt": "cb2033197d88c25ef4448740f260bd57375ae597435acbea36b652434dfc52d8"
