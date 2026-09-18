@@ -1041,6 +1041,65 @@ select,input{
     padding:10px;
   }
 }
+
+/* v15: restored functional modal, styled as a practical tool dialog */
+.modalBack{
+  background:rgba(5,8,12,.78)!important;
+  padding:12px!important;
+}
+
+.modal{
+  width:min(620px,100%)!important;
+  max-height:min(88vh,760px)!important;
+  background:#11171f!important;
+  border:1px solid #303a46!important;
+  border-radius:7px!important;
+  box-shadow:0 14px 40px rgba(0,0,0,.35)!important;
+  padding:12px!important;
+}
+
+.modal .top{
+  border-bottom:1px solid #28313b;
+  padding-bottom:9px;
+  margin-bottom:10px;
+}
+
+.modal .top h2{
+  font-size:15px!important;
+  font-weight:600!important;
+}
+
+.modal .status.small{
+  font-size:11px;
+}
+
+.modal .field label{
+  font-size:11px;
+  color:#7f8b99;
+}
+
+.modal input{
+  min-height:40px;
+}
+
+.modal .inline{
+  gap:6px;
+}
+
+@media(max-width:600px){
+  .modalBack{padding:8px!important}
+  .modal{
+    width:100%!important;
+    max-height:calc(100dvh - 16px)!important;
+    padding:10px!important;
+  }
+  .modal .top{
+    gap:8px;
+  }
+  .modal button{
+    min-height:42px;
+  }
+}
 </style>
 </head>
 
@@ -1436,6 +1495,250 @@ select,input{
 
 
   <div id="infoPanel" hidden aria-hidden="true"></div>
+
+
+
+<div
+  id="modal"
+  class="modalBack"
+  hidden>
+
+
+  <div
+    class="modal card"
+    role="dialog"
+    aria-modal="true">
+
+
+    <div class="top">
+
+
+      <div>
+
+        <h2
+          id="modalTitle"
+          style="margin:0">
+
+          Add Input
+
+        </h2>
+
+
+        <div
+          id="modalHint"
+          class="status small">
+        </div>
+
+      </div>
+
+
+      <!-- DIRECT CLOSE:
+           Does NOT depend on closeModal() -->
+
+      <button
+        type="button"
+        id="closeModalButton"
+        onclick="document.getElementById('modal').setAttribute('hidden','');"
+        style="cursor:pointer">
+
+        Close
+
+      </button>
+
+
+    </div>
+
+
+    <!-- ======================================================
+         GITHUB ACCESS PANEL
+         ====================================================== -->
+
+    <div id="settingsPanel">
+
+
+      <div class="field">
+
+        <label>
+
+          Fine-grained GitHub token
+          (Contents: write for this repository)
+
+        </label>
+
+
+        <input
+          id="ghToken"
+          type="password"
+          autocomplete="off"
+          placeholder="github_pat_…">
+
+      </div>
+
+
+      <div
+        class="inline"
+        style="margin-top:10px">
+
+
+        <button
+          type="button"
+          class="primary"
+          onclick="saveToken()">
+
+          Use Token
+
+        </button>
+
+
+        <button
+          type="button"
+          onclick="clearToken()">
+
+          Clear
+
+        </button>
+
+
+      </div>
+
+
+      <div
+        class="status small"
+        style="margin-top:10px">
+
+        The token is kept only in this browser tab memory
+        and is not written into the repository. It is used for uploads, deletes, and manual EarPrint runs.
+
+      </div>
+
+
+      <div
+        class="status small"
+        style="margin-top:6px">
+
+
+        <a
+          href="https://github.com/settings/personal-access-tokens/new"
+          target="_blank"
+          rel="noopener">
+
+          Create a fine-grained token on GitHub
+
+        </a>
+
+
+      </div>
+
+
+    </div>
+
+
+    <!-- ======================================================
+         ADD INPUT PANEL
+         ====================================================== -->
+
+    <div
+      id="addPanel"
+      hidden>
+
+
+      <div class="formrow">
+
+
+        <div class="field">
+
+          <label>
+            File
+          </label>
+
+
+          <input
+            id="addFile"
+            type="file"
+            accept=".txt,text/plain">
+
+        </div>
+
+
+        <div class="field">
+
+          <label>
+            Repository filename
+          </label>
+
+
+          <input
+            id="addName"
+            type="text"
+            placeholder="Example.txt">
+
+        </div>
+
+
+      </div>
+
+
+      <div
+        id="addValidation"
+        class="status small">
+
+        Choose a TXT file.
+        The app will validate finite values and strictly
+        ascending frequencies before saving.
+
+      </div>
+
+
+      <div
+        class="inline"
+        style="margin-top:10px">
+
+
+        <button
+          type="button"
+          class="primary"
+          onclick="saveInputToGitHub()">
+
+          Save to GitHub
+
+        </button>
+
+
+        <!-- DIRECT CANCEL -->
+
+        <button
+          type="button"
+          onclick="document.getElementById('modal').setAttribute('hidden','');">
+
+          Cancel
+
+        </button>
+
+
+      </div>
+
+
+      <div
+        class="status small"
+        style="margin-top:10px">
+
+        Saving commits one file into
+        <b>input/preferred/</b>
+        or
+        <b>input/targets/</b>.
+
+        Your existing engine workflow then rebuilds
+        results automatically.
+
+      </div>
+
+
+    </div>
+
+
+  </div>
+
+</div>
 
 
 <script>
