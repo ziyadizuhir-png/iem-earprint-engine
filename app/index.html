@@ -532,6 +532,24 @@ select,input{
     font-size:22px!important;
   }
 }
+
+/* ============================================================
+   SQUIGLINK-STYLE GRAPH PRESENTATION ONLY
+   Math / data / controls are unchanged.
+   ============================================================ */
+.chart.squig-graph{
+  background:#080f1b;
+  border-color:#18243a;
+  border-radius:8px;
+}
+.chart.squig-graph svg{
+  display:block;
+  width:100%;
+  height:auto;
+}
+@media(max-width:600px){
+  .chart.squig-graph svg{min-width:0;}
+}
 </style>
 </head>
 
@@ -1853,10 +1871,7 @@ function drawTargetMain(){
   if(!container) return;
 
   const display=getDisplayCurves();
-  const curves=[
-    display.original,
-    display.robust
-  ].filter(Boolean);
+  const curves=[display.original,display.robust].filter(Boolean);
 
   if(!curves.length){
     container.innerHTML='<div class="viz-empty">No target curve available.</div>';
@@ -1869,29 +1884,30 @@ function drawTargetMain(){
 
   const availableMin=Math.max(...curves.map(c=>c[0][0]));
   const availableMax=Math.min(...curves.map(c=>c[c.length-1][0]));
-  const minHz=Math.max(requestedMin, Math.min(availableMin, requestedMax));
-  const maxHz=Math.min(requestedMax, Math.max(availableMax, minHz*1.01));
+  const minHz=Math.max(requestedMin,Math.min(availableMin,requestedMax));
+  const maxHz=Math.min(requestedMax,Math.max(availableMax,minHz*1.01));
 
-  const W=1000;
-  const H=430;
-  const L=58,R=18,T=48,B=42;
-  const PW=W-L-R, PH=H-T-B;
+  /* Squiglink-like wide graph window. */
+  const W=1200,H=500;
+  const L=66,R=20,T=18,B=48;
+  const PW=W-L-R,PH=H-T-B;
 
-  const visible=[
-    display.original,
-    display.robust
-  ].filter(Boolean);
+  const vals=finiteValues(curves,minHz,maxHz);
+  let ymin=Math.min(...vals),ymax=Math.max(...vals);
+  if(!Number.isFinite(ymin)||!Number.isFinite(ymax)){ymin=50;ymax=80}
 
-  const vals=finiteValues(visible,minHz,maxHz);
-  let ymin=Math.min(...vals);
-  let ymax=Math.max(...vals);
-  if(!Number.isFinite(ymin)||!Number.isFinite(ymax)){ymin=50;ymax=70}
-  const pad=Math.max(2,(ymax-ymin)*.12);
-  ymin=Math.floor((ymin-pad)/2)*2;
-  ymax=Math.ceil((ymax+pad)/2)*2;
-  if(ymax-ymin<8){ymin-=4;ymax+=4}
+  /* Keep the familiar current auto-scaling, but use clean 5 dB steps. */
+  const span=Math.max(ymax-ymin,10);
+  const pad=Math.max(4,span*.10);
+  ymin=Math.floor((ymin-pad)/5)*5;
+  ymax=Math.ceil((ymax+pad)/5)*5;
+  if(ymax-ymin<20){
+    const mid=(ymin+ymax)/2;
+    ymin=Math.floor((mid-10)/5)*5;
+    ymax=Math.ceil((mid+10)/5)*5;
+  }
 
-  const lx0=Math.log10(minHz), lx1=Math.log10(maxHz);
+  const lx0=Math.log10(minHz),lx1=Math.log10(maxHz);
   const px=x=>L+(x-lx0)/(lx1-lx0||1)*PW;
   const py=y=>T+(ymax-y)/(ymax-ymin||1)*PH;
 
@@ -1899,59 +1915,45 @@ function drawTargetMain(){
   parts.push(`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Frequency response target comparison" style="touch-action:pan-y">`);
   parts.push(`<rect width="${W}" height="${H}" fill="#080f1b"/>`);
 
-  /* frequency bands */
-  const bands=[
-    [20,200,VIZ_COLORS.band1,'Bass'],
-    [200,1000,VIZ_COLORS.band2,'Lower Mid'],
-    [1000,12000,VIZ_COLORS.band3,'Upper Mid'],
-    [12000,20000,VIZ_COLORS.band4,'Treble']
-  ];
-  for(const [a,b,color,label] of bands){
-    const lo=Math.max(a,minHz), hi=Math.min(b,maxHz);
-    if(hi<=lo) continue;
-    const x1=px(Math.log10(lo)), x2=px(Math.log10(hi));
-    parts.push(`<rect x="${x1.toFixed(2)}" y="${T}" width="${Math.max(0,x2-x1).toFixed(2)}" height="${PH}" fill="${color}"/>`);
-    if(x2-x1>85){
-      parts.push(`<text x="${((x1+x2)/2).toFixed(1)}" y="20" text-anchor="middle" fill="#b8c8de" font-size="11" font-weight="600">${label}</text>`);
-      parts.push(`<text x="${((x1+x2)/2).toFixed(1)}" y="34" text-anchor="middle" fill="#73859f" font-size="9">${fmtHz(a)}–${fmtHz(b)} Hz</text>`);
+  /* Clean FR-grid, inspired by Squiglink's graph window. */
+  const step=5;
+  for(let y=Math.ceil(ymin/step)*step;y<=ymax+0.001;y+=step){
+    const yy=py(y);
+    const major=(y%10===0);
+    parts.push(`<line x1="${L}" x2="${W-R}" y1="${yy.toFixed(2)}" y2="${yy.toFixed(2)}" stroke="${major?'#223049':'#172338'}" stroke-width="${major?1.05:0.75}"/>`);
+    if(major){
+      parts.push(`<text x="${L-10}" y="${(yy+4).toFixed(2)}" text-anchor="end" fill="#8a99ae" font-size="11">${y}</text>`);
     }
   }
 
-  /* y grid */
-  const step=niceStep(ymax-ymin,6);
-  const first=Math.ceil(ymin/step)*step;
-  for(let y=first;y<=ymax+step*.1;y+=step){
-    const yy=py(y);
-    parts.push(`<line x1="${L}" x2="${W-R}" y1="${yy.toFixed(2)}" y2="${yy.toFixed(2)}" stroke="${VIZ_COLORS.grid}"/>`);
-    parts.push(`<text x="${L-8}" y="${(yy+4).toFixed(2)}" text-anchor="end" fill="#8292aa" font-size="10">${y.toFixed(0)}</text>`);
-  }
-
-  const freqs=[20,50,100,200,500,1000,2000,5000,10000,12000,20000];
+  const freqs=[20,30,50,80,100,200,300,500,800,1000,2000,3000,5000,8000,10000,12000,15000,20000];
   for(const f of freqs){
-    if(f<minHz || f>maxHz) continue;
+    if(f<minHz||f>maxHz) continue;
     const x=px(Math.log10(f));
-    const strong=(f===200||f===1000||f===12000);
-    parts.push(`<line x1="${x.toFixed(2)}" x2="${x.toFixed(2)}" y1="${T}" y2="${H-B}" stroke="${strong?VIZ_COLORS.gridStrong:VIZ_COLORS.grid}" stroke-dasharray="${strong?'4 3':'0'}"/>`);
-    parts.push(`<text x="${x.toFixed(2)}" y="${H-15}" text-anchor="middle" fill="${strong?'#b9c9df':'#8292aa'}" font-size="10">${fmtHz(f)}</text>`);
+    const major=[20,100,1000,10000,20000].includes(f);
+    parts.push(`<line x1="${x.toFixed(2)}" x2="${x.toFixed(2)}" y1="${T}" y2="${H-B}" stroke="${major?'#2a3b57':'#172338'}" stroke-width="${major?1.05:.7}"/>`);
+    if([20,50,100,200,500,1000,2000,5000,10000,20000].includes(f)){
+      parts.push(`<text x="${x.toFixed(2)}" y="${H-18}" text-anchor="middle" fill="${major?'#b2bfd1':'#7e8da3'}" font-size="11">${fmtHz(f)}</text>`);
+    }
   }
 
-  /* curves */
+  /* Two requested curves only. */
   if(display.original){
     const d=pathForCurve(display.original,px,py,minHz,maxHz);
-    parts.push(`<path d="${d}" fill="none" stroke="${VIZ_COLORS.original}" stroke-width="2" stroke-dasharray="7 5" stroke-linejoin="round"/>`);
+    parts.push(`<path d="${d}" fill="none" stroke="${VIZ_COLORS.original}" stroke-width="2.2" stroke-dasharray="7 5" stroke-linecap="round" stroke-linejoin="round"/>`);
   }
   if(display.robust){
     const d=pathForCurve(display.robust,px,py,minHz,maxHz);
-    parts.push(`<path d="${d}" fill="none" stroke="${VIZ_COLORS.robust}" stroke-width="2.8" stroke-linejoin="round"/>`);
+    parts.push(`<path d="${d}" fill="none" stroke="${VIZ_COLORS.robust}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`);
   }
 
-  parts.push(`<text x="${L}" y="${H-2}" fill="#6f819a" font-size="9">Frequency (Hz, log) · Target display aligned to Pure EarPrint @ 1 kHz</text>`);
-  parts.push(`<text x="12" y="${T}" fill="#6f819a" font-size="9" transform="rotate(-90 12 ${T})">Level (dB)</text>`);
+  parts.push(`<text x="${L}" y="${H-3}" fill="#65758d" font-size="10">Hz · logarithmic</text>`);
+  parts.push(`<text x="14" y="${T+2}" fill="#65758d" font-size="10" transform="rotate(-90 14 ${T+2})">dB</text>`);
 
-  /* transparent hit target for touch/mouse readout */
   parts.push(`<rect class="viz-hit" x="${L}" y="${T}" width="${PW}" height="${PH}" fill="transparent" pointer-events="all"/>`);
   parts.push('</svg>');
 
+  container.classList.add('squig-graph');
   container.innerHTML=parts.join('');
 
   const svg=container.querySelector('svg');
@@ -1967,7 +1969,7 @@ function drawTargetMain(){
     };
     hit.addEventListener('pointerdown',read,{passive:true});
     hit.addEventListener('pointermove',(event)=>{
-      if(event.pointerType==='mouse' || event.buttons) read(event);
+      if(event.pointerType==='mouse'||event.buttons) read(event);
     },{passive:true});
   }
 }
@@ -2097,37 +2099,60 @@ function resetVizView(){
 }
 
 function draw(points, containerId){
-  /* Backward-compatible single-curve renderer for the hybrid chart. */
+  /*
+    Hybrid renderer: presentation-only refresh to match the main FR graph.
+    Hybrid data and calculation are unchanged.
+  */
   if(!points || points.length<2) return;
 
-  const W=1000,H=330,L=55,R=16,T=18,B=38;
-  const xs=points.map(p=>Math.log10(p[0]));
+  const W=1200,H=440,L=66,R=20,T=18,B=48;
+  const xmin=Math.log10(points[0][0]),xmax=Math.log10(points[points.length-1][0]);
   const ys=points.map(p=>p[1]);
-  const xmin=Math.min(...xs),xmax=Math.max(...xs);
   let ymin=Math.min(...ys),ymax=Math.max(...ys);
-  const pad=Math.max(2,(ymax-ymin)*.1);
-  ymin-=pad;ymax+=pad;
+  const span=Math.max(ymax-ymin,10);
+  const pad=Math.max(4,span*.10);
+  ymin=Math.floor((ymin-pad)/5)*5;
+  ymax=Math.ceil((ymax+pad)/5)*5;
+  if(ymax-ymin<20){
+    const mid=(ymin+ymax)/2;
+    ymin=Math.floor((mid-10)/5)*5;
+    ymax=Math.ceil((mid+10)/5)*5;
+  }
+
   const px=x=>L+(x-xmin)/(xmax-xmin||1)*(W-L-R);
   const py=y=>T+(ymax-y)/(ymax-ymin||1)*(H-T-B);
-
   let grid='';
-  const step=niceStep(ymax-ymin,5);
-  const first=Math.ceil(ymin/step)*step;
-  for(let y=first;y<=ymax+step*.1;y+=step){
+
+  for(let y=Math.ceil(ymin/5)*5;y<=ymax+0.001;y+=5){
     const yy=py(y);
-    grid+=`<line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" stroke="#1c2a40"/>`;
-    grid+=`<text x="${L-7}" y="${yy+4}" text-anchor="end" fill="#8292aa" font-size="10">${y.toFixed(0)}</text>`;
+    const major=(y%10===0);
+    grid+=`<line x1="${L}" x2="${W-R}" y1="${yy.toFixed(2)}" y2="${yy.toFixed(2)}" stroke="${major?'#223049':'#172338'}" stroke-width="${major?1.05:.75}"/>`;
+    if(major) grid+=`<text x="${L-10}" y="${(yy+4).toFixed(2)}" text-anchor="end" fill="#8a99ae" font-size="11">${y}</text>`;
   }
-  for(const f of [20,50,100,200,500,1000,2000,5000,10000,20000]){
-    if(f<points[0][0]||f>points[points.length-1][0])continue;
+
+  const freqs=[20,30,50,80,100,200,300,500,800,1000,2000,3000,5000,8000,10000,12000,15000,20000];
+  for(const f of freqs){
+    if(f<points[0][0]||f>points[points.length-1][0]) continue;
     const x=px(Math.log10(f));
-    grid+=`<line x1="${x}" x2="${x}" y1="${T}" y2="${H-B}" stroke="#162238"/>`;
-    grid+=`<text x="${x}" y="${H-12}" text-anchor="middle" fill="#8292aa" font-size="10">${fmtHz(f)}</text>`;
+    const major=[20,100,1000,10000,20000].includes(f);
+    grid+=`<line x1="${x.toFixed(2)}" x2="${x.toFixed(2)}" y1="${T}" y2="${H-B}" stroke="${major?'#2a3b57':'#172338'}" stroke-width="${major?1.05:.7}"/>`;
+    if([20,50,100,200,500,1000,2000,5000,10000,20000].includes(f)){
+      grid+=`<text x="${x.toFixed(2)}" y="${H-18}" text-anchor="middle" fill="${major?'#b2bfd1':'#7e8da3'}" font-size="11">${fmtHz(f)}</text>`;
+    }
   }
+
   const d=pathForCurve(points,px,py,points[0][0],points[points.length-1][0]);
+  document.getElementById(containerId).classList.add('squig-graph');
   document.getElementById(containerId).innerHTML=
-    `<svg viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#080f1b"/>${grid}<path d="${d}" fill="none" stroke="#66a3ff" stroke-width="2.5"/></svg>`;
+    `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Generated hybrid frequency response">`+
+      `<rect width="${W}" height="${H}" fill="#080f1b"/>`+
+      grid+
+      `<path d="${d}" fill="none" stroke="#66a3ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`+
+      `<text x="${L}" y="${H-3}" fill="#65758d" font-size="10">Hz · logarithmic</text>`+
+      `<text x="14" y="${T+2}" fill="#65758d" font-size="10" transform="rotate(-90 14 ${T+2})">dB</text>`+
+    `</svg>`;
 }
+
 
 
 /* ============================================================
