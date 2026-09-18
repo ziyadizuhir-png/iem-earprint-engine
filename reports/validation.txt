@@ -2,7 +2,7 @@ IEM EarPrint Engine validation report
 Dynamic preferred discovery: *.txt
 Dynamic target discovery: *.txt
 Independent preferred-response votes discovered: 8
-Targets discovered: 5
+Targets discovered: 6
 Vote rule: one IEM file = one vote.
 Preferred-response files are consumed directly; PEQ gains are not averaged.
 Master grid: IEF2025.txt

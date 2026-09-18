@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-09-18T08:34:34.076454+00:00",
+  "generated_utc": "2026-09-18T08:38:47.604200+00:00",
   "engine": "IEM EarPrint Engine 1.1.0",
   "dynamic_discovery": true,
   "preferred_glob": "*.txt",
@@ -20,9 +20,10 @@
     "IEF2025.txt",
     "JM1_B4.txt",
     "JM1_Robust.txt",
+    "Rtings Target [1].txt",
     "SoundGuys.txt"
   ],
-  "target_count": 5,
+  "target_count": 6,
   "low_frequency_reference": "IEF2025.txt",
   "alignment_bands_hz": [
     [
@@ -69,6 +70,9 @@
     "JM1_Robust__mask.txt": "900681ad9d8e1af1b91ad76d4bc49bd543e59e953ed9d9b1b89a520ae661db9b",
     "JM1_Robust__plus_earprint.txt": "7a382e7d4c3ddf79397f0f38f8021128ac13fbf24d12b684e884477f31d0e809",
     "JM1_Robust__robust_target.txt": "20b2db9dc6b5a9196c1e81145e2669a2f90347d2442494fac335aec190bc91ff",
+    "Rtings_Target_1__mask.txt": "55b74750615c607450013b4d4ad208c14cc2a1326deca888815bc36ebded5d4d",
+    "Rtings_Target_1__plus_earprint.txt": "e407c4fb827f453a9877944e459dd11c82187a773b41bdbd1ab7215a260d6a51",
+    "Rtings_Target_1__robust_target.txt": "8fc58dc4f0f8e5de5134232209c49f6550fc82bb066bd4f4efb7688440fd65de",
     "SoundGuys__mask.txt": "7dba2fa5108805577d6d11cfcf7f74e2eef1ff35f480ad4d369fde28fb534fd9",
     "SoundGuys__plus_earprint.txt": "e77f428095007ee7783ff1141cbe93b7c52ccf47a23ffe31fb4b9e7081063635",
     "SoundGuys__robust_target.txt": "7bca06e5bbfc5a3f53119598589ded0d5d757bf311f4a2c8a4e3e4619f05019b",
