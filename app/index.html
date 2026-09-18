@@ -550,6 +550,187 @@ select,input{
 @media(max-width:600px){
   .chart.squig-graph svg{min-width:0;}
 }
+
+
+/* ============================================================
+   BUILD / ACTIONS LOADING OVERLAY
+   ============================================================ */
+.buildOverlay{
+  position:fixed;
+  inset:0;
+  z-index:10000;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+  background:rgba(0,0,0,.72);
+  overscroll-behavior:contain;
+}
+.buildOverlay[hidden]{display:none!important}
+.buildPanel{
+  width:min(520px,100%);
+  background:#0e1624;
+  border:1px solid #2b3d59;
+  border-radius:15px;
+  box-shadow:0 18px 60px rgba(0,0,0,.45);
+  padding:18px;
+}
+.buildTitle{
+  font-size:18px;
+  font-weight:700;
+  margin-bottom:4px;
+}
+.buildMessage{font-size:14px;color:#dce7f8;margin-bottom:12px}
+.buildTrack{
+  height:12px;
+  border-radius:999px;
+  background:#0a1220;
+  border:1px solid #22314a;
+  overflow:hidden;
+}
+.buildBar{
+  height:100%;
+  width:0%;
+  border-radius:999px;
+  background:#66a3ff;
+  transition:width .35s ease;
+}
+.buildMeta{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  margin-top:8px;
+  color:#92a2ba;
+  font-size:12px;
+}
+.buildActions{margin-top:14px;display:flex;justify-content:flex-end;gap:8px}
+
+
+/* ============================================================
+   MINIMAL UI LAYER — v12
+   Graph geometry/rendering intentionally untouched.
+   ============================================================ */
+
+#runEngine[hidden]{
+  display:none!important;
+}
+
+.miniStats{
+  display:flex;
+  gap:8px;
+  margin:12px 0 4px;
+  flex-wrap:wrap;
+}
+
+.miniStat{
+  display:inline-flex;
+  align-items:baseline;
+  gap:7px;
+  padding:7px 10px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:rgba(10,18,31,.72);
+}
+
+.miniStatLabel{
+  color:var(--muted);
+  font-size:11px;
+  letter-spacing:.01em;
+}
+
+.miniStat strong{
+  font-size:14px;
+  font-variant-numeric:tabular-nums;
+}
+
+.miniStats + .cols{
+  margin-top:8px;
+}
+
+/* Reduce visual framing around management sections. */
+.cols > .card{
+  background:transparent;
+  border-color:transparent;
+  padding:4px 0;
+}
+
+.cols .section h2{
+  font-size:14px;
+  margin-bottom:7px;
+}
+
+#iems,#targets{
+  min-height:32px;
+}
+
+/* Cleaner visualizer header. */
+.visualizer-head{
+  align-items:center;
+}
+
+.visualizer-head .visualizer-subtitle{
+  font-size:11px;
+}
+
+.visualizer-head .viz-actions{
+  display:none;
+}
+
+/* Less chrome around non-graph explanatory/status elements. */
+.resultbar{
+  margin-top:8px;
+}
+
+.resultbar #targetStatus{
+  display:none;
+}
+
+.viz-footer{
+  display:none!important;
+}
+
+/* Hybrid remains functional, but reads as a compact tool rather than a
+   documentation panel. */
+#hybridChart{
+  margin-top:10px;
+}
+
+/* Remove excess vertical whitespace on small screens. */
+@media(max-width:600px){
+  .miniStats{
+    margin-top:8px;
+    gap:6px;
+  }
+
+  .miniStat{
+    padding:6px 9px;
+  }
+
+  .cols > .card{
+    padding:2px 0;
+  }
+
+  .visualizer-head .visualizer-subtitle{
+    font-size:10px;
+  }
+}
+
+/* v13: compact build progress overlay */
+.buildPanel{
+  width:min(460px,100%);
+  padding:16px;
+  border-radius:14px;
+}
+.buildTitle{font-size:17px}
+.buildMessage{font-size:13px;margin-bottom:10px}
+.buildTrack{height:10px}
+.buildMeta{font-size:11px}
+@media(max-width:600px){
+  .buildOverlay{padding:10px}
+  .buildPanel{padding:14px;border-radius:13px}
+  .buildTitle{font-size:16px}
+  .buildMessage{font-size:13px}
+}
 </style>
 </head>
 
@@ -594,13 +775,15 @@ select,input{
       </button>
 
 
-      <a
+      <button
+        type="button"
         id="runEngine"
-        class="btn primary"
-        target="_blank"
-        rel="noopener">
+        class="primary"
+        onclick="runEarPrint()"
+        hidden
+        aria-hidden="true">
         Run EarPrint
-      </a>
+      </button>
 
 
       <button
@@ -624,70 +807,43 @@ select,input{
   <div id="error"></div>
 
 
+  <div id="buildOverlay" class="buildOverlay" hidden aria-live="polite">
+    <div class="buildPanel" role="status" aria-label="EarPrint build progress">
+      <div class="buildTitle" id="buildTitle">EarPrint Build</div>
+      <div class="buildMessage" id="buildMessage">Preparing GitHub Actions…</div>
+      <div class="buildTrack">
+        <div id="buildBar" class="buildBar"></div>
+      </div>
+      <div class="buildMeta">
+        <span id="buildDetail">Waiting for GitHub…</span>
+        <span id="buildPercent">0%</span>
+      </div>
+      <div class="buildActions">
+        <button type="button" id="buildClose" onclick="hideBuildOverlay()" hidden>Close</button>
+      </div>
+    </div>
+  </div>
+
+
   <!-- ========================================================
        DASHBOARD
        ========================================================= -->
 
-  <div class="grid">
+  <div class="miniStats" aria-label="Repository summary">
 
-    <div class="card">
-
-      <div
-        id="iemCount"
-        class="num">
-        —
-      </div>
-
-      <div class="label">
-        Independent IEM votes
-      </div>
-
+    <div class="miniStat">
+      <span class="miniStatLabel">IEM tests</span>
+      <strong id="iemCount">—</strong>
     </div>
 
-
-    <div class="card">
-
-      <div
-        id="targetCount"
-        class="num">
-        —
-      </div>
-
-      <div class="label">
-        Targets
-      </div>
-
+    <div class="miniStat">
+      <span class="miniStatLabel">Targets</span>
+      <strong id="targetCount">—</strong>
     </div>
 
-
-    <div class="card">
-
-      <div
-        id="outputCount"
-        class="num">
-        —
-      </div>
-
-      <div class="label">
-        Robust outputs
-      </div>
-
-    </div>
-
-
-    <div class="card">
-
-      <div
-        id="buildState"
-        class="num">
-        —
-      </div>
-
-      <div class="label">
-        Build state
-      </div>
-
-    </div>
+    <!-- Keep these IDs for existing JS/status logic, but do not display them. -->
+    <span id="outputCount" hidden>—</span>
+    <span id="buildState" hidden>—</span>
 
   </div>
 
@@ -704,7 +860,7 @@ select,input{
       <div class="section">
 
         <h2>
-          Preferred IEMs
+          IEM Test Sources
         </h2>
 
         <div
@@ -749,11 +905,10 @@ select,input{
       <div>
         <h2 style="margin:0">Target Visualizer</h2>
         <div class="visualizer-subtitle">
-          Original target vs robust masked target. The blue curve is always the engine’s Robust Target (Masked).
+          Original vs Robust
         </div>
       </div>
       <div class="viz-actions">
-        <span class="status">Original + Robust Target (Masked)</span>
       </div>
     </div>
 
@@ -873,9 +1028,8 @@ select,input{
 
     </div>
 
-    <div class="viz-footer">
-      <span id="vizDataStatus">Loading target data…</span>
-      <span>Tap a graph point/area on Android for a frequency readout.</span>
+    <div class="viz-footer" aria-hidden="true">
+      <span id="vizDataStatus" hidden>Loading target data…</span>
     </div>
 
   </div>
@@ -892,12 +1046,7 @@ select,input{
 
 
     <div class="muted small">
-
-      Choose any discovered target as the lower region.
-      The selected target is preserved at/below the join;
-      Pure EarPrint is shifted above the join to make the
-      join continuous.
-
+      Target below join · Pure EarPrint above join
     </div>
 
 
@@ -976,285 +1125,7 @@ select,input{
   </div>
 
 
-  <!-- ========================================================
-       INFO
-       ========================================================= -->
-
-  <div class="card section">
-
-    <h2>
-      How this app works
-    </h2>
-
-    <div class="status">
-
-      Inputs live in
-      <b>input/preferred/</b>
-      and
-      <b>input/targets/</b>.
-
-      GitHub Actions runs the deterministic Python engine
-      and commits robust outputs/reports.
-
-      The web app reads public repository data without a
-      GitHub token.
-
-      A GitHub token is only required when adding or updating
-      an IEM or target through the app.
-
-    </div>
-
-  </div>
-
-
-</div>
-
-
-<!-- ==========================================================
-     MODAL
-     =========================================================== -->
-
-<div
-  id="modal"
-  class="modalBack"
-  hidden>
-
-
-  <div
-    class="modal card"
-    role="dialog"
-    aria-modal="true">
-
-
-    <div class="top">
-
-
-      <div>
-
-        <h2
-          id="modalTitle"
-          style="margin:0">
-
-          Add Input
-
-        </h2>
-
-
-        <div
-          id="modalHint"
-          class="status small">
-        </div>
-
-      </div>
-
-
-      <!-- DIRECT CLOSE:
-           Does NOT depend on closeModal() -->
-
-      <button
-        type="button"
-        id="closeModalButton"
-        onclick="document.getElementById('modal').setAttribute('hidden','');"
-        style="cursor:pointer">
-
-        Close
-
-      </button>
-
-
-    </div>
-
-
-    <!-- ======================================================
-         GITHUB ACCESS PANEL
-         ====================================================== -->
-
-    <div id="settingsPanel">
-
-
-      <div class="field">
-
-        <label>
-
-          Fine-grained GitHub token
-          (Contents: write for this repository)
-
-        </label>
-
-
-        <input
-          id="ghToken"
-          type="password"
-          autocomplete="off"
-          placeholder="github_pat_…">
-
-      </div>
-
-
-      <div
-        class="inline"
-        style="margin-top:10px">
-
-
-        <button
-          type="button"
-          class="primary"
-          onclick="saveToken()">
-
-          Use Token
-
-        </button>
-
-
-        <button
-          type="button"
-          onclick="clearToken()">
-
-          Clear
-
-        </button>
-
-
-      </div>
-
-
-      <div
-        class="status small"
-        style="margin-top:10px">
-
-        The token is kept only in this browser tab memory
-        and is not written into the repository.
-
-      </div>
-
-
-      <div
-        class="status small"
-        style="margin-top:6px">
-
-
-        <a
-          href="https://github.com/settings/personal-access-tokens/new"
-          target="_blank"
-          rel="noopener">
-
-          Create a fine-grained token on GitHub
-
-        </a>
-
-
-      </div>
-
-
-    </div>
-
-
-    <!-- ======================================================
-         ADD INPUT PANEL
-         ====================================================== -->
-
-    <div
-      id="addPanel"
-      hidden>
-
-
-      <div class="formrow">
-
-
-        <div class="field">
-
-          <label>
-            File
-          </label>
-
-
-          <input
-            id="addFile"
-            type="file"
-            accept=".txt,text/plain">
-
-        </div>
-
-
-        <div class="field">
-
-          <label>
-            Repository filename
-          </label>
-
-
-          <input
-            id="addName"
-            type="text"
-            placeholder="Example.txt">
-
-        </div>
-
-
-      </div>
-
-
-      <div
-        id="addValidation"
-        class="status small">
-
-        Choose a TXT file.
-        The app will validate finite values and strictly
-        ascending frequencies before saving.
-
-      </div>
-
-
-      <div
-        class="inline"
-        style="margin-top:10px">
-
-
-        <button
-          type="button"
-          class="primary"
-          onclick="saveInputToGitHub()">
-
-          Save to GitHub
-
-        </button>
-
-
-        <!-- DIRECT CANCEL -->
-
-        <button
-          type="button"
-          onclick="document.getElementById('modal').setAttribute('hidden','');">
-
-          Cancel
-
-        </button>
-
-
-      </div>
-
-
-      <div
-        class="status small"
-        style="margin-top:10px">
-
-        Saving commits one file into
-        <b>input/preferred/</b>
-        or
-        <b>input/targets/</b>.
-
-        Your existing engine workflow then rebuilds
-        results automatically.
-
-      </div>
-
-
-    </div>
-
-
-  </div>
-
-</div>
+  <div id="infoPanel" hidden aria-hidden="true"></div>
 
 
 <script>
@@ -1317,9 +1188,13 @@ if(
   API endpoints.
 */
 
-const API =
+const API_ROOT =
   'https://api.github.com/repos/' +
-  repo +
+  repo;
+
+
+const API =
+  API_ROOT +
   '/contents/';
 
 
@@ -2701,6 +2576,45 @@ async function ghAuth(
 
 }
 
+/* ============================================================
+   AUTHENTICATED REPOSITORY-LEVEL API
+   ============================================================ */
+
+async function ghAuthRoot(path, options={}){
+
+  if(!githubToken){
+    throw Error(
+      'GitHub token required. Open GitHub Access first.'
+    );
+  }
+
+  const response = await fetch(
+    API_ROOT + path,
+    {
+      ...options,
+      headers:{
+        Accept:'application/vnd.github+json',
+        'X-GitHub-Api-Version':'2022-11-28',
+        Authorization:'Bearer ' + githubToken,
+        ...(options.headers || {})
+      }
+    }
+  );
+
+  let data=null;
+  try{ data=await response.json(); }catch(_){ }
+
+  if(!response.ok){
+    throw Error(
+      (data && data.message) ||
+      ('GitHub API ' + response.status)
+    );
+  }
+
+  return data;
+}
+
+
 
 /* ============================================================
    GET EXISTING FILE SHA
@@ -2760,225 +2674,107 @@ async function fileSha(path){
 
 async function saveInputToGitHub(){
 
+  if(window.__buildBusy)
+    return;
+
   try{
 
     const file =
-      document.getElementById(
-        'addFile'
-      ).files[0];
+      document.getElementById('addFile').files[0];
 
-
-    if(!file){
-
-      throw Error(
-        'Choose a TXT file first.'
-      );
-
-    }
-
+    if(!file)
+      throw Error('Choose a TXT file first.');
 
     let filename =
-      document.getElementById(
-        'addName'
-      ).value.trim();
+      document.getElementById('addName').value.trim();
 
+    if(!filename)
+      filename = file.name;
 
-    if(!filename){
+    if(!/\.txt$/i.test(filename))
+      filename += '.txt';
 
-      filename =
-        file.name;
+    filename = filename
+      .replace(/[^A-Za-z0-9._-]+/g,'_')
+      .replace(/^\.+/,'')
+      .replace(/\.{2,}/g,'.');
 
-    }
+    if(!filename || filename.toLowerCase()==='txt')
+      throw Error('Invalid filename.');
 
+    const text = await file.text();
+    const parsedCurve = parseXY(text);
 
-    if(
-      !/\.txt$/i.test(
-        filename
-      )
-    ){
-
-      filename +=
-        '.txt';
-
-    }
-
-
-    filename =
-      filename
-
-        .replace(
-          /[^A-Za-z0-9._-]+/g,
-          '_'
-        )
-
-        .replace(
-          /^\.+/,
-          ''
-        )
-
-        .replace(
-          /\.{2,}/g,
-          '.'
-        );
-
-
-    if(
-      !filename ||
-      filename.toLowerCase() === 'txt'
-    ){
-
-      throw Error(
-        'Invalid filename.'
-      );
-
-    }
-
-
-    const text =
-      await file.text();
-
-
-    /*
-      Validate curve.
-    */
-
-    const parsedCurve =
-      parseXY(
-        text
-      );
-
-    document.getElementById(
-      'addValidation'
-    ).textContent =
-      'Validated ' +
-      parsedCurve.length.toLocaleString() +
-      ' points · ' +
-      parsedCurve[0][0] +
-      '–' +
+    document.getElementById('addValidation').textContent =
+      'Validated ' + parsedCurve.length.toLocaleString() +
+      ' points · ' + parsedCurve[0][0] + '–' +
       parsedCurve[parsedCurve.length-1][0] +
-      ' Hz. Saving…';
+      ' Hz. Saving to GitHub…';
 
+    const folder = addKind === 'iem' ? 'preferred' : 'targets';
+    const path = 'input/' + folder + '/' + filename;
 
-    const folder =
-      addKind === 'iem'
-        ? 'preferred'
-        : 'targets';
-
-
-    const path =
-      'input/' +
-      folder +
-      '/' +
-      filename;
-
-
-    const existingSha =
-      await fileSha(
-        path
-      );
-
+    window.__buildBusy = true;
+    const buildClose = document.getElementById('buildClose');
+    if(buildClose) buildClose.hidden = true;
+    setBuildProgress(
+      5,
+      'Uploading to GitHub…',
+      (addKind === 'iem' ? 'IEM' : 'Target') + ' · ' + filename
+    );
+    const existingSha = await fileSha(path);
 
     const body = {
-
       message:
-
-        (
-          existingSha
-            ? 'Update '
-            : 'Add '
-        ) +
-
-        (
-          addKind === 'iem'
-            ? 'IEM '
-            : 'target '
-        ) +
-
+        (existingSha ? 'Update ' : 'Add ') +
+        (addKind === 'iem' ? 'IEM ' : 'target ') +
         filename,
-
-
-      content:
-
-        b64(
-          text.endsWith('\n')
-            ? text
-            : text + '\n'
-        ),
-
-
-      branch:
-        'main'
-
+      content:b64(text.endsWith('\n') ? text : text + '\n'),
+      branch:'main'
     };
 
+    if(existingSha)
+      body.sha = existingSha;
 
-    if(existingSha){
-
-      body.sha =
-        existingSha;
-
-    }
-
-
-    await ghAuth(
+    const commitResult = await ghAuth(
       path,
-      {
-
-        method:
-          'PUT',
-
-        body:
-          JSON.stringify(
-            body
-          )
-
-      }
+      {method:'PUT',body:JSON.stringify(body)}
     );
 
+    const commitSha =
+      commitResult &&
+      commitResult.commit &&
+      commitResult.commit.sha;
 
     closeModal();
-
-
     showErr('');
 
+    setBuildProgress(
+      12,
+      'Upload complete. Waiting for GitHub Actions…',
+      'Commit saved · waiting for build run'
+    );
 
-    document.getElementById(
-      'buildState'
-    ).textContent =
-      'SAVED';
-
-
-    document.getElementById(
-      'targetStatus'
-    ).textContent =
-      'Saved ' +
-      path +
-      ' · GitHub Actions should rebuild automatically.';
-
-
-    await loadAll();
+    await waitForEarprintBuild({
+      expectedSha:commitSha || '',
+      sourceLabel:
+        (addKind === 'iem' ? 'IEM' : 'target') +
+        ' upload'
+    });
 
   }catch(error){
 
-    document.getElementById(
-      'addValidation'
-    ).textContent =
+    hideBuildOverlay();
+
+    document.getElementById('addValidation').textContent =
       error.message;
 
-
-    document.getElementById(
-      'addValidation'
-    ).className =
+    document.getElementById('addValidation').className =
       'status small warn';
 
   }
 
 }
-
-
-/* ============================================================
-   LOAD REPOSITORY
-   ============================================================ */
 
 
 
@@ -3064,6 +2860,262 @@ async function deleteTarget(filename){
 
 
 
+/* ============================================================
+   GITHUB ACTIONS: MANUAL RUN + BUILD PROGRESS
+   ============================================================ */
+
+function setBuildProgress(percent, message, detail){
+
+  const overlay=document.getElementById('buildOverlay');
+  const bar=document.getElementById('buildBar');
+  const percentEl=document.getElementById('buildPercent');
+  const msg=document.getElementById('buildMessage');
+  const detailEl=document.getElementById('buildDetail');
+
+  overlay.hidden=false;
+  bar.style.width=Math.max(0,Math.min(100,percent))+'%';
+  percentEl.textContent=Math.round(percent)+'%';
+  msg.textContent=message || 'Working…';
+  detailEl.textContent=detail || 'Waiting for GitHub Actions…';
+
+}
+
+function hideBuildOverlay(){
+  document.getElementById('buildOverlay').hidden=true;
+  document.getElementById('buildClose').hidden=true;
+  window.__buildBusy=false;
+  const runButton=document.getElementById('runEngine');
+  if(runButton){
+    runButton.disabled=false;
+    runButton.textContent='Run EarPrint';
+  }
+}
+
+function finishBuildOverlay(success, message, detail){
+
+  setBuildProgress(
+    success ? 100 : 100,
+    message,
+    detail
+  );
+
+  document.getElementById('buildClose').hidden=false;
+  window.__buildBusy=false;
+
+  const runButton=document.getElementById('runEngine');
+  if(runButton){
+    runButton.disabled=false;
+    runButton.textContent='Run EarPrint';
+  }
+
+}
+
+async function fetchWorkflowRuns(){
+
+  const url =
+    'https://api.github.com/repos/' +
+    repo +
+    '/actions/workflows/main.yml/runs?branch=main&per_page=20&_=' +
+    Date.now();
+
+  const response = await fetch(url,{cache:'no-store'});
+  if(!response.ok)
+    throw Error('GitHub Actions API '+response.status);
+  return response.json();
+}
+
+async function fetchWorkflowRun(runId){
+
+  const url =
+    'https://api.github.com/repos/' +
+    repo +
+    '/actions/runs/' +
+    runId + '?_=' + Date.now();
+
+  const response=await fetch(url,{cache:'no-store'});
+  if(!response.ok)
+    throw Error('GitHub Actions run API '+response.status);
+  return response.json();
+}
+
+function isoMs(value){
+  const t=Date.parse(value || '');
+  return Number.isFinite(t) ? t : 0;
+}
+
+async function waitForEarprintBuild({expectedSha='',sourceLabel='EarPrint build',manual=false}={}){
+
+  if(window.__buildBusy)
+    return;
+
+  window.__buildBusy=true;
+
+  const closeButton=document.getElementById('buildClose');
+  closeButton.hidden=true;
+  setBuildProgress(8,'Saving complete. Starting build…',sourceLabel);
+
+  const startedAt=Date.now();
+  const timeoutAt=startedAt + 7*60*1000;
+
+  document.getElementById('buildState').textContent='QUEUED';
+
+  try{
+
+    let run=null;
+
+    /* Find the workflow run created by this input commit or manual dispatch. */
+    while(Date.now()<timeoutAt && !run){
+
+      const data=await fetchWorkflowRuns();
+      const runs=Array.isArray(data.workflow_runs)
+        ? data.workflow_runs
+        : [];
+
+      if(expectedSha){
+        run=runs.find(r =>
+          String(r.head_sha || '') === String(expectedSha)
+        ) || null;
+      }else if(manual){
+        run=runs.find(r =>
+          r.event === 'repository_dispatch' &&
+          isoMs(r.created_at) >= startedAt - 8000
+        ) || null;
+      }
+
+      if(!run){
+        setBuildProgress(
+          20,
+          'Waiting for GitHub Actions to start…',
+          expectedSha ? 'Commit saved · waiting for workflow run' : 'Dispatch sent · waiting for workflow run'
+        );
+        await new Promise(r=>setTimeout(r,5000));
+      }
+    }
+
+    if(!run){
+      finishBuildOverlay(
+        false,
+        'Build run was not detected.',
+        'The file/command was saved, but GitHub Actions did not appear within 7 minutes.'
+      );
+      document.getElementById('buildState').textContent='UNKNOWN';
+      return;
+    }
+
+    while(Date.now()<timeoutAt){
+
+      const current=await fetchWorkflowRun(run.id);
+      const status=current.status || 'queued';
+      const conclusion=current.conclusion || '';
+
+      if(status === 'queued' || status === 'waiting' || status === 'pending'){
+        document.getElementById('buildState').textContent='QUEUED';
+        setBuildProgress(35,'GitHub Actions queued…','Run #'+current.run_number);
+      }else if(status === 'in_progress'){
+        document.getElementById('buildState').textContent='BUILDING';
+        setBuildProgress(65,'EarPrint engine is running…','Run #'+current.run_number);
+      }else if(status === 'completed'){
+
+        if(conclusion === 'success'){
+
+          document.getElementById('buildState').textContent='PASS';
+          setBuildProgress(100,'EarPrint build completed.','Run #'+current.run_number+' · success');
+          await loadAll();
+          document.getElementById('buildState').textContent='PASS';
+          document.getElementById('targetStatus').textContent =
+            sourceLabel + ' · build completed successfully.';
+          finishBuildOverlay(true,'EarPrint build completed.','Run #'+current.run_number+' · success');
+          return;
+
+        }
+
+        const failText =
+          'Run #'+current.run_number+' · '+(conclusion || 'failed');
+
+        document.getElementById('buildState').textContent='FAIL';
+        finishBuildOverlay(false,'EarPrint build failed.',failText);
+        showErr(
+          'GitHub Actions failed (' +
+          (conclusion || 'unknown') + '). Open GitHub Actions to inspect the run.'
+        );
+        return;
+      }
+
+      await new Promise(r=>setTimeout(r,5000));
+    }
+
+    document.getElementById('buildState').textContent='TIMEOUT';
+    finishBuildOverlay(
+      false,
+      'Build is taking longer than expected.',
+      'The GitHub Actions run is still in progress. You can close this and Refresh later.'
+    );
+
+  }catch(error){
+
+    document.getElementById('buildState').textContent='ERROR';
+    finishBuildOverlay(
+      false,
+      'Could not monitor GitHub Actions.',
+      error.message
+    );
+
+  }
+
+}
+
+async function runEarPrint(){
+
+  if(window.__buildBusy)
+    return;
+
+  if(!githubToken){
+    showErr('GitHub token required to run EarPrint from the app. Open GitHub Access first.');
+    openSettings();
+    return;
+  }
+
+  if(!window.confirm(
+    'Run the EarPrint engine now?\n\nGitHub Actions will rebuild the current outputs and reports.'
+  )){
+    return;
+  }
+
+  try{
+
+    const runButton=document.getElementById('runEngine');
+    runButton.disabled=true;
+    runButton.textContent='Starting…';
+
+    setBuildProgress(12,'Starting GitHub Actions…','Manual EarPrint run');
+    document.getElementById('buildState').textContent='STARTING';
+
+    await ghAuthRoot(
+      '/dispatches',
+      {
+        method:'POST',
+        body:JSON.stringify({
+          event_type:'run-earprint'
+        })
+      }
+    );
+
+    await waitForEarprintBuild({
+      manual:true,
+      sourceLabel:'Manual EarPrint run'
+    });
+
+  }catch(error){
+
+    document.getElementById('buildState').textContent='ERROR';
+    finishBuildOverlay(false,'Could not start EarPrint build.',error.message);
+    showErr(error.message);
+
+  }
+
+}
+
+
 async function loadAll(){
 
   showErr('');
@@ -3106,14 +3158,14 @@ async function loadAll(){
 
 
   /*
-    Run engine link.
+    Run engine is a real in-app action.
   */
 
-  document.getElementById(
-    'runEngine'
-  ).href =
-    GH +
-    '/actions/workflows/main.yml';
+  const runButton = document.getElementById('runEngine');
+  runButton.disabled = !!window.__buildBusy;
+  runButton.textContent = window.__buildBusy
+    ? 'Building…'
+    : 'Run EarPrint';
 
 
   try{
