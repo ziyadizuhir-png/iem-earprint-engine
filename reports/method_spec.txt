@@ -2,6 +2,8 @@ METHOD SPECIFICATION LOCK
 Source: user-supplied General_Prompt_EarPrint_8 + explicit math-lock definitions.
 
 This repository treats the supplied prompt as the mathematical source of truth.
+The lower personal-domain boundary uses a 1/3-octave sin-squared transition.
+The upper personal-domain boundary remains a 1/4-octave sin-squared transition.
 No undocumented robust-mask constants are introduced.
 When repeatability data are absent, the prompt's conditional RepeatabilityFloor term is inactive.
 Hybrid generation is on demand; any discovered target may be selected without changing robust-target mathematics.

@@ -1,6 +1,7 @@
 IEM EarPrint Engine validation / specification conformance
 Status: PASS
 Specification: General_Prompt_EarPrint_8_MATH_LOCKED.txt
+Specification addendum: General_Prompt_EarPrint_8_MATH_LOCKED_boundary_addendum.txt
 
 Independent IEM votes discovered: 8
 Targets discovered: 7
@@ -22,7 +23,7 @@ TotalUncertainty: max(CrossIEM_MAD, AlignmentUncertainty, RepeatabilityFloor).
 Retention: abs(Centre)/(abs(Centre)+TotalUncertainty).
 RawMask: Centre*Retention.
 Mask smoothing: exactly one Gaussian pass inside strict personal domain.
-Mask taper: fixed quarter-octave sin-squared boundaries.
+Mask taper: sin-squared boundaries; lower/start transition is 1/3 octave and upper/end transition is 1/4 octave.
 Mask forced to zero at/below 1 kHz and at/above 12 kHz.
 No final normalization, manual tonal edit, arbitrary gain cap or extra tilt.
 Dynamic targets receive robust mask + robust target outputs; hybrids are generated on demand from any selected target.
