@@ -1,0 +1,90 @@
+MATH LOCK ADDENDUM — PERSONAL-DOMAIN BOUNDARY TAPER
+
+Version: 1.0
+Date: 2026-09-19
+
+STATUS
+This addendum changes only the personal-domain boundary transition rule.
+All other EarPrint mathematics remain locked.
+
+LOWER / START PERSONAL-DOMAIN BOUNDARY
+Start frequency:
+  1,000 Hz
+
+Transition width:
+  1/3 octave
+
+Transition end:
+  1,000 * 2^(1/3)
+  = 1,259.9210498948732 Hz
+
+Weight:
+  w(f) = sin²( (π/2) * log2(f / 1000) / (1/3) )
+
+Domain:
+  f <= 1,000 Hz:
+      w = 0
+
+  1,000 Hz < f < 1,259.9210498948732 Hz:
+      use the sin² transition
+
+  f >= 1,259.9210498948732 Hz
+  and below the upper transition:
+      w = 1
+
+UPPER / END PERSONAL-DOMAIN BOUNDARY
+The upper boundary remains unchanged at 1/4 octave.
+
+Start of upper transition:
+  12,000 / 2^(1/4) Hz
+
+Weight:
+  w(f) = cos²( (π/2) * log2(f / upper_start) / (1/4) )
+
+Domain:
+  f >= 12,000 Hz:
+      w = 0
+
+UNCHANGED MATHEMATICS
+This boundary change does NOT change:
+- authoritative preferred-response input
+- one independent IEM = one equal vote
+- log-frequency interpolation
+- three alignment scenarios
+- per-IEM scenario centre
+- per-IEM alignment uncertainty
+- target-specific Delta_i
+- CrossIEM_MAD
+- AlignmentUncertainty
+- TotalUncertainty
+- Retention
+- RawMask
+- one Gaussian pass
+- Gaussian sigma/radius/padding
+- exact LF reference at/below 1 kHz
+- exact restoration of BaseTarget outside the personal domain
+- display-only high-frequency extension
+- hybrid mathematics
+
+VALIDATION BASIS
+The candidate 1/3-octave lower transition was tested against the current
+dataset structure of 8 independent IEM votes and 7 discovered targets.
+
+Diagnostics showed:
+- lower transition continuity is preserved
+- local transition curvature was reduced on all 7 actual RobustTarget curves
+- the boundary dip around 1.1–1.2 kHz was reduced most clearly for Harman and Rtings
+- corrections converge back to the same post-transition mask
+- no IEM or target input data are changed by this rule
+
+REPOSITORY CONFIGURATION
+The live configuration is:
+
+robust_mask:
+  boundary_taper:
+    method: sin2
+    lower_transition_octaves: 0.3333333333333333
+    upper_transition_octaves: 0.25
+
+SOURCE / ENGINE CONSISTENCY
+The engine and configuration must be updated together with this addendum.
