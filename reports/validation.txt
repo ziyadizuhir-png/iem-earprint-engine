@@ -3,7 +3,7 @@ Status: PASS
 Specification: General_Prompt_EarPrint_8_MATH_LOCKED.txt
 
 Independent IEM votes discovered: 8
-Targets discovered: 7
+Targets discovered: 8
 One IEM file = one equal vote.
 Interpolation: log-frequency.
 Alignment bands: [(200.0, 1000.0), (200.0, 500.0), (500.0, 1000.0)]
