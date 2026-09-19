@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-09-19T06:57:49.503352+00:00",
+  "generated_utc": "2026-09-19T09:09:22.058989+00:00",
   "engine": "IEM EarPrint Engine 3.1.0",
   "specification": "General_Prompt_EarPrint_8_MATH_LOCKED.txt",
   "specification_addendum": "General_Prompt_EarPrint_8_MATH_LOCKED_boundary_addendum.txt",
@@ -108,6 +108,6 @@
     "Sonarworks_Target__robust_target.txt": "567144a0202e44bbd5c131e192844d8d7d38d28ae0da9a59bb713e6f2a7cb6a8",
     "SoundGuys__mask.txt": "c5b355feb7153f9d91f793936bc64ab98d0211f033227e8c72ed067dd0acecc6",
     "SoundGuys__robust_target.txt": "883a7f1429923cb02463eb33c4fd2a640d07aca4a36ccd3a1098a03ae9761e5d",
-    "pure_earprint_dynamic.txt": "80b984484ba6eb3240ca11e07eb2dd3eb79bf0be53157a6a0a8255f8eb6d7d15"
+    "pure_earprint_dynamic.txt": "cb2033197d88c25ef4448740f260bd57375ae597435acbea36b652434dfc52d8"
   }
 }
