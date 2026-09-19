@@ -2,8 +2,8 @@ IEM EarPrint change report
 Previous pure EarPrint available: True
 Current pure EarPrint available: True
 Matched points: 480
-RMS change (dB): 0.1512669202342785
-Maximum absolute change (dB): 0.4243228417780003
+RMS change (dB): 7.901893340842657e-14
+Maximum absolute change (dB): 1.0089706847793423e-12
 
 A new build recalculates the entire EarPrint from the current input/preferred set.
 A removed target/IEM cannot leave stale generated TXT because generated TXT outputs are cleared before each build.
