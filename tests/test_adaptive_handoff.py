@@ -21,30 +21,28 @@ class TestAdaptiveHandoff(unittest.TestCase):
             span_octaves=0.5,
         )
         self.assertTrue(info["c1_slope_match"])
+        self.assertTrue(info["bridge_curvature_stable"])
         self.assertLessEqual(info["overshoot_db"], 1e-8)
         self.assertLessEqual(info["undershoot_db"], 1e-8)
         self.assertFalse(info["slope_reversal"])
         self.assertEqual(info["artificial_extrema_count"], 0)
 
-    def test_nominal_compatible_curve_is_unchanged(self):
+    def test_nominal_compatible_preserves_base_target_through_anchor(self):
         freq = np.geomspace(800.0, 2000.0, 241)
         x = np.log2(freq / 1000.0)
         target = 60.0 + 2.0 * x
         masked = target + 0.01 * x
 
-        ok, diag = nominal_seam_compatible(
-            freq, target, masked, nominal_hz=1000.0
-        )
+        ok, diag = nominal_seam_compatible(freq, target, masked, nominal_hz=1000.0)
         self.assertTrue(ok)
         self.assertTrue(diag["slope_magnitude_match_pass"])
         self.assertTrue(diag["curvature_stable"])
 
         out, report = adaptive_masked_handoff(
-            freq, target, masked,
-            nominal_hz=1000.0,
-            domain_end_hz=2000.0,
+            freq, target, masked, nominal_hz=1000.0, domain_end_hz=2000.0
         )
-        np.testing.assert_allclose(out, masked, atol=0.0, rtol=0.0)
+        np.testing.assert_allclose(out[freq <= 1000.0], target[freq <= 1000.0], atol=0.0, rtol=0.0)
+        np.testing.assert_allclose(out[freq > 1000.0], masked[freq > 1000.0], atol=0.0, rtol=0.0)
         self.assertEqual(report["status"], "NORMAL_HANDOFF")
 
     def test_nominal_slope_magnitude_mismatch_is_rejected(self):
@@ -53,13 +51,11 @@ class TestAdaptiveHandoff(unittest.TestCase):
         target = 60.0 + 2.0 * x
         masked = 60.0 + 2.5 * x
 
-        ok, diag = nominal_seam_compatible(
-            freq, target, masked, nominal_hz=1000.0
-        )
+        ok, diag = nominal_seam_compatible(freq, target, masked, nominal_hz=1000.0)
         self.assertFalse(ok)
         self.assertFalse(diag["slope_magnitude_match_pass"])
 
-    def test_incompatible_nominal_seam_uses_earliest_valid_adaptive_bridge(self):
+    def test_incompatible_nominal_seam_uses_earliest_valid_h_and_best_e(self):
         freq = np.geomspace(1000.0, 3000.0, 481)
         x = np.log2(freq / 1000.0)
         target = 60.0 + 2.0 * x
@@ -82,6 +78,8 @@ class TestAdaptiveHandoff(unittest.TestCase):
         self.assertGreater(e, h)
         self.assertGreaterEqual(np.log2(e / h), 0.125)
         self.assertLessEqual(np.log2(e / h), 0.8)
+        self.assertGreaterEqual(report["candidate_count"], 1)
+        self.assertEqual(report["selected_candidate_rank"], 1)
 
         low = freq <= h
         high = freq > e
@@ -89,6 +87,7 @@ class TestAdaptiveHandoff(unittest.TestCase):
         np.testing.assert_allclose(out[high], masked[high], atol=1e-10)
 
         self.assertTrue(report["c1_slope_match"])
+        self.assertTrue(report["bridge_curvature_stable"])
         self.assertTrue(report["destination_slope_stable"])
         self.assertTrue(report["destination_curvature_stable"])
         self.assertTrue(report["continuity_pass"])
