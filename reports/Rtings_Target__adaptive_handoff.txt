@@ -10,6 +10,10 @@ endpoint_masked_slope_db_per_octave: 6.9922852270163105
 transition_secant_db_per_octave: 3.075553550132272
 endpoint_slope_mismatch_db_per_octave: 6.500220557295414
 endpoint_to_secant_slope_ratio: 2.2735046270664316
+candidate_count: 1
+selected_candidate_rank: 1
+candidate_score_normalized_endpoint_mismatch: 1.2735046270664316
+candidate_score_transition_width_octaves: 0.7916666666666723
 curvature_stable: True
 destination_slope_stable: True
 destination_curvature_stable: True

@@ -18,6 +18,8 @@ oscillation_pass: True
 slope_reversal_pass: True
 c1_slope_match: True
 nominal_seam_compatible: True
+candidate_count: 0
+selected_candidate_rank: None
 reason: local_geometric_shape_test
 slope_reversal: False
 artificial_extrema_count: 0
