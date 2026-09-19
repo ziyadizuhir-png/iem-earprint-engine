@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-09-19T15:02:11.092494+00:00",
+  "generated_utc": "2026-09-19T15:03:01.886396+00:00",
   "engine": "IEM EarPrint Engine 3.1.0",
   "specification": "General_Prompt_EarPrint_8_MATH_LOCKED.txt",
   "specification_addendum": "General_Prompt_EarPrint_8_MATH_LOCKED_boundary_addendum.txt",
@@ -8,11 +8,11 @@
   "target_glob": "*.txt",
   "preferred_votes": [
     "Ceramics_Ultra.txt",
-    "FOCUS_Vocal.txt",
     "Galaxy_Buds2_Pro.txt",
     "Pudding.txt",
     "Svanar_Wireless_Jr.txt",
     "Timeless.txt",
+    "Uploaded Tforce yuanli EQ Target.txt",
     "WF1000XM4.txt"
   ],
   "independent_vote_count": 7,
@@ -77,11 +77,11 @@
   "output_points": 480,
   "input_sha256": {
     "input/preferred/Ceramics_Ultra.txt": "a6c13274956a61eb432d42ef2f03d793361e3c77f82871884b245b5ed4b18e1a",
-    "input/preferred/FOCUS_Vocal.txt": "872765f55f6ee528c946e6093171f944a0defee6db92e1fda1b0a784169d68fe",
     "input/preferred/Galaxy_Buds2_Pro.txt": "f3b3563c61bc6aa73c257ac03eb34a5d317e8480701e242dbe3c4c40d92ec7ae",
     "input/preferred/Pudding.txt": "718c6d5dbd046538a8d1d778ceb5e2a9300742cdb7e883f9fd607a76ecf970e1",
     "input/preferred/Svanar_Wireless_Jr.txt": "0b08a952b213ba26fc7582873c592e680b8ddc0b15614574fbcc817440a6fae4",
     "input/preferred/Timeless.txt": "ea37f7cd364d4e85c9fd6630f95192a4470f68e488415822fba5fe21e948b467",
+    "input/preferred/Uploaded Tforce yuanli EQ Target.txt": "8d3f240cc61f2486f3791ccaae8895b760a59ae64734b5b39fb79c9190369484",
     "input/preferred/WF1000XM4.txt": "b427498d18eac84d61904fc007468107952debf2612306d6afb69206e18e6b69",
     "input/targets/Harman_IE_2019_v2_Target.txt": "fc0e6fb645cda1d724852c6a91c2cd97236c2bdff56512015596e3231753ace2",
     "input/targets/IEF2025.txt": "399e5129d80087ff4330e1f75da505f9799fe0cddc28b3a34aaaf68eef5b87d8",
@@ -92,20 +92,20 @@
     "input/targets/_JM-1_DF_Tilt__-1dB_Oct_B_4dB_Target.txt": "153a4cd5046eef6e75dad142899805cc77be4077faec770825d1cbc55afaa7df"
   },
   "output_sha256": {
-    "Harman_IE_2019_v2_Target__mask.txt": "4985196b3320d94e22d88f9f3126fe8ea5551b081027aba217e0baaa69a986f1",
-    "Harman_IE_2019_v2_Target__robust_target.txt": "b81f5c99296fab3a87ef4722d68d7db0672a48d92ee306a205e59400c570d4ce",
-    "Headphones.com_IEM_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "e9ff755807f18d0730954603ac572d7ed73a1c7ddb649ed29104b5c8c004d724",
-    "Headphones.com_IEM_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "cf2e5b855fd25adad82350bd2b8fa2789efc626683e93ddb71b590fb384f0976",
-    "IEF2025__mask.txt": "3e8f05844f0e2399776807f26fe0bb6d8860c96748d926f06e3d6aea9c31e8c9",
-    "IEF2025__robust_target.txt": "df132e9db34898a6b2b6e8c90fa492e911c52f1634a06dd0fc30149be05c6e37",
-    "JM-1_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "08e459cf9cb3d7cf36a92ec5001300435b9e6a1e834d9e271bf5dde686afbf0b",
-    "JM-1_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "008fb09186ab6773efe61bf13f02a92b009d8152f9210e6fea4776592d219b89",
-    "Rtings_Target__mask.txt": "512bb37c88dd9d208dbd617b627f8b4162495a707d2f7dec627bc2eb2ecd107a",
-    "Rtings_Target__robust_target.txt": "9d48668043a7839e62ed5280d9740342172239afc42d611e5cdd559b65bb698d",
-    "Sonarworks_Target__mask.txt": "51d4cdc5ce7dd93a0a7b94f74eb5e15e4772aa3147bfe2849e09f41651c5d179",
-    "Sonarworks_Target__robust_target.txt": "9691ace69a9081aae8d269c3836c747257983cb2b2bffb65378e9b1c55ee9a94",
-    "SoundGuys__mask.txt": "36fc197781f2849dce7522f1768a81839e46753403eaccc172dcc165f473fca7",
-    "SoundGuys__robust_target.txt": "eaa3b389a7a10b9e16d1ff581aa969c8de9d4adca5aada7e33cd1037d620c11f",
-    "pure_earprint_dynamic.txt": "a1758e25f12f893992300debc4df98cf83a85b5313cbec7a4b211a9ce9cf37aa"
+    "Harman_IE_2019_v2_Target__mask.txt": "9c4907ceed34940d1de9cbda2d86bd05c7507c803636ec19f4fc58a471685e63",
+    "Harman_IE_2019_v2_Target__robust_target.txt": "29a87f53c208f3f2c44cafcbc20c353b3c7fa611f28ba43031c4c8345bfea25f",
+    "Headphones.com_IEM_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "a19d85cb1e29b7017a043a7b09d7e823a0a57ae3a25cb02b4e70ff34a389ceae",
+    "Headphones.com_IEM_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "0cc7491e7db39d2557fe1f59fb3d5d6a668585fc1d932831e85e1dfb0884ca0b",
+    "IEF2025__mask.txt": "d9e97679065bac258fcc162165f9ef2c2d18320b4b89bb02ffa98059fadba3ae",
+    "IEF2025__robust_target.txt": "9caebb14d07c8e5f3c7be6edc5c9f38ed715c5071cef808feafaa702f1ea64f9",
+    "JM-1_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "6b564507f9503e042fe414dfd7540d5b26e027fb87806634765cc0f1423f7850",
+    "JM-1_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "e1e06bb877dd4664ff51939cf55c75ffba390724944d6cb754b9814251decf7c",
+    "Rtings_Target__mask.txt": "f81b70b7d492d9f82cf4b15e41164bf87b83c62d7319bc8e10f2dcef50304a95",
+    "Rtings_Target__robust_target.txt": "9f78b0db6255f3089085921d179ce116c322570bbef4130fcdecd1149b3955d8",
+    "Sonarworks_Target__mask.txt": "210eafc7562b27267744e0f843d4bd4116e7d4eee1d8a37d323a63d6e711839a",
+    "Sonarworks_Target__robust_target.txt": "aa3c8589c86e5d1205d2460c6bdb2af7cb7ef406b76dea4e62c2d37b358f8c0b",
+    "SoundGuys__mask.txt": "016fea35992137b38295124d771abed4f30dc5075a834802ca23f8eb0d96db7a",
+    "SoundGuys__robust_target.txt": "353ebce0dfe4a322e405feba89da4b3b4e46cbacca81cd1b3eadd1401c024e18",
+    "pure_earprint_dynamic.txt": "5c9e9e1022b2556c8bca529ded142167aaddd4fce1495162538abf2d319f1910"
   }
 }
