@@ -23,7 +23,8 @@ TotalUncertainty: max(CrossIEM_MAD, AlignmentUncertainty, RepeatabilityFloor).
 Retention: abs(Centre)/(abs(Centre)+TotalUncertainty).
 RawMask: Centre*Retention.
 Mask smoothing: exactly one Gaussian pass inside strict personal domain.
-Mask taper: sin-squared boundaries; lower/start transition is 1/3 octave and upper/end transition is 1/4 octave.
+Mask taper: sin-squared boundaries; lower/start transition is 1/3 octave and upper/end transition is 1/4 octave before adaptive handoff.
 Mask forced to zero at/below 1 kHz and at/above 12 kHz.
+Adaptive handoff preserves the base target to the selected handoff and uses the masked EarPrint after the validated monotonic bridge.
 No final normalization, manual tonal edit, arbitrary gain cap or extra tilt.
 Dynamic targets receive robust mask + robust target outputs; hybrids are generated on demand from any selected target.
