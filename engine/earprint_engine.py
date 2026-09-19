@@ -39,8 +39,10 @@ from pathlib import Path
 import numpy as np
 import yaml
 from scipy.ndimage import gaussian_filter1d
-
-from engine.adaptive_handoff import adaptive_masked_handoff
+try:
+    from .adaptive_handoff import adaptive_masked_handoff
+except ImportError:
+    from adaptive_handoff import adaptive_masked_handoff
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -99,7 +101,6 @@ def parse_xy(path: Path) -> tuple[np.ndarray, np.ndarray]:
             fail(f"{path.name}: non-finite numeric value at line {line_no}")
 
         rows.append((x, y))
-
     if len(rows) < 10:
         fail(f"{path.name}: fewer than 10 numeric data rows found")
 
@@ -140,7 +141,6 @@ def band_mask(freq: np.ndarray, lo: float, hi: float) -> np.ndarray:
     if not np.any(mask):
         fail(f"No samples in inclusive alignment band [{lo}, {hi}] Hz")
     return mask
-
 
 def band_median(
     freq: np.ndarray,
@@ -183,7 +183,6 @@ def alignment_scenarios(
     )
     return offsets, scenario_curves, centre, uncertainty
 
-
 def gaussian_once_strict_domain(
     values: np.ndarray,
     freq: np.ndarray,
@@ -204,7 +203,6 @@ def gaussian_once_strict_domain(
     )[0]
     if idx.size == 0:
         return out
-
     left, right = int(idx[0]), int(idx[-1])
     out[left:right + 1] = gaussian_filter1d(
         out[left:right + 1],
@@ -246,7 +244,6 @@ def sin2_boundary_taper(
         fail("Boundary taper octave widths must be finite and > 0.")
 
     w = np.ones_like(freq, dtype=float)
-
     low_end = start_hz * (2.0 ** lower_transition_octaves)
     high_start = end_hz / (2.0 ** upper_transition_octaves)
 
@@ -582,7 +579,6 @@ def main() -> None:
 
     for p in OUT.glob("*.txt"):
         p.unlink()
-
     for p in REPORTS.iterdir():
         if p.is_file():
             p.unlink()
@@ -750,7 +746,6 @@ def main() -> None:
         & (master_freq <= output_end)
     )
     output_freq = master_freq[out_mask]
-
     write_xy(
         OUT / "pure_earprint_dynamic.txt",
         output_freq,
@@ -876,7 +871,6 @@ def main() -> None:
             sigma,
             radius,
         )
-
         mask *= sin2_boundary_taper(
             master_freq,
             personal_start,
@@ -918,7 +912,6 @@ def main() -> None:
                 "endpoint_hz": personal_start,
                 "transition_octaves": 0.0,
             }
-
         if output_cfg["write_masks"]:
             write_xy(
                 OUT / f"{stem}__mask.txt",
