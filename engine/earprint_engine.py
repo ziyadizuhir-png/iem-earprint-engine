@@ -899,9 +899,31 @@ def main() -> None:
                 master_freq,
                 base_target,
                 masked_target,
-                personal_start,
-                personal_end,
-                adaptive_cfg,
+                nominal_hz=float(
+                    adaptive_cfg.get(
+                        "nominal_anchor_hz",
+                        personal_start,
+                    )
+                ),
+                domain_end_hz=float(personal_end),
+                min_transition_octaves=float(
+                    adaptive_cfg.get(
+                        "min_transition_octaves",
+                        0.125,
+                    )
+                ),
+                max_transition_octaves=float(
+                    adaptive_cfg.get(
+                        "max_transition_octaves",
+                        0.8,
+                    )
+                ),
+                stability_window_octaves=float(
+                    adaptive_cfg.get(
+                        "stability_window_octaves",
+                        0.20,
+                    )
+                ),
             )
         else:
             robust_target = masked_target.copy()
@@ -912,6 +934,7 @@ def main() -> None:
                 "endpoint_hz": personal_start,
                 "transition_octaves": 0.0,
             }
+
         if output_cfg["write_masks"]:
             write_xy(
                 OUT / f"{stem}__mask.txt",
@@ -1036,7 +1059,6 @@ def main() -> None:
         writer.writerows(
             robust_statistics
         )
-
     with (
         REPORTS / "alignment_band_statistics.csv"
     ).open(
