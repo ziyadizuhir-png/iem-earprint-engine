@@ -1,6 +1,7 @@
 project_name: IEM EarPrint Personal Web App
-version: 3.0.0
+version: 3.1.0
 specification: General_Prompt_EarPrint_8_MATH_LOCKED.txt
+specification_addendum: General_Prompt_EarPrint_8_MATH_LOCKED_boundary_addendum.txt
 
 discovery:
   preferred_glob: "*.txt"
@@ -39,26 +40,3 @@ repeatability:
   enabled: false
   method: null
   note: "Inactive until valid same-IEM repeats exist and a prompt-defined estimator is supplied."
-
-robust_mask:
-  enabled: true
-  retention_formula: "abs(centre)/(abs(centre)+total_uncertainty)"
-  zero_zero_rule: "Retention=0 and RawMask=0 when both centre and total_uncertainty are exactly zero."
-  total_uncertainty_components:
-    - cross_iem_mad
-    - alignment_uncertainty
-    - repeatability_floor
-
-hybrids:
-  enabled: true
-  mode: on_demand
-  default_join_hz: 1000
-  rule: "Selected target is preserved at/below join; pure EarPrint is shifted above join by the exact log-frequency join difference."
-
-output:
-  delimiter: "\t"
-  decimals: 12
-  write_masks: true
-  write_robust_targets: true
-  write_pure_earprint: true
-  write_hybrids: false
