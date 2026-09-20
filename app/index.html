@@ -1237,7 +1237,7 @@ select,input{
   <div class="cols">
 
 
-    <div class="card">
+    <div class="card" style="display:none !important;">
 
       <div class="section">
 
@@ -2650,10 +2650,17 @@ function updateMaskSummary(){
   const min=Math.min(...vals);
   const rms=Math.sqrt(vals.reduce((a,v)=>a+v*v,0)/vals.length);
 
-  document.getElementById('sumMax').textContent=fmtDb(max);
-  document.getElementById('sumMin').textContent=fmtDb(min);
-  document.getElementById('sumRms').textContent=rms.toFixed(2)+' dB';
-  document.getElementById('sumPoints').textContent=String(vals.length);
+  const values = {
+    sumMax: fmtDb(max),
+    sumMin: fmtDb(min),
+    sumRms: rms.toFixed(2)+' dB',
+    sumPoints: String(vals.length)
+  };
+
+  ids.forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.textContent=values[id];
+  });
 }
 
 function rerenderTargetViz(){
