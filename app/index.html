@@ -4444,6 +4444,191 @@ async function showTarget(){
 
 
 /* ============================================================
+   ROBUST TARGET DOWNLOAD
+   ============================================================ */
+
+function downloadRobustTarget(){
+
+  if(!targetViz || !targetViz.robust){
+
+    showErr(
+      'Robust Target (Masked) is not available yet.'
+    );
+
+    return;
+
+  }
+
+  const name =
+    targetViz.name || 'target';
+
+  const lines =
+    targetViz.robust
+      .map(
+        ([frequency,value]) =>
+          Number(frequency).toPrecision(12) +
+          '\t' +
+          Number(value).toFixed(12)
+      )
+      .join('\n') +
+    '\n';
+
+  blobDownload(
+    lines,
+    stem(name) + '__robust_target.txt'
+  );
+}
+
+
+
+
+/* ============================================================
+   HYBRID
+   ============================================================ */
+
+async function generateHybrid(){
+
+  try{
+
+    if(!pureCurve){
+      await loadPure();
+    }
+
+    const encodedTarget=document.getElementById('hybridTarget').value;
+
+    if(!encodedTarget){
+      throw Error('No target selected.');
+    }
+
+    const targetName=decodeURIComponent(encodedTarget);
+
+    const target=parseXY(
+      await rawText(
+        'input/targets/'+encodeURIComponent(targetName)
+      )
+    );
+
+    const join=Number(document.getElementById('joinHz').value);
+
+    if(!(join>0)){
+      throw Error('Join frequency must be > 0 Hz.');
+    }
+
+    if(join<target[0][0] || join>target[target.length-1][0]){
+      throw Error('Selected target does not cover the join frequency.');
+    }
+
+    const frequencyGrid=pureCurve.map(point=>point[0]);
+
+    const lowerMax=Math.min(
+      join,
+      Math.max(...frequencyGrid)
+    );
+
+    if(
+      frequencyGrid[0]<target[0][0] ||
+      lowerMax>target[target.length-1][0]
+    ){
+      throw Error(
+        'Selected target does not cover the lower-frequency region required for this hybrid.'
+      );
+    }
+
+    /*
+      Locked hybrid logic:
+      target <=1 kHz; Pure EarPrint >1 kHz and <12 kHz; HF extension >=12 kHz.
+      Continuity shift is applied only inside the Hybrid output.
+    */
+
+    const result=buildHybrid(
+      frequencyGrid,
+      pureCurve,
+      target,
+      join
+    );
+
+    generatedHybrid={
+      curve:result.curve,
+      targetName,
+      join,
+      shift:result.shift
+    };
+
+    draw(result.curve,'hybridChart');
+
+    document.getElementById('hybridStatus').textContent=
+      'shift '+result.shift.toFixed(6)+' dB · target ≤join · EarPrint >join · constant shift';
+
+  }catch(error){
+    showErr(error.message);
+  }
+}
+
+
+
+
+/* ============================================================
+   DOWNLOAD HYBRID
+   ============================================================ */
+
+function downloadHybrid(){
+
+  if(!generatedHybrid){
+
+    showErr(
+      'Generate the hybrid first.'
+    );
+
+    return;
+
+  }
+
+
+  const lines =
+    generatedHybrid.curve
+
+      .map(
+        ([frequency,value]) =>
+
+          Number(
+            frequency
+          ).toPrecision(12) +
+
+          '\t' +
+
+          value.toFixed(12)
+      )
+
+      .join('\n') +
+
+      '\n';
+
+
+  const filename =
+
+    stem(
+      generatedHybrid.targetName
+    ) +
+
+    '__hybrid_' +
+
+    generatedHybrid.join +
+
+    'Hz.txt';
+
+
+  blobDownload(
+    lines,
+    filename
+  );
+
+}
+
+
+
+
+
+/* ============================================================
    UI EVENT BINDINGS
    Strict CSP-compatible event wiring.
    ============================================================ */
