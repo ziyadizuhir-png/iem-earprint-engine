@@ -25,79 +25,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ============================================================
-      # 1. CHECKOUT YOUR EARPRINT REPOSITORY
-      # ============================================================
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      # ============================================================
-      # 2. CHECKOUT AUTOEQ MEASUREMENT DATABASE
-      # ============================================================
-      - name: Checkout AutoEq measurement database
-        uses: actions/checkout@v7
-        with:
-          repository: jaakkopasanen/AutoEq
-          path: AutoEq
-          ref: master
-
-      # ============================================================
-      # 3. SET UP PYTHON
-      # ============================================================
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
 
-      # ============================================================
-      # 4. INSTALL DEPENDENCIES
-      # ============================================================
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
 
-      # ============================================================
-      # 5. RUN DETERMINISTIC UNIT TESTS
-      # ============================================================
       - name: Run deterministic unit tests
         run: python -m unittest discover -s tests -p 'test_*.py'
 
-      # ============================================================
-      # 6. RUN EXISTING MATH-LOCKED EARPRINT ENGINE
-      # ============================================================
       - name: Run math-locked EarPrint engine
         run: python engine/earprint_engine.py
 
-      # ============================================================
-      # 7. RUN AUTOEQ EARPRINT IEM RANKING
-      #
-      # Current matching:
-      # - 1 kHz to 12 kHz ONLY
-      # - 1 kHz anchored
-      # - log-frequency interpolation
-      # - 1/12 octave smoothing
-      # - weighted RMS primary metric
-      # - weighted MAE secondary metric
-      #
-      # Current AutoEq source:
-      # Jaytiss
-      # ============================================================
-      - name: Rank AutoEq IEMs against EarPrint
-        run: |
-          python engine/autoeq_earprint_rank.py \
-            --autoeq-root AutoEq \
-            --source Jaytiss \
-            --earprint output/pure_earprint_dynamic.txt \
-            --output-prefix output/iem_earprint_autoeq_jaytiss
-
-      # ============================================================
-      # 8. VERIFY SOURCE REVISION IS STILL CURRENT
-      # ============================================================
-      #
       # Never publish results calculated from an old input state.
-      #
       - name: Verify source revision is still current
         run: |
           git fetch origin main
@@ -112,9 +60,6 @@ jobs:
             exit 0
           fi
 
-      # ============================================================
-      # 9. COMMIT GENERATED RESULTS
-      # ============================================================
       - name: Commit generated results
         run: |
           git config user.name "github-actions[bot]"
@@ -129,9 +74,8 @@ jobs:
 
           git commit -m "Update EarPrint results"
 
-          # Do not pull/rebase generated files.
-          # That was the source of manifest/robust_statistics
-          # merge conflicts in the old workflow.
+          # Do not pull/rebase generated files. That was the source of
+          # manifest/robust_statistics merge conflicts in the old workflow.
           BASE_SHA="$(git rev-parse HEAD^)"
 
           if git push origin HEAD:main; then
@@ -141,15 +85,12 @@ jobs:
 
           # A concurrent main update means this build is stale.
           echo "Push was rejected because main changed during publication."
-
           git fetch origin main
-
           REMOTE_SHA="$(git rev-parse origin/main)"
 
           if [ "$REMOTE_SHA" != "$BASE_SHA" ]; then
             echo "A newer commit is now on main."
-            echo "This generated result is stale."
-            echo "Leaving publication to the newer build."
+            echo "This generated result is stale; leaving publication to the newer build."
             exit 0
           fi
 
