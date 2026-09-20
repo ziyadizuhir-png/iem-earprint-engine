@@ -1798,6 +1798,7 @@ let targetViz = {
   mask:null,
   pure:null
 };
+let targetVizRequestId=0;
 
 let githubToken = '';
 
@@ -4339,6 +4340,7 @@ async function loadPure(){
 
 
 async function showTarget(){
+  const requestId=++targetVizRequestId;
 
   if(!targets.length){
     document.getElementById('targetChart').innerHTML='';
@@ -4347,7 +4349,8 @@ async function showTarget(){
   }
 
   try{
-    const encodedName=document.getElementById('targetSelect').value;
+    const select=document.getElementById('targetSelect');
+    const encodedName=select?.value;
     if(!encodedName) return;
 
     const name=decodeURIComponent(encodedName);
@@ -4355,7 +4358,10 @@ async function showTarget(){
     const robustPath='output/'+stem(name)+'__robust_target.txt';
     const maskPath='output/'+stem(name)+'__mask.txt';
 
-    document.getElementById('vizDataStatus').textContent='Loading original target and robust masked target…';
+    const status=document.getElementById('vizDataStatus');
+    const targetStatus=document.getElementById('targetStatus');
+
+    if(status) status.textContent='Loading '+name+'…';
 
     const results=await Promise.allSettled([
       rawText(basePath),
@@ -4365,6 +4371,12 @@ async function showTarget(){
         ? Promise.resolve(null)
         : rawText('output/pure_earprint_dynamic.txt')
     ]);
+
+    /* Ignore results from an older target selection. */
+    if(requestId!==targetVizRequestId) return;
+
+    /* The dropdown must still point to the target we loaded. */
+    if(document.getElementById('targetSelect')?.value!==encodedName) return;
 
     let original=null, robust=null, mask=null, pure=pureCurve;
 
@@ -4376,10 +4388,8 @@ async function showTarget(){
     /*
       MASK CONSISTENCY LOCK:
       Robust Target is authoritative for the displayed engine result.
-      The displayed Mask Δ must be exactly Robust Target - Original Target
-      on the common log-frequency grid. This prevents a stale/mismatched
-      mask artifact from disagreeing with the Robust curve and point readout.
-      The downloaded Robust Target is never modified.
+      Displayed Mask Δ = Robust Target - Original Target.
+      Downloaded Robust Target is never modified.
     */
     if(original && robust){
       const robustMinusOriginal=[];
@@ -4402,218 +4412,35 @@ async function showTarget(){
       pure:pureCurve
     };
 
-    const downloadButton =
-      document.getElementById(
-        'downloadRobustButton'
-      );
-
-    if(downloadButton){
-      downloadButton.disabled = !robust;
-    }
-
-    const selectedPath=robustPath;
+    const downloadButton=document.getElementById('downloadRobustButton');
+    if(downloadButton) downloadButton.disabled=!robust;
 
     const missing=[];
     if(!original) missing.push('original target');
     if(!robust) missing.push('robust target');
 
-    document.getElementById('targetStatus').textContent=
-      missing.length
-        ? selectedPath+' · missing: '+missing.join(', ')
-        : selectedPath+' · Robust Target (Masked)';
+    if(targetStatus){
+      targetStatus.textContent=
+        missing.length
+          ? robustPath+' · missing: '+missing.join(', ')
+          : robustPath+' · Robust Target (Masked)';
+    }
 
-    document.getElementById('vizDataStatus').textContent=
-      missing.length
-        ? 'Loaded with '+missing.join(', ')+' unavailable. Engine outputs were not changed.'
-        : 'Original + robust target loaded. Robust Target is the only downloadable target; mask is display-only.';
+    if(status){
+      status.textContent=
+        missing.length
+          ? 'Loaded with '+missing.join(', ')+' unavailable. Engine outputs were not changed.'
+          : 'Original + robust target loaded. Robust Target is the only downloadable target; mask is display-only.';
+    }
 
     updateMaskSummary();
     rerenderTargetViz();
 
   }catch(error){
+    if(requestId!==targetVizRequestId) return;
     showErr(error.message);
   }
 }
-
-
-/* ============================================================
-   DOWNLOAD ROBUST TARGET ONLY
-   ============================================================ */
-
-function downloadRobustTarget(){
-
-  if(!targetViz || !targetViz.robust){
-
-    showErr(
-      'Robust Target (Masked) is not available yet.'
-    );
-
-    return;
-
-  }
-
-  const name =
-    targetViz.name || 'target';
-
-  const lines =
-    targetViz.robust
-      .map(
-        ([frequency,value]) =>
-          Number(frequency).toPrecision(12) +
-          '\t' +
-          Number(value).toFixed(12)
-      )
-      .join('\n') +
-    '\n';
-
-  blobDownload(
-    lines,
-    stem(name) + '__robust_target.txt'
-  );
-}
-
-
-/* ============================================================
-   HYBRID
-   ============================================================ */
-
-async function generateHybrid(){
-
-  try{
-
-    if(!pureCurve){
-      await loadPure();
-    }
-
-    const encodedTarget=document.getElementById('hybridTarget').value;
-
-    if(!encodedTarget){
-      throw Error('No target selected.');
-    }
-
-    const targetName=decodeURIComponent(encodedTarget);
-
-    const target=parseXY(
-      await rawText(
-        'input/targets/'+encodeURIComponent(targetName)
-      )
-    );
-
-    const join=Number(document.getElementById('joinHz').value);
-
-    if(!(join>0)){
-      throw Error('Join frequency must be > 0 Hz.');
-    }
-
-    if(join<target[0][0] || join>target[target.length-1][0]){
-      throw Error('Selected target does not cover the join frequency.');
-    }
-
-    const frequencyGrid=pureCurve.map(point=>point[0]);
-
-    const lowerMax=Math.min(
-      join,
-      Math.max(...frequencyGrid)
-    );
-
-    if(
-      frequencyGrid[0]<target[0][0] ||
-      lowerMax>target[target.length-1][0]
-    ){
-      throw Error(
-        'Selected target does not cover the lower-frequency region required for this hybrid.'
-      );
-    }
-
-    /*
-      Locked hybrid logic:
-      target <=1 kHz; Pure EarPrint >1 kHz and <12 kHz; HF extension >=12 kHz.
-      Continuity shift is applied only inside the Hybrid output.
-    */
-
-    const result=buildHybrid(
-      frequencyGrid,
-      pureCurve,
-      target,
-      join
-    );
-
-    generatedHybrid={
-      curve:result.curve,
-      targetName,
-      join,
-      shift:result.shift
-    };
-
-    draw(result.curve,'hybridChart');
-
-    document.getElementById('hybridStatus').textContent=
-      'shift '+result.shift.toFixed(6)+' dB · target ≤join · EarPrint >join · constant shift';
-
-  }catch(error){
-    showErr(error.message);
-  }
-}
-
-
-/* ============================================================
-   DOWNLOAD HYBRID
-   ============================================================ */
-
-
-function downloadHybrid(){
-
-  if(!generatedHybrid){
-
-    showErr(
-      'Generate the hybrid first.'
-    );
-
-    return;
-
-  }
-
-
-  const lines =
-    generatedHybrid.curve
-
-      .map(
-        ([frequency,value]) =>
-
-          Number(
-            frequency
-          ).toPrecision(12) +
-
-          '\t' +
-
-          value.toFixed(12)
-      )
-
-      .join('\n') +
-
-      '\n';
-
-
-  const filename =
-
-    stem(
-      generatedHybrid.targetName
-    ) +
-
-    '__hybrid_' +
-
-    generatedHybrid.join +
-
-    'Hz.txt';
-
-
-  blobDownload(
-    lines,
-    filename
-  );
-
-}
-
 
 
 /* ============================================================
