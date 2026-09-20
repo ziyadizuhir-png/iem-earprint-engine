@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-09-20T07:48:29.378226+00:00",
+  "generated_utc": "2026-09-20T08:20:37.080382+00:00",
   "engine": "IEM EarPrint Engine 3.1.0",
   "specification": "General_Prompt_EarPrint_8_MATH_LOCKED.txt",
   "specification_addendum": "General_Prompt_EarPrint_8_MATH_LOCKED_boundary_addendum.txt",
@@ -23,10 +23,11 @@
     "Rtings_Target.txt",
     "Sonarworks_Target.txt",
     "SoundGuys.txt",
+    "_5128_DF_Tilt__-1dB_Oct_B_4dB_Target.txt",
     "_Headphones.com_IEM_DF_Tilt__-1dB_Oct_B_4dB_Target.txt",
     "_JM-1_DF_Tilt__-1dB_Oct_B_4dB_Target.txt"
   ],
-  "target_count": 7,
+  "target_count": 8,
   "low_frequency_reference": "IEF2025.txt",
   "alignment_bands_hz": [
     [
@@ -90,10 +91,13 @@
     "input/targets/Rtings_Target.txt": "60b880b51d101927604efc1e7444bb29dd033072cfcf6d4eb2c378b717c0962d",
     "input/targets/Sonarworks_Target.txt": "463607729b160ba2759012753f49ce1a7372d65661a4e5f576ba41fb4abc04a0",
     "input/targets/SoundGuys.txt": "b8bfa7e67a9263634b78485bbfca8b6b750182e27b52d1ae7bf1debcf9dbabb4",
+    "input/targets/_5128_DF_Tilt__-1dB_Oct_B_4dB_Target.txt": "d92bd971b8e3c570991eaeae7eccf96eb6584cd5b5be2b69b92934c600c0e1e9",
     "input/targets/_Headphones.com_IEM_DF_Tilt__-1dB_Oct_B_4dB_Target.txt": "9f1f166b7dc4472f9114278674a828255f69a63b6336ceeb940a8095823c4510",
     "input/targets/_JM-1_DF_Tilt__-1dB_Oct_B_4dB_Target.txt": "153a4cd5046eef6e75dad142899805cc77be4077faec770825d1cbc55afaa7df"
   },
   "output_sha256": {
+    "5128_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "50cf4278ea1a56fd5635d0215e75a4717397d0cb58ef350404615159696a7855",
+    "5128_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "e55a9dbb088259a2fa793b378bbf86406c555cda4be727b507f31c2010ee4f9a",
     "Harman_IE_2019_v2_Target__mask.txt": "04bd6e762292e5363bf9ffbd64928e52d3758c014150b2789c129923473a9558",
     "Harman_IE_2019_v2_Target__robust_target.txt": "d4f0a535ee9fa8103aa786da0386dce0a0e204a96449e6f1f73e142bc1cdd579",
     "Headphones.com_IEM_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "f8dc98a7905177275c68af04e0a611696b0f02e2c7d0f1e197cbc3fc6085860a",
