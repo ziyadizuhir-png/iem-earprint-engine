@@ -1,98 +1,4688 @@
-name: Build IEM EarPrint
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'nonce-9HKSOsB546xzOv-LNV9nGCiZix5pNLIC'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.github.com https://raw.githubusercontent.com; media-src 'none';">
+<title>EarPrint — Personal</title>
 
-on:
-  push:
-    paths:
-      - "input/**"
-      - "config/**"
-      - "engine/**"
-      - "tests/**"
-      - "requirements.txt"
-      - ".github/workflows/main.yml"
-  workflow_dispatch:
+<style>
 
-permissions:
-  contents: write
+:root{
+  --bg:#070b12;
+  --panel:#0e1624;
+  --panel2:#0b1320;
+  --text:#eef4ff;
+  --muted:#92a2ba;
+  --line:#22314a;
+  --accent:#66a3ff;
+  --accent2:#4de0a7;
+  --mask:#ff5f8f;
+  --original:#dce7f8;
+  --ok:#62d39a;
+  --warn:#f2c66d;
+  --bad:#ef8795;
+}
 
-# Only one build may publish at a time.
-# If a newer input commit arrives, the older build is cancelled.
-concurrency:
-  group: earprint-build-main
-  cancel-in-progress: true
+*{box-sizing:border-box}
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+html{
+  -webkit-text-size-adjust:100%;
+  text-size-adjust:100%;
+}
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
+body{
+  margin:0;
+  min-width:0;
+  overflow-x:hidden;
+  background:
+    radial-gradient(circle at 20% 0%,rgba(50,91,150,.14),transparent 32rem),
+    linear-gradient(180deg,#070b12,#0b1220);
+  color:var(--text);
+  font:15px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+}
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-          cache: pip
+button,a.btn,select,input{
+  font:inherit;
+}
 
-      - name: Install dependencies
-        run: python -m pip install -r requirements.txt
+button,a.btn{
+  border:1px solid var(--line);
+  background:#142038;
+  color:var(--text);
+  padding:9px 12px;
+  border-radius:9px;
+  text-decoration:none;
+  cursor:pointer;
+  touch-action:manipulation;
+}
 
-      - name: Run deterministic unit tests
-        run: python -m unittest discover -s tests -p 'test_*.py'
+button.primary,a.primary{
+  background:#1d4f9c;
+  border-color:#3d75d4;
+}
 
-      - name: Run math-locked EarPrint engine
-        run: python engine/earprint_engine.py
+button:active,a.btn:active{
+  transform:translateY(1px);
+}
 
-      # Never publish results calculated from an old input state.
-      - name: Verify source revision is still current
-        run: |
-          git fetch origin main
+.wrap{
+  width:min(1240px,100%);
+  margin:auto;
+  padding:18px;
+}
 
-          SOURCE_SHA="$(git rev-parse HEAD)"
-          REMOTE_SHA="$(git rev-parse origin/main)"
+.top{
+  display:flex;
+  justify-content:space-between;
+  gap:14px;
+  align-items:flex-start;
+  flex-wrap:wrap;
+}
 
-          if [ "$SOURCE_SHA" != "$REMOTE_SHA" ]; then
-            echo "Source changed while this build was running."
-            echo "This build is stale and will not publish generated results."
-            echo "A newer workflow run owns the current main state."
-            exit 0
-          fi
+.brand h1{
+  margin:0;
+  font-size:28px;
+  letter-spacing:-.02em;
+}
 
-      - name: Commit generated results
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+.brand p{
+  margin:3px 0 0;
+  color:var(--muted);
+  overflow-wrap:anywhere;
+}
 
-          git add output/ reports/
+.actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
 
-          if git diff --cached --quiet; then
-            echo "No generated result changes."
-            exit 0
-          fi
+.grid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:10px;
+  margin:16px 0;
+}
 
-          git commit -m "Update EarPrint results"
+.card{
+  background:rgba(14,22,36,.96);
+  border:1px solid var(--line);
+  border-radius:13px;
+  padding:14px;
+  min-width:0;
+}
 
-          # Do not pull/rebase generated files. That was the source of
-          # manifest/robust_statistics merge conflicts in the old workflow.
-          BASE_SHA="$(git rev-parse HEAD^)"
+.num{font-size:25px;font-weight:700}
+.label,.muted,.status{color:var(--muted)}
 
-          if git push origin HEAD:main; then
-            echo "Generated results published successfully."
-            exit 0
-          fi
+.cols{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
 
-          # A concurrent main update means this build is stale.
-          echo "Push was rejected because main changed during publication."
-          git fetch origin main
-          REMOTE_SHA="$(git rev-parse origin/main)"
+.section{margin-top:12px}
+.section h2{margin:0 0 10px;font-size:18px}
 
-          if [ "$REMOTE_SHA" != "$BASE_SHA" ]; then
-            echo "A newer commit is now on main."
-            echo "This generated result is stale; leaving publication to the newer build."
-            exit 0
-          fi
+.pillbox{display:flex;flex-wrap:wrap;gap:7px}
+.pill{
+  background:#122038;
+  border:1px solid var(--line);
+  border-radius:999px;
+  padding:6px 9px;
+  color:#dce8ff;
+}
 
-          echo "Push failed for a reason other than a concurrent main update."
-          exit 1
+.formrow{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin:9px 0;
+}
+
+.field{
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+  min-width:0;
+}
+
+.field label{
+  font-size:12px;
+  color:var(--muted);
+}
+
+select,input{
+  width:100%;
+  min-width:0;
+  background:#0b1423;
+  color:var(--text);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:9px;
+}
+
+.inline,.resultbar{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+
+.chart{
+  margin-top:12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  overflow:hidden;
+  background:#080f1b;
+}
+
+.chart svg{
+  width:100%;
+  height:auto;
+  display:block;
+}
+
+.chart-scroll{
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:thin;
+}
+
+.chart-scroll svg{
+  min-width:0;
+}
+
+.error{
+  margin-top:10px;
+  padding:11px;
+  border-radius:9px;
+  background:#341923;
+  border:1px solid #6b3041;
+  color:#ffdbe1;
+}
+
+.warn{color:var(--warn)}
+.ok{color:var(--ok)}
+.small{font-size:12px}
+
+/* ============================================================
+   TARGET VISUALIZER
+   ============================================================ */
+
+.visualizer{
+  margin-top:12px;
+}
+
+.visualizer-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+  gap:12px;
+  margin-bottom:8px;
+}
+
+.visualizer-title{
+  margin:0;
+  font-size:16px;
+}
+
+.visualizer-subtitle{
+  color:var(--muted);
+  font-size:12px;
+  margin-top:2px;
+}
+
+.viz-controls{
+  display:grid;
+  grid-template-columns:1.1fr 1.1fr 1fr auto;
+  gap:8px;
+  align-items:end;
+}
+
+.viz-control{
+  min-width:0;
+}
+
+.viz-control label{
+  display:block;
+  color:var(--muted);
+  font-size:11px;
+  margin:0 0 4px;
+}
+
+.viz-actions{
+  display:flex;
+  gap:7px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.toggle{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  color:#dce7f8;
+  font-size:12px;
+  user-select:none;
+}
+
+.toggle input{
+  width:18px;
+  height:18px;
+  margin:0;
+  accent-color:#3e86ef;
+}
+
+.viz-grid{
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:10px;
+  align-items:stretch;
+}
+
+.viz-main{
+  min-width:0;
+}
+
+.viz-side{
+  display:grid;
+  gap:10px;
+  min-width:0;
+}
+
+.viz-panel{
+  background:rgba(8,16,28,.82);
+  border:1px solid var(--line);
+  border-radius:11px;
+  padding:10px;
+}
+
+.viz-panel h3{
+  margin:0 0 8px;
+  font-size:13px;
+}
+
+.legend{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 13px;
+  margin-top:8px;
+  color:#c9d5e8;
+  font-size:11px;
+}
+
+.legend-item{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+
+.legend-line{
+  width:24px;
+  height:0;
+  border-top:2px solid currentColor;
+}
+
+.legend-line.dashed{
+  border-top-style:dashed;
+}
+
+.legend-swatch{
+  width:24px;
+  height:8px;
+  border-radius:3px;
+  background:rgba(255,95,143,.18);
+  border:1px solid rgba(255,95,143,.35);
+}
+
+.readout{
+  display:grid;
+  grid-template-columns:auto 1fr;
+  gap:3px 10px;
+  font-size:12px;
+}
+
+.readout .k{color:var(--muted)}
+.readout .v{text-align:right;font-variant-numeric:tabular-nums}
+
+.summary-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+}
+
+.summary{
+  background:#0d1727;
+  border:1px solid #1c2a40;
+  border-radius:8px;
+  padding:7px;
+}
+
+.summary .k{display:block;color:var(--muted);font-size:10px}
+.summary .v{font-size:13px;font-variant-numeric:tabular-nums}
+
+.viz-footer{
+  margin-top:8px;
+  color:var(--muted);
+  font-size:11px;
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.viz-empty{
+  padding:24px 12px;
+  color:var(--muted);
+  text-align:center;
+}
+
+/* ============================================================
+   MODAL
+   ============================================================ */
+
+.modalBack{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.72);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+  z-index:9999;
+  overscroll-behavior:contain;
+}
+
+.modalBack[hidden]{display:none !important}
+
+.modal{
+  width:min(700px,100%);
+  max-height:min(90vh,760px);
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+}
+
+/* ============================================================
+   RESPONSIVE / ANDROID
+   ============================================================ */
+
+@media(max-width:900px){
+  .viz-grid{grid-template-columns:1fr}
+  .viz-controls{grid-template-columns:1fr 1fr}
+  .viz-actions{grid-column:1/-1}
+  .cols{grid-template-columns:1fr}
+}
+
+@media(max-width:600px){
+  body{font-size:14px}
+  .wrap{padding:10px}
+  .top{gap:10px}
+  .brand{width:100%}
+  .brand h1{font-size:23px;line-height:1.2}
+  .brand p{font-size:12px}
+  .actions{
+    width:100%;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+  }
+  .actions button,.actions a.btn{
+    width:100%;
+    min-height:44px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    padding:9px 7px;
+  }
+  .grid{grid-template-columns:1fr 1fr;gap:7px;margin:11px 0}
+  .card{padding:11px;border-radius:11px}
+  .num{font-size:20px}
+  .label{font-size:11px;line-height:1.3}
+  .formrow{grid-template-columns:1fr;gap:8px}
+  .field label{font-size:11px}
+  select,input,button,a.btn{min-height:44px;font-size:16px}
+  .inline,.resultbar{width:100%}
+  .inline button,.resultbar button{flex:1 1 100%}
+  .viz-controls{grid-template-columns:1fr}
+  .viz-actions{grid-column:auto}
+  .visualizer-head{align-items:flex-start}
+  .legend{gap:7px 10px}
+  .legend-line{width:19px}
+  .chart{border-radius:10px}
+  .chart-scroll{overflow-x:auto}
+  .chart-scroll svg{min-width:520px;max-width:none}
+  .viz-main .chart-scroll svg{width:100%;min-width:0}
+  .viz-footer{display:block}
+  .viz-footer span{display:block;margin-top:3px}
+  .modalBack{align-items:flex-start;padding:8px}
+  .modal{width:100%;max-height:calc(100dvh - 16px);margin-top:0}
+}
+
+@media(max-width:380px){
+  .actions{grid-template-columns:1fr}
+  .grid{grid-template-columns:1fr 1fr}
+  .brand h1{font-size:21px}
+}
+
+
+.target-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:5px 6px 5px 9px;
+}
+
+.target-pill-name{
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+
+.target-delete{
+  width:26px;
+  height:26px;
+  min-height:26px!important;
+  padding:0!important;
+  border-radius:50%;
+  border:1px solid rgba(255,120,120,.35);
+  background:rgba(130,35,45,.22);
+  color:#ffb8bf;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  line-height:1;
+  font-size:18px!important;
+  cursor:pointer;
+}
+
+.target-delete:hover{
+  background:rgba(180,45,55,.4);
+}
+
+@media(max-width:520px){
+  .target-delete{
+    width:32px;
+    height:32px;
+    min-height:32px!important;
+    font-size:20px!important;
+  }
+}
+
+.target-delete{
+  width:34px!important;
+  height:34px!important;
+  min-width:34px!important;
+  min-height:34px!important;
+  padding:0!important;
+  border-radius:50%!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  flex:0 0 auto;
+  font-size:20px!important;
+}
+@media(max-width:520px){
+  .target-delete{
+    width:44px!important;
+    height:44px!important;
+    min-width:44px!important;
+    min-height:44px!important;
+    font-size:22px!important;
+  }
+}
+
+/* ============================================================
+   SQUIGLINK-STYLE GRAPH PRESENTATION ONLY
+   Math / data / controls are unchanged.
+   ============================================================ */
+.chart.squig-graph{
+  background:#080f1b;
+  border-color:#18243a;
+  border-radius:8px;
+}
+.chart.squig-graph svg{
+  display:block;
+  width:100%;
+  height:auto;
+}
+@media(max-width:600px){
+  .chart.squig-graph svg{min-width:0;}
+}
+
+
+/* ============================================================
+   BUILD / ACTIONS LOADING OVERLAY
+   ============================================================ */
+.buildOverlay{
+  position:fixed;
+  inset:0;
+  z-index:10000;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+  background:rgba(0,0,0,.72);
+  overscroll-behavior:contain;
+}
+.buildOverlay[hidden]{display:none!important}
+.buildPanel{
+  width:min(520px,100%);
+  background:#0e1624;
+  border:1px solid #2b3d59;
+  border-radius:15px;
+  box-shadow:0 18px 60px rgba(0,0,0,.45);
+  padding:18px;
+}
+.buildTitle{
+  font-size:18px;
+  font-weight:700;
+  margin-bottom:4px;
+}
+.buildMessage{font-size:14px;color:#dce7f8;margin-bottom:12px}
+.buildTrack{
+  height:12px;
+  border-radius:999px;
+  background:#0a1220;
+  border:1px solid #22314a;
+  overflow:hidden;
+}
+.buildBar{
+  height:100%;
+  width:0%;
+  border-radius:999px;
+  background:#66a3ff;
+  transition:width .35s ease;
+}
+.buildMeta{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  margin-top:8px;
+  color:#92a2ba;
+  font-size:12px;
+}
+.buildActions{margin-top:14px;display:flex;justify-content:flex-end;gap:8px}
+
+
+/* ============================================================
+   MINIMAL UI LAYER — v12
+   Graph geometry/rendering intentionally untouched.
+   ============================================================ */
+
+#runEngine[hidden]{
+  display:none!important;
+}
+
+.miniStats{
+  display:flex;
+  gap:8px;
+  margin:12px 0 4px;
+  flex-wrap:wrap;
+}
+
+.miniStat{
+  display:inline-flex;
+  align-items:baseline;
+  gap:7px;
+  padding:7px 10px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:rgba(10,18,31,.72);
+}
+
+.miniStatLabel{
+  color:var(--muted);
+  font-size:11px;
+  letter-spacing:.01em;
+}
+
+.miniStat strong{
+  font-size:14px;
+  font-variant-numeric:tabular-nums;
+}
+
+.miniStats + .cols{
+  margin-top:8px;
+}
+
+/* Reduce visual framing around management sections. */
+.cols > .card{
+  background:transparent;
+  border-color:transparent;
+  padding:4px 0;
+}
+
+.cols .section h2{
+  font-size:14px;
+  margin-bottom:7px;
+}
+
+#iems,#targets{
+  min-height:32px;
+}
+
+/* Cleaner visualizer header. */
+.visualizer-head{
+  align-items:center;
+}
+
+.visualizer-head .visualizer-subtitle{
+  font-size:11px;
+}
+
+.visualizer-head .viz-actions{
+  display:none;
+}
+
+/* Less chrome around non-graph explanatory/status elements. */
+.resultbar{
+  margin-top:8px;
+}
+
+.resultbar #targetStatus{
+  display:none;
+}
+
+.viz-footer{
+  display:none!important;
+}
+
+/* Hybrid remains functional, but reads as a compact tool rather than a
+   documentation panel. */
+#hybridChart{
+  margin-top:10px;
+}
+
+/* Remove excess vertical whitespace on small screens. */
+@media(max-width:600px){
+  .miniStats{
+    margin-top:8px;
+    gap:6px;
+  }
+
+  .miniStat{
+    padding:6px 9px;
+  }
+
+  .cols > .card{
+    padding:2px 0;
+  }
+
+  .visualizer-head .visualizer-subtitle{
+    font-size:10px;
+  }
+}
+
+/* v13: compact build progress overlay */
+.buildPanel{
+  width:min(460px,100%);
+  padding:16px;
+  border-radius:14px;
+}
+.buildTitle{font-size:17px}
+.buildMessage{font-size:13px;margin-bottom:10px}
+.buildTrack{height:10px}
+.buildMeta{font-size:11px}
+@media(max-width:600px){
+  .buildOverlay{padding:10px}
+  .buildPanel{padding:14px;border-radius:13px}
+  .buildTitle{font-size:16px}
+  .buildMessage{font-size:13px}
+}
+
+/* ============================================================
+   v14 TOOL UI
+   Utility-first presentation. Graph rendering/calculation untouched.
+   ============================================================ */
+
+:root{
+  --bg:#0b0f14;
+  --panel:#11171f;
+  --panel2:#0d131a;
+  --text:#e7edf5;
+  --muted:#8794a5;
+  --line:#27313d;
+  --accent:#6fa7e8;
+  --accent2:#67c79a;
+  --mask:#d77b99;
+  --original:#c9d1db;
+  --ok:#67c79a;
+  --warn:#d7b46a;
+  --bad:#d7808c;
+}
+
+/* Flat application background. */
+html,body{
+  background:#0b0f14!important;
+}
+
+body{
+  color:var(--text);
+}
+
+/* Compact header. */
+.wrap{
+  width:min(1180px,100%);
+  padding:14px;
+}
+
+.top{
+  align-items:center;
+  gap:12px;
+  padding-bottom:10px;
+  border-bottom:1px solid var(--line);
+}
+
+.brand h1{
+  font-size:21px;
+  font-weight:650;
+  letter-spacing:0;
+}
+
+.brand p{
+  margin-top:2px;
+  font-size:11px;
+  color:var(--muted);
+}
+
+.actions{
+  gap:6px;
+}
+
+button,a.btn{
+  background:#151c24!important;
+  border:1px solid #303b48!important;
+  border-radius:6px!important;
+  box-shadow:none!important;
+  padding:7px 10px;
+  color:var(--text);
+}
+
+button.primary,a.primary{
+  background:#1b2a3d!important;
+  border-color:#38536f!important;
+}
+
+button:hover,a.btn:hover{
+  background:#1a232d!important;
+}
+
+button:active,a.btn:active{
+  transform:none!important;
+}
+
+/* Replace decorative cards with compact utility panels. */
+.card{
+  background:#11171f!important;
+  border:1px solid var(--line)!important;
+  border-radius:7px!important;
+  box-shadow:none!important;
+  padding:12px;
+}
+
+.section{
+  margin-top:10px;
+}
+
+.section h2{
+  font-size:14px;
+  font-weight:600;
+}
+
+/* Compact counts: no pill/chip styling. */
+.miniStats{
+  margin:9px 0 6px;
+  padding:0;
+  gap:18px;
+}
+
+.miniStat{
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  gap:6px;
+}
+
+.miniStatLabel{
+  font-size:11px;
+  color:var(--muted);
+}
+
+.miniStat strong{
+  font-size:13px;
+  font-weight:600;
+}
+
+/* IEM/Target source list: flat labels instead of decorative pills. */
+.cols{
+  gap:10px;
+}
+
+.cols > .card{
+  background:#0f151c!important;
+  border-radius:7px!important;
+  padding:10px 11px;
+}
+
+.pillbox{
+  gap:5px;
+}
+
+.pill{
+  background:#151c24!important;
+  border:1px solid #2b3540!important;
+  border-radius:4px!important;
+  padding:4px 7px;
+  color:#cbd5e1;
+  font-size:12px;
+  line-height:1.35;
+}
+
+/* Make target delete control utilitarian. */
+.target-pill{
+  gap:5px;
+}
+
+.target-delete{
+  border-radius:4px!important;
+  width:28px!important;
+  height:28px!important;
+  min-width:28px!important;
+  min-height:28px!important;
+  font-size:16px!important;
+  background:#171d25!important;
+  border:1px solid #394451!important;
+  color:#c98a95!important;
+}
+
+@media(max-width:520px){
+  .target-delete{
+    width:38px!important;
+    height:38px!important;
+    min-width:38px!important;
+    min-height:38px!important;
+  }
+}
+
+/* Inputs are tool controls, not decorative cards. */
+select,input{
+  background:#0c1218!important;
+  border:1px solid #303a45!important;
+  border-radius:5px!important;
+  padding:8px 9px;
+  box-shadow:none!important;
+}
+
+.field label,
+.viz-control label{
+  color:#7f8b99;
+  font-size:11px;
+}
+
+/* Target visualizer outer shell: graph itself remains unchanged. */
+.visualizer{
+  margin-top:8px;
+}
+
+.visualizer-head{
+  margin-bottom:7px;
+}
+
+.visualizer-head h2{
+  font-size:15px!important;
+  font-weight:600;
+}
+
+.visualizer-subtitle{
+  color:#778391!important;
+  font-size:10px!important;
+}
+
+.resultbar{
+  min-height:34px;
+  justify-content:space-between;
+}
+
+#targetStatus{
+  font-size:11px;
+}
+
+/* Keep graph dimensions/visual exactly as approved. */
+.chart.squig-graph{
+  border-radius:5px!important;
+}
+
+/* Utility panels around the graph: flat, dense, no decorative treatment. */
+.viz-panel{
+  background:#0e141b!important;
+  border:1px solid #28323d!important;
+  border-radius:5px!important;
+  box-shadow:none!important;
+}
+
+.legend{
+  font-size:10px;
+  color:#9aa6b4;
+}
+
+.viz-footer{
+  display:none!important;
+}
+
+/* Hybrid builder as a compact utility panel. */
+#hybridChart{
+  margin-top:9px;
+}
+
+#hybridStatus{
+  font-size:11px;
+}
+
+/* Loading overlay: clear progress, no "fancy" modal styling. */
+.buildPanel{
+  width:min(440px,100%);
+  background:#11171f!important;
+  border:1px solid #34404c!important;
+  border-radius:7px!important;
+  box-shadow:0 12px 32px rgba(0,0,0,.28)!important;
+  padding:14px!important;
+}
+
+.buildTitle{
+  font-size:15px!important;
+  font-weight:600!important;
+}
+
+.buildMessage{
+  color:#c4ced9!important;
+  font-size:12px!important;
+}
+
+.buildTrack{
+  height:8px!important;
+  border-radius:4px!important;
+  background:#0b1015!important;
+  border:1px solid #2d3742!important;
+}
+
+.buildBar{
+  border-radius:3px!important;
+  background:#6fa7e8!important;
+  transition:width .25s linear!important;
+}
+
+.buildMeta{
+  margin-top:6px!important;
+  font-size:10px!important;
+  color:#7f8a98!important;
+}
+
+.buildActions{
+  margin-top:10px!important;
+}
+
+@media(max-width:600px){
+  .wrap{padding:9px}
+  .brand h1{font-size:19px}
+  .top{padding-bottom:8px}
+  .actions{
+    gap:5px;
+  }
+  .actions button,.actions a.btn{
+    min-height:40px;
+  }
+  .miniStats{
+    gap:12px;
+  }
+  .card{
+    padding:10px;
+  }
+}
+
+/* v15: restored functional modal, styled as a practical tool dialog */
+.modalBack{
+  background:rgba(5,8,12,.78)!important;
+  padding:12px!important;
+}
+
+.modal{
+  width:min(620px,100%)!important;
+  max-height:min(88vh,760px)!important;
+  background:#11171f!important;
+  border:1px solid #303a46!important;
+  border-radius:7px!important;
+  box-shadow:0 14px 40px rgba(0,0,0,.35)!important;
+  padding:12px!important;
+}
+
+.modal .top{
+  border-bottom:1px solid #28313b;
+  padding-bottom:9px;
+  margin-bottom:10px;
+}
+
+.modal .top h2{
+  font-size:15px!important;
+  font-weight:600!important;
+}
+
+.modal .status.small{
+  font-size:11px;
+}
+
+.modal .field label{
+  font-size:11px;
+  color:#7f8b99;
+}
+
+.modal input{
+  min-height:40px;
+}
+
+.modal .inline{
+  gap:6px;
+}
+
+@media(max-width:600px){
+  .modalBack{padding:8px!important}
+  .modal{
+    width:100%!important;
+    max-height:calc(100dvh - 16px)!important;
+    padding:10px!important;
+  }
+  .modal .top{
+    gap:8px;
+  }
+  .modal button{
+    min-height:42px;
+  }
+}
+
+/* v16 session token status */
+#buildState[hidden]{display:none!important}
+
+.session-status{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  font-size:10px;
+  color:#7f8b99;
+}
+
+.session-status.connected{
+  color:#7dbb9b;
+}
+</style>
+</head>
+
+
+<body>
+
+<div class="wrap">
+
+
+  <!-- ========================================================
+       HEADER
+       ========================================================= -->
+
+  <div class="top">
+
+    <div class="brand">
+
+      <h1>
+        EarPrint — Personal
+      </h1>
+
+      <p id="repoLabel">
+        Loading repository…
+      </p>
+
+    </div>
+
+
+    <div class="actions">
+
+      <button
+        type="button"
+        id="addIemButton">
+        Add IEM
+      </button>
+
+
+      <button
+        type="button"
+        id="addTargetButton">
+        Add Target
+      </button>
+
+
+      <button
+        type="button"
+        id="runEngine"
+        class="primary"
+        hidden
+        aria-hidden="true">
+        Run EarPrint
+      </button>
+
+
+      <button
+        type="button"
+        id="githubAccessButton">
+        GitHub Access
+      </button>
+
+
+      <button
+        type="button"
+        id="refreshButton">
+        Refresh
+      </button>
+
+    </div>
+
+  </div>
+
+
+  <div id="error"></div>
+
+
+  <div id="buildOverlay" class="buildOverlay" hidden aria-live="polite">
+    <div class="buildPanel" role="status" aria-label="EarPrint build progress">
+      <div class="buildTitle" id="buildTitle">EarPrint Build</div>
+      <div class="buildMessage" id="buildMessage">Preparing GitHub Actions…</div>
+      <div class="buildTrack">
+        <div id="buildBar" class="buildBar"></div>
+      </div>
+      <div class="buildMeta">
+        <span id="buildDetail">Waiting for GitHub…</span>
+        <span id="buildPercent">0%</span>
+      </div>
+      <div class="buildActions">
+        <button type="button" id="buildClose"  hidden>Close</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ========================================================
+       DASHBOARD
+       ========================================================= -->
+
+  <div class="miniStats" aria-label="Repository summary">
+
+    <div class="miniStat">
+      <span class="miniStatLabel">IEM tests</span>
+      <strong id="iemCount">—</strong>
+    </div>
+
+    <div class="miniStat">
+      <span class="miniStatLabel">Targets</span>
+      <strong id="targetCount">—</strong>
+    </div>
+
+    <!-- Keep these IDs for existing JS/status logic, but do not display them. -->
+    <span id="outputCount" hidden>—</span>
+    <span id="buildState" hidden>—</span>
+
+  </div>
+
+
+  <!-- ========================================================
+       IEMS / TARGETS
+       ========================================================= -->
+
+  <div class="cols">
+
+
+    <div class="card">
+
+      <div class="section">
+
+        <h2>
+          IEM Test Sources
+        </h2>
+
+        <div
+          id="iems"
+          class="pillbox">
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <div class="card">
+
+      <div class="section">
+
+        <h2>
+          Targets
+        </h2>
+
+        <div
+          id="targets"
+          class="pillbox">
+        </div>
+
+      </div>
+
+    </div>
+
+
+  </div>
+
+
+
+  <!-- ========================================================
+       TARGET RESULTS / VISUALIZER
+       ========================================================= -->
+
+  <div class="card section">
+
+    <div class="visualizer-head">
+      <div>
+        <h2 style="margin:0">Target Visualizer</h2>
+        <div class="visualizer-subtitle">
+          Original vs Robust
+        </div>
+      </div>
+      <div class="viz-actions">
+      </div>
+    </div>
+
+    <div class="formrow viz-controls">
+
+      <div class="viz-control">
+        <label for="targetSelect">Target</label>
+        <select id="targetSelect" ></select>
+      </div>
+
+      <div class="viz-control">
+        <label for="vizRange">View</label>
+        <select id="vizRange" >
+          <option value="full">20 Hz – 20 kHz</option>
+          <option value="music">20 Hz – 12 kHz</option>
+          <option value="mid">200 Hz – 12 kHz</option>
+        </select>
+      </div>
+
+      <div class="viz-control">
+        <label>&nbsp;</label>
+        <button type="button" id="resetVizViewButton">Reset view</button>
+      </div>
+
+    </div>
+
+    <div class="resultbar">
+      <span id="targetStatus" class="status"></span>
+      <button type="button" id="downloadRobustButton" class="primary"  disabled>
+        Download Robust Target
+      </button>
+    </div>
+
+    <div class="viz-grid visualizer">
+
+      <div class="viz-main">
+
+        <div id="targetChart" class="chart"></div>
+
+        <div class="legend" aria-label="Chart legend">
+          <span class="legend-item" style="color:#dce7f8">
+            <span class="legend-line dashed"></span> Original Target
+          </span>
+          <span class="legend-item" style="color:#66a3ff">
+            <span class="legend-line"></span> Robust Target
+          </span>
+        </div>
+
+        <div id="maskChart" class="chart" style="margin-top:8px"></div>
+
+        <div class="legend">
+          <span class="legend-item" style="color:#ff5f8f">
+            <span class="legend-line"></span> Mask Δ
+          </span>
+          <span class="legend-item">
+            <span class="legend-swatch"></span> zero/reference region
+          </span>
+        </div>
+
+      </div>
+
+      </div>
+
+    <div class="viz-footer" aria-hidden="true">
+      <span id="vizDataStatus" hidden>Loading target data…</span>
+    </div>
+
+  </div>
+
+  <!-- ========================================================
+       HYBRID BUILDER
+       ========================================================= -->
+
+  <div class="card section">
+
+    <h2>
+      Hybrid Builder
+    </h2>
+
+
+    <div class="muted small">
+      Target at/below join · Pure EarPrint above join · one constant shift
+    </div>
+
+
+    <div class="formrow">
+
+
+      <div class="field">
+
+        <label>
+          Lower-end target
+        </label>
+
+        <select
+          id="hybridTarget">
+        </select>
+
+      </div>
+
+
+      <div class="field">
+
+        <label>
+          Join frequency (Hz)
+        </label>
+
+        <input
+          id="joinHz"
+          type="number"
+          min="20"
+          step="1"
+          value="1000">
+
+      </div>
+
+
+    </div>
+
+
+    <div class="inline">
+
+
+      <button
+        type="button"
+        class="primary"
+        id="generateHybridButton">
+
+        Generate Hybrid
+
+      </button>
+
+
+      <button
+        type="button"
+        id="downloadHybridButton">
+
+        Download Hybrid
+
+      </button>
+
+
+      <span
+        id="hybridStatus"
+        class="status">
+      </span>
+
+
+    </div>
+
+
+    <div
+      id="hybridChart"
+      class="chart">
+    </div>
+
+
+  </div>
+
+
+  <div id="infoPanel" hidden aria-hidden="true"></div>
+
+
+
+<div
+  id="modal"
+  class="modalBack"
+  hidden>
+
+
+  <div
+    class="modal card"
+    role="dialog"
+    aria-modal="true">
+
+
+    <div class="top">
+
+
+      <div>
+
+        <h2
+          id="modalTitle"
+          style="margin:0">
+
+          Add Input
+
+        </h2>
+
+
+        <div
+          id="modalHint"
+          class="status small">
+        </div>
+
+      </div>
+
+
+      <!-- DIRECT CLOSE:
+           Does NOT depend on closeModal() -->
+
+      <button
+        type="button"
+        id="closeModalButton"
+        id="closeModalButton"
+        style="cursor:pointer">
+
+        Close
+
+      </button>
+
+
+    </div>
+
+
+    <!-- ======================================================
+         GITHUB ACCESS PANEL
+         ====================================================== -->
+
+    <div id="settingsPanel">
+
+
+      <div class="field">
+
+        <label>
+
+          Fine-grained GitHub token
+          (Contents: write for this repository)
+
+        </label>
+
+
+        <input
+          id="ghToken"
+          type="password"
+          autocomplete="off"
+          placeholder="github_pat_…">
+
+      </div>
+
+
+      <div
+        class="inline"
+        style="margin-top:10px">
+
+
+        <button
+          type="button"
+          class="primary"
+          id="useTokenButton">
+
+          Use Token
+
+        </button>
+
+
+        <button
+          type="button"
+          id="clearTokenButton">
+
+          Clear
+
+        </button>
+
+
+      </div>
+
+
+      <div
+        class="status small"
+        style="margin-top:10px">
+
+        The token is kept only in this browser tab memory
+        and is not written into the repository. It is used for uploads, deletes, for uploads and deletes.
+
+      </div>
+
+
+      <div
+        class="status small"
+        style="margin-top:6px">
+
+
+        <a
+          href="https://github.com/settings/personal-access-tokens/new"
+          target="_blank"
+          rel="noopener">
+
+          Create a fine-grained token on GitHub
+
+        </a>
+
+
+      </div>
+
+
+    </div>
+
+
+    <!-- ======================================================
+         ADD INPUT PANEL
+         ====================================================== -->
+
+    <div
+      id="addPanel"
+      hidden>
+
+
+      <div class="formrow">
+
+
+        <div class="field">
+
+          <label>
+            File
+          </label>
+
+
+          <input
+            id="addFile"
+            type="file"
+            accept=".txt,text/plain">
+
+        </div>
+
+
+        <div class="field">
+
+          <label>
+            Repository filename
+          </label>
+
+
+          <input
+            id="addName"
+            type="text"
+            placeholder="Example.txt">
+
+        </div>
+
+
+      </div>
+
+
+      <div
+        id="addValidation"
+        class="status small">
+
+        Choose a TXT file.
+        The app will validate finite values and strictly
+        ascending frequencies before saving.
+
+      </div>
+
+
+      <div
+        class="inline"
+        style="margin-top:10px">
+
+
+        <button
+          type="button"
+          class="primary"
+          id="saveInputButton">
+
+          Save to GitHub
+
+        </button>
+
+
+        <!-- DIRECT CANCEL -->
+
+        <button
+          type="button"
+          id="cancelAddButton">
+
+          Cancel
+
+        </button>
+
+
+      </div>
+
+
+      <div
+        class="status small"
+        style="margin-top:10px">
+
+        Saving commits one file into
+        <b>input/preferred/</b>
+        or
+        <b>input/targets/</b>.
+
+        Your existing engine workflow then rebuilds
+        results automatically.
+
+      </div>
+
+
+    </div>
+
+
+  </div>
+
+</div>
+
+
+<script nonce="9HKSOsB546xzOv-LNV9nGCiZix5pNLIC">
+
+/* ============================================================
+   REPOSITORY DETECTION
+   ============================================================
+
+   Current GitHub Pages URL:
+
+   https://ziyadizuhir-png.github.io/iem-earprint-engine/
+
+   Correct repository:
+
+   ziyadizuhir-png/iem-earprint-engine
+
+   ============================================================ */
+
+
+const parts =
+  location.pathname
+    .split('/')
+    .filter(Boolean);
+
+
+let repo =
+  new URLSearchParams(
+    location.search
+  ).get('repo') || '';
+
+
+/*
+  GitHub Pages project-site detection.
+*/
+
+if(
+  !repo &&
+  location.hostname.endsWith('.github.io') &&
+  parts.length >= 1
+){
+
+  const owner =
+    location.hostname
+      .split('.')[0];
+
+
+  const repoName =
+    parts[0];
+
+
+  repo =
+    owner +
+    '/' +
+    repoName;
+
+}
+
+
+/*
+  API endpoints.
+*/
+
+const API_ROOT =
+  'https://api.github.com/repos/' +
+  repo;
+
+
+const API =
+  API_ROOT +
+  '/contents/';
+
+
+const RAW =
+  'https://raw.githubusercontent.com/' +
+  repo +
+  '/main/';
+
+
+const GH =
+  'https://github.com/' +
+  repo;
+
+
+/*
+  Application state.
+*/
+
+let targets = [];
+
+let outputs = [];
+
+let pureCurve = null;
+
+let generatedHybrid = null;
+
+let targetViz = {
+  name:'',
+  original:null,
+  robust:null,
+  mask:null,
+  pure:null
+};
+
+let githubToken = '';
+
+/* ============================================================
+   SESSION-BOUND GITHUB TOKEN
+   - Survives refreshes in the current browser tab/session.
+   - Not persisted to localStorage.
+   - Never written to the repository.
+   ============================================================ */
+
+const TOKEN_STORAGE_KEY =
+  'iem_earprint_github_token';
+
+function restoreSessionToken(){
+
+  try{
+
+    const saved =
+      sessionStorage.getItem(
+        TOKEN_STORAGE_KEY
+      );
+
+    if(saved){
+
+      githubToken =
+        saved;
+
+    }
+
+  }catch(_){
+
+    /* Storage may be unavailable; in-memory mode still works. */
+
+  }
+
+}
+
+function persistSessionToken(token){
+
+  try{
+
+    sessionStorage.setItem(
+      TOKEN_STORAGE_KEY,
+      token
+    );
+
+  }catch(_){
+
+    /* Continue with in-memory token if storage is unavailable. */
+
+  }
+
+}
+
+function removeSessionToken(){
+
+  try{
+
+    sessionStorage.removeItem(
+      TOKEN_STORAGE_KEY
+    );
+
+  }catch(_){}
+
+}
+
+restoreSessionToken();
+
+let addKind = 'iem';
+
+
+/* ============================================================
+   GENERAL HELPERS
+   ============================================================ */
+
+
+function esc(value){
+
+  return String(value).replace(
+    /[&<>"']/g,
+
+    character => ({
+
+      '&':'&amp;',
+      '<':'&lt;',
+      '>':'&gt;',
+      '"':'&quot;',
+      "'":'&#39;'
+
+    }[character])
+
+  );
+
+}
+
+
+function showErr(message){
+
+  const box =
+    document.getElementById(
+      'error'
+    );
+
+
+  box.innerHTML =
+    message
+
+      ? '<div class="error">' +
+        esc(message) +
+        '</div>'
+
+      : '';
+
+}
+
+
+function stem(name){
+
+  return String(name)
+
+    .replace(
+      /\.txt$/i,
+      ''
+    )
+
+    .replace(
+      /[^\w.-]+/g,
+      '_'
+    )
+
+    .replace(
+      /_+/g,
+      '_'
+    )
+
+    .replace(
+      /^[_\.]+|[_\.]+$/g,
+      ''
+    )
+
+    || 'target';
+
+}
+
+
+/* ============================================================
+   PUBLIC GITHUB READ
+   ============================================================ */
+
+
+async function gh(path){
+
+  const headers = {
+    Accept:
+      'application/vnd.github+json',
+
+    'X-GitHub-Api-Version':
+      '2022-11-28'
+  };
+
+  /*
+    If the user has connected GitHub in this browser session,
+    authenticate API reads as well as writes.
+
+    This is important because GitHub API rate limits are much
+    more restrictive for unauthenticated requests. The previous
+    version verified and stored the token, but the public-read
+    helper did not actually attach it to GET requests.
+  */
+  if(githubToken){
+
+    headers.Authorization =
+      'Bearer ' + githubToken;
+
+  }
+
+  const response =
+    await fetch(
+      API + path,
+      {
+        headers,
+        cache:'no-store'
+      }
+    );
+
+
+  if(!response.ok){
+
+    let message =
+      'GitHub API ' +
+      response.status +
+      ' for ' +
+      path;
+
+    try{
+
+      const data =
+        await response.json();
+
+      if(data && data.message)
+        message =
+          data.message +
+          ' (' +
+          response.status +
+          ')';
+
+    }catch(_){}
+
+    if(response.status === 401){
+
+      githubToken = '';
+
+      removeSessionToken();
+
+      message =
+        'GitHub session expired or token is invalid. ' +
+        'Reconnect GitHub Access.';
+
+    }else if(response.status === 403){
+
+      message =
+        'GitHub API 403 for ' +
+        path +
+        '. If GitHub Access is connected, reconnect the token. ' +
+        'Otherwise this may be the GitHub API rate limit.';
+
+    }
+
+    throw Error(message);
+
+  }
+
+
+  return response.json();
+
+}
+
+
+async function rawText(path){
+
+  const response =
+    await fetch(
+      RAW +
+      path +
+      '?t=' +
+      Date.now(),
+      {
+        cache:'no-store'
+      }
+    );
+
+
+  if(!response.ok){
+
+    throw Error(
+      'Could not read ' +
+      path
+    );
+
+  }
+
+
+  return response.text();
+
+}
+
+
+/* ============================================================
+   CURVE PARSER
+   ============================================================ */
+
+
+function parseXY(text){
+
+  const output = [];
+  const lines = String(text || '')
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/);
+
+  /*
+    Accept:
+      20,64
+      20\t64
+      20 64
+      20 Hz, 64 dB
+    Headers/comments are ignored.
+  */
+  const pairPattern =
+    /^\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)\s*(?:Hz)?\s*(?:,|;|\t|\s+)\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)\s*(?:dB)?\s*$/i;
+
+  for(const raw of lines){
+
+    const line = raw.trim();
+
+    if(!line || line.startsWith('#') || line.startsWith('//'))
+      continue;
+
+    const m = line.match(pairPattern);
+
+    if(!m)
+      continue;
+
+    const f = Number(m[1]);
+    const v = Number(m[2]);
+
+    if(Number.isFinite(f) && Number.isFinite(v) && f > 0){
+      output.push([f,v]);
+    }
+
+  }
+
+  if(output.length < 2){
+
+    throw Error(
+      'Not enough numeric points. ' +
+      'Expected two-column frequency/response data such as 20,64 or 20 64.'
+    );
+
+  }
+
+  for(let i=1;i<output.length;i++){
+
+    if(output[i][0] <= output[i-1][0]){
+
+      throw Error(
+        'Frequencies are not strictly ascending at row ' +
+        (i+1) + '.'
+      );
+
+    }
+
+  }
+
+  return output;
+
+}
+
+
+/* ============================================================
+   LOG FREQUENCY INTERPOLATION
+   ============================================================ */
+
+
+function logInterp(
+  curve,
+  frequency
+){
+
+  if(
+    frequency < curve[0][0] ||
+    frequency >
+      curve[curve.length-1][0]
+  ){
+
+    throw Error(
+      'Curve does not cover ' +
+      frequency +
+      ' Hz'
+    );
+
+  }
+
+
+  const logFrequency =
+    Math.log10(
+      frequency
+    );
+
+
+  let low = 0;
+
+  let high =
+    curve.length - 1;
+
+
+  while(low < high){
+
+    const middle =
+      Math.floor(
+        (low + high) / 2
+      );
+
+
+    const middleFrequency =
+      Math.log10(
+        curve[middle][0]
+      );
+
+
+    if(
+      middleFrequency <
+      logFrequency
+    ){
+
+      low =
+        middle + 1;
+
+    }else{
+
+      high =
+        middle;
+
+    }
+
+  }
+
+
+  let index =
+    Math.max(
+      1,
+      low
+    );
+
+
+  if(
+    curve[index][0] <
+    frequency &&
+    index <
+    curve.length - 1
+  ){
+
+    index++;
+
+  }
+
+
+  const a =
+    curve[index-1];
+
+
+  const b =
+    curve[index];
+
+
+  const logA =
+    Math.log10(a[0]);
+
+
+  const logB =
+    Math.log10(b[0]);
+
+
+  const ratio =
+    (logFrequency - logA) /
+    (logB - logA || 1);
+
+
+  return (
+    a[1] +
+    (b[1] - a[1]) *
+    ratio
+  );
+
+}
+
+
+/* ============================================================
+   HYBRID BUILDER
+   ============================================================ */
+
+
+function buildHybrid(
+  frequencyGrid,
+  pure,
+  target,
+  join
+){
+
+  if(!Array.isArray(frequencyGrid) || frequencyGrid.length < 2)
+    throw Error('Pure EarPrint frequency grid is not available.');
+
+  if(!Array.isArray(pure) || pure.length !== frequencyGrid.length)
+    throw Error('Pure EarPrint frequency grid is invalid.');
+
+  const targetAtJoin =
+    logInterp(
+      target,
+      join
+    );
+
+  const pureAtJoin =
+    logInterp(
+      pure,
+      join
+    );
+
+  const shift =
+    targetAtJoin -
+    pureAtJoin;
+
+  const output = [];
+
+  for(
+    let i=0;
+    i<frequencyGrid.length;
+    i++
+  ){
+
+    const frequency =
+      frequencyGrid[i];
+
+    /*
+      Locked hybrid math:
+      - selected target at/below join
+      - Pure EarPrint above join
+      - ONE constant continuity shift applied only to the Pure EarPrint side
+    */
+    const value =
+      frequency <= join
+        ? logInterp(target, frequency)
+        : pure[i][1] + shift;
+
+    output.push([
+      frequency,
+      value
+    ]);
+  }
+
+  return {
+    curve:output,
+    shift
+  };
+
+}
+
+
+
+/* ============================================================
+   TARGET VISUALIZER
+   ============================================================ */
+
+const VIZ_COLORS = {
+  original:'#dce7f8',
+  robust:'#66a3ff',
+  pure:'#4de0a7',
+  mask:'#ff5f8f',
+  grid:'#1c2a40',
+  gridStrong:'#2a3b57',
+  band1:'rgba(46,190,255,.075)',
+  band2:'rgba(77,224,167,.055)',
+  band3:'rgba(255,201,77,.055)',
+  band4:'rgba(174,112,255,.07)'
+};
+
+function curveValue(curve, frequency){
+  if(!curve || curve.length < 2) return null;
+  if(frequency < curve[0][0] || frequency > curve[curve.length-1][0]) return null;
+  try{
+    return logInterp(curve, frequency);
+  }catch(_){
+    return null;
+  }
+}
+
+function finiteValues(curves, minHz, maxHz){
+  const values=[];
+  for(const curve of curves){
+    if(!curve) continue;
+    for(const [f,v] of curve){
+      if(f>=minHz && f<=maxHz && Number.isFinite(v)) values.push(v);
+    }
+  }
+  return values;
+}
+
+function niceStep(range, desired=6){
+  const raw = Math.max(range/desired, .1);
+  const power = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw/power;
+  let step;
+  if(n<=1) step=1;
+  else if(n<=2) step=2;
+  else if(n<=5) step=5;
+  else step=10;
+  return step*power;
+}
+
+function fmtHz(f){
+  if(f>=1000){
+    const k=f/1000;
+    return (Math.abs(k-Math.round(k))<.001 ? String(Math.round(k)) : k.toFixed(1))+'k';
+  }
+  return String(Math.round(f));
+}
+
+function fmtDb(v){
+  return Number.isFinite(v) ? (v>=0?'+':'')+v.toFixed(1)+' dB' : '—';
+}
+
+function pathForCurve(curve, px, py, minHz, maxHz){
+  if(!curve || curve.length<2) return '';
+  let d='';
+  let started=false;
+
+  for(const [f,v] of curve){
+    if(f<minHz || f>maxHz) continue;
+    const x=px(Math.log10(f));
+    const y=py(v);
+    d+=(started?'L':'M')+x.toFixed(2)+','+y.toFixed(2);
+    started=true;
+  }
+
+  return d;
+}
+
+function targetDisplayShift(){
+  /*
+    DISPLAY ONLY:
+    Target files may use different absolute offsets (e.g. 0 dB-normalized
+    delta targets vs absolute 5128 targets). The engine/output files are NOT
+    modified. For visual comparison only, align Original + Robust to the
+    Pure EarPrint at the common 1 kHz anchor. This preserves each target's
+    shape while putting all curves into the same vertical frame.
+  */
+  const anchorHz=1000;
+  const pureAt=curveValue(targetViz.pure,anchorHz);
+  const originalAt=curveValue(targetViz.original,anchorHz);
+  if(Number.isFinite(pureAt) && Number.isFinite(originalAt)){
+    return pureAt-originalAt;
+  }
+  return 0;
+}
+
+function shiftedCurve(curve,shift){
+  if(!curve || !Number.isFinite(shift) || Math.abs(shift)<1e-12) return curve;
+  return curve.map(([f,v])=>[f,v+shift]);
+}
+
+function getDisplayCurves(){
+  const shift=targetDisplayShift();
+  return {
+    original:shiftedCurve(targetViz.original,shift),
+    robust:shiftedCurve(targetViz.robust,shift),
+    pure:null,
+    shift
+  };
+}
+
+function drawTargetMain(){
+  const container=document.getElementById('targetChart');
+  if(!container) return;
+
+  const display=getDisplayCurves();
+  const curves=[display.original,display.robust].filter(Boolean);
+
+  if(!curves.length){
+    container.innerHTML='<div class="viz-empty">No target curve available.</div>';
+    return;
+  }
+
+  const rangeMode=document.getElementById('vizRange')?.value || 'full';
+  let requestedMin=rangeMode==='mid'?200:20;
+  let requestedMax=rangeMode==='music'?12000:20000;
+
+  const availableMin=Math.max(...curves.map(c=>c[0][0]));
+  const availableMax=Math.min(...curves.map(c=>c[c.length-1][0]));
+  const minHz=Math.max(requestedMin,Math.min(availableMin,requestedMax));
+  const maxHz=Math.min(requestedMax,Math.max(availableMax,minHz*1.01));
+
+  /* Squiglink-like wide graph window. */
+  const W=1200,H=500;
+  const L=66,R=20,T=18,B=48;
+  const PW=W-L-R,PH=H-T-B;
+
+  const vals=finiteValues(curves,minHz,maxHz);
+  let ymin=Math.min(...vals),ymax=Math.max(...vals);
+  if(!Number.isFinite(ymin)||!Number.isFinite(ymax)){ymin=50;ymax=80}
+
+  /* Keep the familiar current auto-scaling, but use clean 5 dB steps. */
+  const span=Math.max(ymax-ymin,10);
+  const pad=Math.max(4,span*.10);
+  ymin=Math.floor((ymin-pad)/5)*5;
+  ymax=Math.ceil((ymax+pad)/5)*5;
+  if(ymax-ymin<20){
+    const mid=(ymin+ymax)/2;
+    ymin=Math.floor((mid-10)/5)*5;
+    ymax=Math.ceil((mid+10)/5)*5;
+  }
+
+  const lx0=Math.log10(minHz),lx1=Math.log10(maxHz);
+  const px=x=>L+(x-lx0)/(lx1-lx0||1)*PW;
+  const py=y=>T+(ymax-y)/(ymax-ymin||1)*PH;
+
+  const parts=[];
+  parts.push(`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Frequency response target comparison" style="touch-action:pan-y">`);
+  parts.push(`<rect width="${W}" height="${H}" fill="#080f1b"/>`);
+
+  /* Clean FR-grid, inspired by Squiglink's graph window. */
+  const step=5;
+  for(let y=Math.ceil(ymin/step)*step;y<=ymax+0.001;y+=step){
+    const yy=py(y);
+    const major=(y%10===0);
+    parts.push(`<line x1="${L}" x2="${W-R}" y1="${yy.toFixed(2)}" y2="${yy.toFixed(2)}" stroke="${major?'#223049':'#172338'}" stroke-width="${major?1.05:0.75}"/>`);
+    if(major){
+      parts.push(`<text x="${L-10}" y="${(yy+4).toFixed(2)}" text-anchor="end" fill="#8a99ae" font-size="11">${y}</text>`);
+    }
+  }
+
+  const freqs=[20,30,50,80,100,200,300,500,800,1000,2000,3000,5000,8000,10000,12000,15000,20000];
+  for(const f of freqs){
+    if(f<minHz||f>maxHz) continue;
+    const x=px(Math.log10(f));
+    const major=[20,100,1000,10000,20000].includes(f);
+    parts.push(`<line x1="${x.toFixed(2)}" x2="${x.toFixed(2)}" y1="${T}" y2="${H-B}" stroke="${major?'#2a3b57':'#172338'}" stroke-width="${major?1.05:.7}"/>`);
+    if([20,50,100,200,500,1000,2000,5000,10000,20000].includes(f)){
+      parts.push(`<text x="${x.toFixed(2)}" y="${H-18}" text-anchor="middle" fill="${major?'#b2bfd1':'#7e8da3'}" font-size="11">${fmtHz(f)}</text>`);
+    }
+  }
+
+  /* Two requested curves only. */
+  if(display.original){
+    const d=pathForCurve(display.original,px,py,minHz,maxHz);
+    parts.push(`<path d="${d}" fill="none" stroke="${VIZ_COLORS.original}" stroke-width="2.2" stroke-dasharray="7 5" stroke-linecap="round" stroke-linejoin="round"/>`);
+  }
+  if(display.robust){
+    const d=pathForCurve(display.robust,px,py,minHz,maxHz);
+    parts.push(`<path d="${d}" fill="none" stroke="${VIZ_COLORS.robust}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`);
+  }
+
+  parts.push(`<text x="${L}" y="${H-3}" fill="#65758d" font-size="10">Hz · logarithmic</text>`);
+  parts.push(`<text x="14" y="${T+2}" fill="#65758d" font-size="10" transform="rotate(-90 14 ${T+2})">dB</text>`);
+
+  parts.push(`<rect class="viz-hit" x="${L}" y="${T}" width="${PW}" height="${PH}" fill="transparent" pointer-events="all"/>`);
+  parts.push('</svg>');
+
+  container.classList.add('squig-graph');
+  container.innerHTML=parts.join('');
+
+  const svg=container.querySelector('svg');
+  const hit=container.querySelector('.viz-hit');
+  if(hit){
+    const read=(event)=>{
+      const rect=svg.getBoundingClientRect();
+      const cx=(event.clientX-rect.left)/rect.width*W;
+      const ratio=(cx-L)/PW;
+      if(ratio<0||ratio>1) return;
+      const f=Math.pow(10,lx0+ratio*(lx1-lx0));
+      updateReadout(f);
+    };
+    hit.addEventListener('pointerdown',read,{passive:true});
+    hit.addEventListener('pointermove',(event)=>{
+      if(event.pointerType==='mouse'||event.buttons) read(event);
+    },{passive:true});
+  }
+}
+
+function drawMaskChart(){
+  const container=document.getElementById('maskChart');
+  if(!container) return;
+
+  const curve=targetViz.mask;
+  if(!curve){
+    container.innerHTML='<div class="viz-empty">Mask output is not available for this target.</div>';
+    return;
+  }
+
+  const requestedMin=20, requestedMax=12000;
+  const minHz=Math.max(requestedMin,curve[0][0]);
+  const maxHz=Math.min(requestedMax,curve[curve.length-1][0]);
+
+  const vals=finiteValues([curve],minHz,maxHz);
+  let ymin=Math.min(...vals,0), ymax=Math.max(...vals,0);
+  const span=Math.max(ymax-ymin,2);
+  const pad=Math.max(.8,span*.15);
+  ymin-=pad; ymax+=pad;
+
+  const W=1000,H=210,L=58,R=18,T=24,B=34;
+  const PW=W-L-R,PH=H-T-B;
+  const lx0=Math.log10(minHz),lx1=Math.log10(maxHz);
+  const px=x=>L+(x-lx0)/(lx1-lx0||1)*PW;
+  const py=y=>T+(ymax-y)/(ymax-ymin||1)*PH;
+
+  const parts=[];
+  parts.push(`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Robust mask delta" style="touch-action:pan-y">`);
+  parts.push(`<rect width="${W}" height="${H}" fill="#080f1b"/>`);
+
+  /* subtle upper/lower zero shading */
+  const zeroY=py(0);
+  parts.push(`<rect x="${L}" y="${T}" width="${PW}" height="${Math.max(0,zeroY-T)}" fill="rgba(77,224,167,.025)"/>`);
+  parts.push(`<rect x="${L}" y="${zeroY}" width="${PW}" height="${Math.max(0,H-B-zeroY)}" fill="rgba(255,95,143,.035)"/>`);
+
+  const step=niceStep(ymax-ymin,4);
+  const first=Math.ceil(ymin/step)*step;
+  for(let y=first;y<=ymax+step*.1;y+=step){
+    const yy=py(y);
+    parts.push(`<line x1="${L}" x2="${W-R}" y1="${yy.toFixed(2)}" y2="${yy.toFixed(2)}" stroke="${y===0?'#52647f':VIZ_COLORS.grid}" stroke-width="${y===0?1.4:1}"/>`);
+    parts.push(`<text x="${L-8}" y="${(yy+4).toFixed(2)}" text-anchor="end" fill="#8292aa" font-size="10">${y.toFixed(0)}</text>`);
+  }
+
+  for(const f of [20,100,200,500,1000,2000,5000,10000,12000]){
+    if(f<minHz||f>maxHz) continue;
+    const x=px(Math.log10(f));
+    const strong=f===200||f===1000||f===12000;
+    parts.push(`<line x1="${x.toFixed(2)}" x2="${x.toFixed(2)}" y1="${T}" y2="${H-B}" stroke="${strong?VIZ_COLORS.gridStrong:VIZ_COLORS.grid}" stroke-dasharray="${strong?'4 3':'0'}"/>`);
+    parts.push(`<text x="${x.toFixed(2)}" y="${H-12}" text-anchor="middle" fill="#8292aa" font-size="10">${fmtHz(f)}</text>`);
+  }
+
+  const d=pathForCurve(curve,px,py,minHz,maxHz);
+  parts.push(`<path d="${d}" fill="none" stroke="${VIZ_COLORS.mask}" stroke-width="2.4" stroke-linejoin="round"/>`);
+  parts.push(`<text x="${L}" y="13" fill="#9eacc1" font-size="10">Mask Δ (dB)</text>`);
+  parts.push(`<rect class="mask-hit" x="${L}" y="${T}" width="${PW}" height="${PH}" fill="transparent" pointer-events="all"/>`);
+  parts.push('</svg>');
+
+  container.innerHTML=parts.join('');
+
+  const svg=container.querySelector('svg');
+  const hit=container.querySelector('.mask-hit');
+  if(hit){
+    hit.addEventListener('pointerdown',event=>{
+      const rect=svg.getBoundingClientRect();
+      const cx=(event.clientX-rect.left)/rect.width*W;
+      const ratio=(cx-L)/PW;
+      if(ratio<0||ratio>1)return;
+      updateReadout(Math.pow(10,lx0+ratio*(lx1-lx0)));
+    },{passive:true});
+  }
+}
+
+function updateReadout(frequency){
+  const put=(id,value)=>{
+    const el=document.getElementById(id);
+    if(el) el.textContent=value;
+  };
+
+  const display=getDisplayCurves();
+  put('readFreq',fmtHz(frequency)+' Hz');
+  put('readOriginal',fmtDb(curveValue(display.original,frequency)));
+  put('readRobust',fmtDb(curveValue(display.robust,frequency)));
+
+}
+
+function updateMaskSummary(){
+  const curve=targetViz.mask;
+  const ids=['sumMax','sumMin','sumRms','sumPoints'];
+  if(!curve){
+    ids.forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='—'});
+    return;
+  }
+
+  const vals=curve
+    .filter(([f,v])=>f>=1000&&f<=12000&&Number.isFinite(v))
+    .map(p=>p[1]);
+
+  if(!vals.length){
+    ids.forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='—'});
+    return;
+  }
+
+  const max=Math.max(...vals);
+  const min=Math.min(...vals);
+  const rms=Math.sqrt(vals.reduce((a,v)=>a+v*v,0)/vals.length);
+
+  document.getElementById('sumMax').textContent=fmtDb(max);
+  document.getElementById('sumMin').textContent=fmtDb(min);
+  document.getElementById('sumRms').textContent=rms.toFixed(2)+' dB';
+  document.getElementById('sumPoints').textContent=String(vals.length);
+}
+
+function rerenderTargetViz(){
+  if(!targetViz.original && !targetViz.robust) return;
+  drawTargetMain();
+  drawMaskChart();
+}
+
+function resetVizView(){
+  const el=document.getElementById('vizRange');
+  if(el) el.value='full';
+  rerenderTargetViz();
+}
+
+function draw(points, containerId){
+  /*
+    Hybrid renderer: presentation-only refresh to match the main FR graph.
+    Hybrid data and calculation are unchanged.
+  */
+  if(!points || points.length<2) return;
+
+  const W=1200,H=440,L=66,R=20,T=18,B=48;
+  const xmin=Math.log10(points[0][0]),xmax=Math.log10(points[points.length-1][0]);
+  const ys=points.map(p=>p[1]);
+  let ymin=Math.min(...ys),ymax=Math.max(...ys);
+  const span=Math.max(ymax-ymin,10);
+  const pad=Math.max(4,span*.10);
+  ymin=Math.floor((ymin-pad)/5)*5;
+  ymax=Math.ceil((ymax+pad)/5)*5;
+  if(ymax-ymin<20){
+    const mid=(ymin+ymax)/2;
+    ymin=Math.floor((mid-10)/5)*5;
+    ymax=Math.ceil((mid+10)/5)*5;
+  }
+
+  const px=x=>L+(x-xmin)/(xmax-xmin||1)*(W-L-R);
+  const py=y=>T+(ymax-y)/(ymax-ymin||1)*(H-T-B);
+  let grid='';
+
+  for(let y=Math.ceil(ymin/5)*5;y<=ymax+0.001;y+=5){
+    const yy=py(y);
+    const major=(y%10===0);
+    grid+=`<line x1="${L}" x2="${W-R}" y1="${yy.toFixed(2)}" y2="${yy.toFixed(2)}" stroke="${major?'#223049':'#172338'}" stroke-width="${major?1.05:.75}"/>`;
+    if(major) grid+=`<text x="${L-10}" y="${(yy+4).toFixed(2)}" text-anchor="end" fill="#8a99ae" font-size="11">${y}</text>`;
+  }
+
+  const freqs=[20,30,50,80,100,200,300,500,800,1000,2000,3000,5000,8000,10000,12000,15000,20000];
+  for(const f of freqs){
+    if(f<points[0][0]||f>points[points.length-1][0]) continue;
+    const x=px(Math.log10(f));
+    const major=[20,100,1000,10000,20000].includes(f);
+    grid+=`<line x1="${x.toFixed(2)}" x2="${x.toFixed(2)}" y1="${T}" y2="${H-B}" stroke="${major?'#2a3b57':'#172338'}" stroke-width="${major?1.05:.7}"/>`;
+    if([20,50,100,200,500,1000,2000,5000,10000,20000].includes(f)){
+      grid+=`<text x="${x.toFixed(2)}" y="${H-18}" text-anchor="middle" fill="${major?'#b2bfd1':'#7e8da3'}" font-size="11">${fmtHz(f)}</text>`;
+    }
+  }
+
+  const d=pathForCurve(points,px,py,points[0][0],points[points.length-1][0]);
+  document.getElementById(containerId).classList.add('squig-graph');
+  document.getElementById(containerId).innerHTML=
+    `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Generated hybrid frequency response">`+
+      `<rect width="${W}" height="${H}" fill="#080f1b"/>`+
+      grid+
+      `<path d="${d}" fill="none" stroke="#66a3ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`+
+      `<text x="${L}" y="${H-3}" fill="#65758d" font-size="10">Hz · logarithmic</text>`+
+      `<text x="14" y="${T+2}" fill="#65758d" font-size="10" transform="rotate(-90 14 ${T+2})">dB</text>`+
+    `</svg>`;
+}
+
+
+
+/* ============================================================
+   DOWNLOAD
+   ============================================================ */
+
+
+function blobDownload(
+  content,
+  filename
+){
+
+  const blob =
+    new Blob(
+      [content],
+      {
+        type:
+          'text/plain;charset=utf-8'
+      }
+    );
+
+
+  const url =
+    URL.createObjectURL(
+      blob
+    );
+
+
+  const anchor =
+    document.createElement(
+      'a'
+    );
+
+
+  anchor.href =
+    url;
+
+
+  anchor.download =
+    filename;
+
+
+  document.body.appendChild(
+    anchor
+  );
+
+
+  anchor.click();
+
+
+  setTimeout(
+    () => {
+
+      URL.revokeObjectURL(
+        url
+      );
+
+      anchor.remove();
+
+    },
+    0
+  );
+
+}
+
+
+/* ============================================================
+   MODAL FUNCTIONS
+   ============================================================ */
+
+
+function openSettings(){
+
+  const modal =
+    document.getElementById(
+      'modal'
+    );
+
+
+  document.getElementById(
+    'modalTitle'
+  ).textContent =
+    'GitHub Access';
+
+
+  document.getElementById(
+    'modalHint'
+  ).textContent =
+    githubToken
+      ? '✓ GitHub connected for this browser session.'
+      : 'No token loaded.';
+
+
+  document.getElementById(
+    'settingsPanel'
+  ).hidden = false;
+
+
+  document.getElementById(
+    'addPanel'
+  ).hidden = true;
+
+
+  modal.removeAttribute(
+    'hidden'
+  );
+
+
+  modal.style.display =
+    'flex';
+
+}
+
+
+function openAdd(kind){
+
+  if(!repo){
+
+    showErr(
+      'Repository not detected. ' +
+      'Open this from GitHub Pages ' +
+      'or use ?repo=OWNER/REPO.'
+    );
+
+    return;
+
+  }
+
+
+  addKind =
+    kind;
+
+
+  document.getElementById(
+    'modalTitle'
+  ).textContent =
+    kind === 'iem'
+      ? 'Add IEM'
+      : 'Add Target';
+
+
+  document.getElementById(
+    'modalHint'
+  ).textContent =
+    githubToken
+      ? 'GitHub write access ready.'
+      : 'Enter a token with Contents: write before saving.';
+
+
+  document.getElementById(
+    'settingsPanel'
+  ).hidden = true;
+
+
+  document.getElementById(
+    'addPanel'
+  ).hidden = false;
+
+
+  document.getElementById(
+    'addFile'
+  ).value = '';
+
+
+  document.getElementById(
+    'addName'
+  ).value = '';
+
+
+  document.getElementById(
+    'addValidation'
+  ).textContent =
+    'Choose a TXT file. The app will validate finite values and strictly ascending frequencies before saving.';
+
+
+  document.getElementById(
+    'addValidation'
+  ).className =
+    'status small';
+
+
+  const modal =
+    document.getElementById(
+      'modal'
+    );
+
+
+  modal.removeAttribute(
+    'hidden'
+  );
+
+
+  modal.style.display =
+    'flex';
+
+}
+
+
+/*
+  Normal close function.
+*/
+
+function closeModal(){
+
+  const modal =
+    document.getElementById(
+      'modal'
+    );
+
+
+  if(!modal)
+    return;
+
+
+  modal.setAttribute(
+    'hidden',
+    ''
+  );
+
+
+  modal.style.display =
+    'none';
+
+}
+
+
+/*
+  ESC closes modal.
+*/
+
+document.addEventListener(
+  'keydown',
+  function(event){
+
+    if(
+      event.key === 'Escape'
+    ){
+
+      closeModal();
+
+    }
+
+  }
+);
+
+
+/*
+  Clicking dark area closes modal.
+*/
+
+document.addEventListener(
+  'click',
+  function(event){
+
+    const modal =
+      document.getElementById(
+        'modal'
+      );
+
+
+    if(
+      modal &&
+      !modal.hasAttribute('hidden') &&
+      event.target === modal
+    ){
+
+      closeModal();
+
+    }
+
+  }
+);
+
+
+/* ============================================================
+   LIVE FILE VALIDATION
+   ============================================================ */
+
+document.addEventListener(
+  'change',
+  async function(event){
+
+    if(
+      !event.target ||
+      event.target.id !== 'addFile'
+    )
+      return;
+
+    const file =
+      event.target.files &&
+      event.target.files[0];
+
+    const box =
+      document.getElementById(
+        'addValidation'
+      );
+
+    if(!file){
+      box.textContent =
+        'Choose a TXT file.';
+      box.className =
+        'status small';
+      return;
+    }
+
+    try{
+
+      const text =
+        await file.text();
+
+      const curve =
+        parseXY(text);
+
+      box.textContent =
+        'Valid target: ' +
+        curve.length.toLocaleString() +
+        ' numeric points · ' +
+        curve[0][0] +
+        '–' +
+        curve[curve.length-1][0] +
+        ' Hz.';
+
+      box.className =
+        'status small ok';
+
+      const name =
+        document.getElementById(
+          'addName'
+        );
+
+      if(
+        name &&
+        !name.value.trim()
+      ){
+
+        name.value =
+          file.name.replace(
+            /\.txt$/i,
+            ''
+          );
+
+      }
+
+    }catch(error){
+
+      box.textContent =
+        error.message;
+
+      box.className =
+        'status small warn';
+
+    }
+
+  }
+);
+
+
+/* ============================================================
+   TOKEN
+   ============================================================ */
+
+
+async function saveToken(){
+
+  const input =
+    document.getElementById(
+      'ghToken'
+    );
+
+  const token =
+    input.value.trim();
+
+  if(!token){
+
+    showErr(
+      'Token is empty.'
+    );
+
+    return;
+
+  }
+
+  const button =
+    input
+      .closest('#settingsPanel')
+      ?.querySelector(
+        'button.primary'
+      );
+
+  if(button){
+
+    button.disabled = true;
+    button.textContent =
+      'Checking…';
+
+  }
+
+  try{
+
+    /*
+      Verify the token against the configured repository before binding it.
+      The token is only persisted after GitHub accepts it.
+    */
+
+    const response =
+      await fetch(
+        API + '',
+        {
+          headers:{
+            Accept:
+              'application/vnd.github+json',
+
+            'X-GitHub-Api-Version':
+              '2022-11-28',
+
+            Authorization:
+              'Bearer ' + token
+          },
+          cache:'no-store'
+        }
+      );
+
+    let data = null;
+
+    try{
+      data =
+        await response.json();
+    }catch(_){}
+
+    if(!response.ok){
+
+      throw Error(
+        (data && data.message) ||
+        ('GitHub API ' + response.status)
+      );
+
+    }
+
+    githubToken =
+      token;
+
+    persistSessionToken(
+      token
+    );
+
+    input.value = '';
+
+    closeModal();
+
+    showErr('');
+
+    const state =
+      document.getElementById(
+        'buildState'
+      );
+
+    if(state)
+      state.textContent =
+        'CONNECTED';
+
+    /*
+      Reload repository data after authentication so the UI immediately
+      reflects the authenticated state.
+    */
+    await loadAll();
+
+  }catch(error){
+
+    githubToken = '';
+
+    removeSessionToken();
+
+    showErr(
+      'GitHub token could not be verified: ' +
+      error.message
+    );
+
+  }finally{
+
+    if(button){
+
+      button.disabled = false;
+      button.textContent =
+        'Use Token';
+
+    }
+
+  }
+
+}
+
+
+function clearToken(){
+
+  githubToken =
+    '';
+
+  removeSessionToken();
+
+  const input =
+    document.getElementById(
+      'ghToken'
+    );
+
+  if(input)
+    input.value =
+      '';
+
+  const hint =
+    document.getElementById(
+      'modalHint'
+    );
+
+  if(hint)
+    hint.textContent =
+      'No token loaded.';
+
+  const state =
+    document.getElementById(
+      'buildState'
+    );
+
+  if(state)
+    state.textContent =
+      'READY';
+
+}
+
+
+/* ============================================================
+   BASE64
+   ============================================================ */
+
+
+function b64(text){
+
+  const bytes =
+    new TextEncoder().encode(
+      text
+    );
+
+
+  let binary = '';
+
+
+  for(
+    let i=0;
+    i<bytes.length;
+    i+=0x8000
+  ){
+
+    binary +=
+      String.fromCharCode(
+        ...bytes.subarray(
+          i,
+          i+0x8000
+        )
+      );
+
+  }
+
+
+  return btoa(
+    binary
+  );
+
+}
+
+
+/* ============================================================
+   AUTHENTICATED GITHUB WRITE
+   ============================================================ */
+
+
+async function ghAuth(
+  path,
+  options={}
+){
+
+  if(!githubToken){
+
+    throw Error(
+      'GitHub token required. Open GitHub Access first.'
+    );
+
+  }
+
+
+  const response =
+    await fetch(
+      API + path,
+      {
+
+        ...options,
+
+        headers:{
+
+          Accept:
+            'application/vnd.github+json',
+
+          'X-GitHub-Api-Version':
+            '2022-11-28',
+
+          Authorization:
+            'Bearer ' +
+            githubToken,
+
+          ...(options.headers || {})
+
+        }
+
+      }
+    );
+
+
+  let data =
+    null;
+
+
+  try{
+
+    data =
+      await response.json();
+
+  }catch(_){}
+
+
+  if(!response.ok){
+
+    throw Error(
+      (data && data.message) ||
+      (
+        'GitHub API ' +
+        response.status
+      )
+    );
+
+  }
+
+
+  return data;
+
+}
+
+/* ============================================================
+   AUTHENTICATED REPOSITORY-LEVEL API
+   ============================================================ */
+
+async function ghAuthRoot(path, options={}){
+
+  if(!githubToken){
+    throw Error(
+      'GitHub token required. Open GitHub Access first.'
+    );
+  }
+
+  const response = await fetch(
+    API_ROOT + path,
+    {
+      ...options,
+      headers:{
+        Accept:'application/vnd.github+json',
+        'X-GitHub-Api-Version':'2022-11-28',
+        Authorization:'Bearer ' + githubToken,
+        ...(options.headers || {})
+      }
+    }
+  );
+
+  let data=null;
+  try{ data=await response.json(); }catch(_){ }
+
+  if(!response.ok){
+    throw Error(
+      (data && data.message) ||
+      ('GitHub API ' + response.status)
+    );
+  }
+
+  return data;
+}
+
+
+
+/* ============================================================
+   GET EXISTING FILE SHA
+   ============================================================ */
+
+
+async function fileSha(path){
+
+  try{
+
+    const data =
+      await ghAuth(
+        path +
+        '?ref=main'
+      );
+
+
+    return (
+      data.sha ||
+      null
+    );
+
+  }catch(error){
+
+    const message =
+      String(
+        error.message
+      );
+
+
+    if(
+      message.includes(
+        'Not Found'
+      ) ||
+
+      message.includes(
+        '404'
+      )
+    ){
+
+      return null;
+
+    }
+
+
+    throw error;
+
+  }
+
+}
+
+
+/* ============================================================
+   ADD / UPDATE IEM OR TARGET
+   ============================================================ */
+
+
+async function saveInputToGitHub(){
+
+  if(window.__buildBusy)
+    return;
+
+  try{
+
+    const file =
+      document.getElementById('addFile').files[0];
+
+    if(!file)
+      throw Error('Choose a TXT file first.');
+
+    let filename =
+      document.getElementById('addName').value.trim();
+
+    if(!filename)
+      filename = file.name;
+
+    if(!/\.txt$/i.test(filename))
+      filename += '.txt';
+
+    filename = filename
+      .replace(/[^A-Za-z0-9._-]+/g,'_')
+      .replace(/^\.+/,'')
+      .replace(/\.{2,}/g,'.');
+
+    if(!filename || filename.toLowerCase()==='txt')
+      throw Error('Invalid filename.');
+
+    const text = await file.text();
+    const parsedCurve = parseXY(text);
+
+    document.getElementById('addValidation').textContent =
+      'Validated ' + parsedCurve.length.toLocaleString() +
+      ' points · ' + parsedCurve[0][0] + '–' +
+      parsedCurve[parsedCurve.length-1][0] +
+      ' Hz. Saving to GitHub…';
+
+    const folder = addKind === 'iem' ? 'preferred' : 'targets';
+    const path = 'input/' + folder + '/' + filename;
+
+    window.__buildBusy = true;
+    const buildClose = document.getElementById('buildClose');
+    if(buildClose) buildClose.hidden = true;
+    setBuildProgress(
+      5,
+      'Uploading to GitHub…',
+      (addKind === 'iem' ? 'IEM' : 'Target') + ' · ' + filename
+    );
+    const existingSha = await fileSha(path);
+
+    const body = {
+      message:
+        (existingSha ? 'Update ' : 'Add ') +
+        (addKind === 'iem' ? 'IEM ' : 'target ') +
+        filename,
+      content:b64(text.endsWith('\n') ? text : text + '\n'),
+      branch:'main'
+    };
+
+    if(existingSha)
+      body.sha = existingSha;
+
+    const commitResult = await ghAuth(
+      path,
+      {method:'PUT',body:JSON.stringify(body)}
+    );
+
+    const commitSha =
+      commitResult &&
+      commitResult.commit &&
+      commitResult.commit.sha;
+
+    closeModal();
+    showErr('');
+
+    setBuildProgress(
+      12,
+      'Upload complete. Waiting for GitHub Actions…',
+      'Commit saved · waiting for build run'
+    );
+
+    await waitForEarprintBuild({
+      expectedSha:commitSha || '',
+      sourceLabel:
+        (addKind === 'iem' ? 'IEM' : 'target') +
+        ' upload',
+      alreadyBusy:true
+    });
+
+  }catch(error){
+
+    hideBuildOverlay();
+
+    document.getElementById('addValidation').textContent =
+      error.message;
+
+    document.getElementById('addValidation').className =
+      'status small warn';
+
+  }
+
+}
+
+
+
+async function deleteTarget(filename){
+
+  if(!filename)
+    return;
+
+  if(!githubToken){
+
+    showErr(
+      'GitHub token required. Open GitHub Access first.'
+    );
+
+    openSettings();
+    return;
+
+  }
+
+  const label =
+    filename.replace(/\.txt$/i,'');
+
+  if(!window.confirm(
+    'Delete target "' +
+    label +
+    '"?\n\n' +
+    'This removes the target from input/targets/. ' +
+    'GitHub Actions will then rebuild the generated results.'
+  )){
+    return;
+  }
+
+  try{
+
+    /*
+      Encode each path component for the GitHub Contents API.
+      This is important for filenames containing spaces, brackets,
+      parentheses or other punctuation.
+    */
+    const inputPath =
+      'input/targets/' +
+      encodeURIComponent(filename);
+
+    const meta =
+      await ghAuth(
+        inputPath + '?ref=main'
+      );
+
+    if(!meta || !meta.sha)
+      throw Error('GitHub did not return a file SHA.');
+
+    await ghAuth(
+      inputPath,
+      {
+        method:'DELETE',
+        body:JSON.stringify({
+          message:'Delete target ' + filename,
+          sha:meta.sha,
+          branch:'main'
+        })
+      }
+    );
+
+    document.getElementById(
+      'targetStatus'
+    ).textContent =
+      'Deleted ' +
+      label +
+      '. GitHub Actions will rebuild the results.';
+
+    await loadAll();
+
+  }catch(error){
+
+    showErr(
+      'Could not delete target: ' +
+      error.message
+    );
+
+  }
+
+}
+
+
+
+/* ============================================================
+   GITHUB ACTIONS: MANUAL RUN + BUILD PROGRESS
+   ============================================================ */
+
+function setBuildProgress(percent, message, detail){
+
+  const overlay=document.getElementById('buildOverlay');
+  const bar=document.getElementById('buildBar');
+  const percentEl=document.getElementById('buildPercent');
+  const msg=document.getElementById('buildMessage');
+  const detailEl=document.getElementById('buildDetail');
+
+  overlay.hidden=false;
+  bar.style.width=Math.max(0,Math.min(100,percent))+'%';
+  percentEl.textContent=Math.round(percent)+'%';
+  msg.textContent=message || 'Working…';
+  detailEl.textContent=detail || 'Waiting for GitHub Actions…';
+
+}
+
+function hideBuildOverlay(){
+  document.getElementById('buildOverlay').hidden=true;
+  document.getElementById('buildClose').hidden=true;
+  window.__buildBusy=false;
+  const runButton=document.getElementById('runEngine');
+  if(runButton){
+    runButton.disabled=false;
+    runButton.textContent='Run EarPrint';
+  }
+}
+
+function finishBuildOverlay(success, message, detail){
+
+  setBuildProgress(
+    success ? 100 : 100,
+    message,
+    detail
+  );
+
+  document.getElementById('buildClose').hidden=false;
+  window.__buildBusy=false;
+
+  const runButton=document.getElementById('runEngine');
+  if(runButton){
+    runButton.disabled=false;
+    runButton.textContent='Run EarPrint';
+  }
+
+}
+
+async function fetchWorkflowRuns(){
+
+  return ghAuthRoot(
+    '/actions/workflows/main.yml/runs?branch=main&per_page=20&_=' +
+    Date.now()
+  );
+
+}
+
+async function fetchWorkflowRun(runId){
+
+  return ghAuthRoot(
+    '/actions/runs/' +
+    runId +
+    '?_=' +
+    Date.now()
+  );
+
+}
+
+function isoMs(value){
+  const t=Date.parse(value || '');
+  return Number.isFinite(t) ? t : 0;
+}
+
+async function waitForEarprintBuild({
+  expectedSha='',
+  sourceLabel='EarPrint build',
+  manual=false,
+  alreadyBusy=false
+}={}){
+
+  /*
+    saveInputToGitHub may already hold the build lock while the
+    upload is being committed. It must still be allowed to enter
+    the build-monitoring phase.
+  */
+  if(window.__buildBusy && !alreadyBusy)
+    return;
+
+  window.__buildBusy=true;
+
+  const closeButton=document.getElementById('buildClose');
+  closeButton.hidden=true;
+  setBuildProgress(8,'Saving complete. Starting build…',sourceLabel);
+
+  const startedAt=Date.now();
+  const timeoutAt=startedAt + 7*60*1000;
+
+  document.getElementById('buildState').textContent='QUEUED';
+
+  try{
+
+    let run=null;
+
+    /* Find the workflow run created by this input commit or manual dispatch. */
+    while(Date.now()<timeoutAt && !run){
+
+      const data=await fetchWorkflowRuns();
+      const runs=Array.isArray(data.workflow_runs)
+        ? data.workflow_runs
+        : [];
+
+      /*
+        Primary match:
+          - Uploads: exact commit SHA.
+          - Manual run: recent repository_dispatch event.
+
+        Robust fallback:
+        GitHub can expose a newly-created push run before all run
+        metadata is fully settled. Do not remain stuck at 20% just
+        because head_sha did not match on the first few polls.
+        The workflow is serialized by the repository's concurrency
+        group, so the newest recent run after this action started is
+        the correct build candidate when an exact SHA match is not
+        yet visible.
+      */
+      if(expectedSha){
+
+        run =
+          runs.find(r =>
+            String(r.head_sha || '') ===
+            String(expectedSha)
+          ) || null;
+
+        if(!run){
+
+          const recentPushRuns =
+            runs
+              .filter(r =>
+                r.event === 'push' &&
+                r.head_branch === 'main' &&
+                isoMs(r.created_at) >=
+                  startedAt - 30000
+              )
+              .sort(
+                (a,b) =>
+                  isoMs(b.created_at) -
+                  isoMs(a.created_at)
+              );
+
+          run =
+            recentPushRuns[0] ||
+            null;
+
+        }
+
+      }else if(manual){
+
+        run =
+          runs.find(r =>
+            r.event === 'repository_dispatch' &&
+            isoMs(r.created_at) >=
+              startedAt - 30000
+          ) || null;
+
+      }
+
+      if(!run){
+
+        setBuildProgress(
+          20,
+          'Waiting for GitHub Actions to start…',
+          expectedSha
+            ? 'Commit saved · checking for workflow run'
+            : 'Dispatch sent · checking for workflow run'
+        );
+
+        await new Promise(
+          r => setTimeout(r,3000)
+        );
+
+      }
+    }
+
+    if(!run){
+      finishBuildOverlay(
+        false,
+        'Build run was not detected.',
+        'The file/command was saved, but GitHub Actions did not appear within 7 minutes.'
+      );
+      document.getElementById('buildState').textContent='UNKNOWN';
+      return;
+    }
+
+    while(Date.now()<timeoutAt){
+
+      let current;
+
+      try{
+
+        current =
+          await fetchWorkflowRun(
+            run.id
+          );
+
+      }catch(error){
+
+        /*
+          A transient Actions API response should not kill the
+          whole build monitor. Keep polling the same run.
+        */
+        setBuildProgress(
+          35,
+          'Refreshing GitHub Actions status…',
+          error.message
+        );
+
+        await new Promise(
+          r => setTimeout(r,3000)
+        );
+
+        continue;
+
+      }
+
+      const status =
+        current.status ||
+        'queued';
+
+      const conclusion =
+        current.conclusion ||
+        '';
+
+      if(
+        status === 'queued' ||
+        status === 'waiting' ||
+        status === 'pending'
+      ){
+        document.getElementById('buildState').textContent='QUEUED';
+        setBuildProgress(35,'GitHub Actions queued…','Run #'+current.run_number);
+      }else if(status === 'in_progress'){
+        document.getElementById('buildState').textContent='BUILDING';
+        setBuildProgress(65,'EarPrint engine is running…','Run #'+current.run_number);
+      }else if(status === 'completed'){
+
+        if(conclusion === 'success'){
+
+          document.getElementById('buildState').textContent='PASS';
+          setBuildProgress(100,'EarPrint build completed.','Run #'+current.run_number+' · success');
+          await loadAll();
+          document.getElementById('buildState').textContent='PASS';
+          document.getElementById('targetStatus').textContent =
+            sourceLabel + ' · build completed successfully.';
+          finishBuildOverlay(true,'EarPrint build completed.','Run #'+current.run_number+' · success');
+          return;
+
+        }
+
+        const failText =
+          'Run #'+current.run_number+' · '+(conclusion || 'failed');
+
+        document.getElementById('buildState').textContent='FAIL';
+        finishBuildOverlay(false,'EarPrint build failed.',failText);
+        showErr(
+          'GitHub Actions failed (' +
+          (conclusion || 'unknown') + '). Open GitHub Actions to inspect the run.'
+        );
+        return;
+      }
+
+      await new Promise(r=>setTimeout(r,3000));
+    }
+
+    document.getElementById('buildState').textContent='TIMEOUT';
+    finishBuildOverlay(
+      false,
+      'Build is taking longer than expected.',
+      'The GitHub Actions run is still in progress. You can close this and Refresh later.'
+    );
+
+  }catch(error){
+
+    document.getElementById('buildState').textContent='ERROR';
+    finishBuildOverlay(
+      false,
+      'Could not monitor GitHub Actions.',
+      error.message
+    );
+
+  }
+
+}
+
+async function runEarPrint(){
+
+  if(window.__buildBusy)
+    return;
+
+  if(!githubToken){
+    showErr('GitHub token required to run EarPrint from the app. Open GitHub Access first.');
+    openSettings();
+    return;
+  }
+
+  if(!window.confirm(
+    'Run the EarPrint engine now?\n\nGitHub Actions will rebuild the current outputs and reports.'
+  )){
+    return;
+  }
+
+  try{
+
+    const runButton=document.getElementById('runEngine');
+    runButton.disabled=true;
+    runButton.textContent='Starting…';
+
+    setBuildProgress(12,'Starting GitHub Actions…','Manual EarPrint run');
+    document.getElementById('buildState').textContent='STARTING';
+
+    await ghAuthRoot(
+      '/dispatches',
+      {
+        method:'POST',
+        body:JSON.stringify({
+          event_type:'run-earprint'
+        })
+      }
+    );
+
+    await waitForEarprintBuild({
+      manual:true,
+      sourceLabel:'Manual EarPrint run'
+    });
+
+  }catch(error){
+
+    document.getElementById('buildState').textContent='ERROR';
+    finishBuildOverlay(false,'Could not start EarPrint build.',error.message);
+    showErr(error.message);
+
+  }
+
+}
+
+
+async function loadAll(){
+
+  showErr('');
+
+
+  if(!repo){
+
+    document.getElementById(
+      'repoLabel'
+    ).textContent =
+      'Repository not detected';
+
+
+    document.getElementById(
+      'buildState'
+    ).textContent =
+      'ERROR';
+
+
+    showErr(
+      'Repository not detected. ' +
+      'Open this from GitHub Pages ' +
+      'or use ?repo=OWNER/REPO.'
+    );
+
+
+    return;
+
+  }
+
+
+  /*
+    Show repository.
+  */
+
+  document.getElementById(
+    'repoLabel'
+  ).textContent =
+    repo;
+
+
+  /*
+    Run engine is a real in-app action.
+  */
+
+  const runButton = document.getElementById('runEngine');
+  runButton.disabled = !!window.__buildBusy;
+  runButton.textContent = window.__buildBusy
+    ? 'Building…'
+    : 'Run EarPrint';
+
+
+  try{
+
+    const [
+      preferred,
+      targetData,
+      outputData
+    ] =
+      await Promise.all([
+
+        gh(
+          'input/preferred'
+        ),
+
+        gh(
+          'input/targets'
+        ),
+
+        gh(
+          'output'
+        )
+
+      ]);
+
+
+    const iems =
+      Array.isArray(
+        preferred
+      )
+
+        ? preferred.filter(
+            item =>
+              item.name
+                .toLowerCase()
+                .endsWith('.txt')
+          )
+
+        : [];
+
+
+    targets =
+      Array.isArray(
+        targetData
+      )
+
+        ? targetData.filter(
+            item =>
+              item.name
+                .toLowerCase()
+                .endsWith('.txt')
+          )
+
+        : [];
+
+
+    outputs =
+      Array.isArray(
+        outputData
+      )
+
+        ? outputData.filter(
+            item =>
+              item.name
+                .toLowerCase()
+                .endsWith('.txt')
+          )
+
+        : [];
+
+
+    /*
+      Counts.
+    */
+
+    document.getElementById(
+      'iemCount'
+    ).textContent =
+      iems.length;
+
+
+    document.getElementById(
+      'targetCount'
+    ).textContent =
+      targets.length;
+
+
+    document.getElementById(
+      'outputCount'
+    ).textContent =
+      outputs.length;
+
+
+    document.getElementById(
+      'buildState'
+    ).textContent =
+      'READY';
+
+
+    /*
+      IEM pills.
+    */
+
+    document.getElementById(
+      'iems'
+    ).innerHTML =
+      iems
+        .map(
+          item =>
+
+            `<span class="pill">` +
+
+            esc(
+              item.name.replace(
+                /\.txt$/i,
+                ''
+              )
+            ) +
+
+            `</span>`
+        )
+        .join('');
+
+
+    /*
+      Target pills.
+    */
+
+    document.getElementById(
+      'targets'
+    ).innerHTML =
+      targets
+        .map(
+          item => {
+
+            return (
+              `<span class="pill target-pill">` +
+                `<span class="target-pill-name">` +
+                  esc(
+                    item.name.replace(
+                      /\.txt$/i,
+                      ''
+                    )
+                  ) +
+                `</span>` +
+                `<button type="button"` +
+                  ` class="target-delete"` +
+                  ` data-target-name="` +
+                    esc(item.name) +
+                  `"` +
+                  ` title="Delete target"` +
+                  ` aria-label="Delete ${esc(item.name.replace(/\.txt$/i,''))}"` +
+                `>×</button>` +
+              `</span>`
+            );
+
+          }
+        )
+        .join('');
+
+
+    populateTargetSelects();
+
+
+    /*
+      Load Pure EarPrint when available.
+      The target visualizer must not depend on Pure EarPrint loading:
+      original/robust target visualization remains usable even if the
+      personal curve is temporarily unavailable.
+    */
+
+    try{
+      await loadPure();
+    }catch(error){
+      pureCurve = null;
+      document.getElementById('buildState').textContent='READY';
+    }
+
+
+    /*
+      Show target result.
+    */
+
+    await showTarget();
+
+  }catch(error){
+
+    document.getElementById(
+      'buildState'
+    ).textContent =
+      'ERROR';
+
+
+    showErr(
+      error.message
+    );
+
+  }
+
+}
+
+
+/* ============================================================
+   TARGET SELECTS
+   ============================================================ */
+
+
+function populateTargetSelects(){
+
+  const ids = [
+
+    'targetSelect',
+
+    'hybridTarget'
+
+  ];
+
+
+  for(
+    const id of ids
+  ){
+
+    const select =
+      document.getElementById(
+        id
+      );
+
+
+    select.innerHTML =
+      targets
+        .map(
+          item =>
+
+            `<option value="` +
+
+            encodeURIComponent(
+              item.name
+            ) +
+
+            `">` +
+
+            esc(
+              item.name.replace(
+                /\.txt$/i,
+                ''
+              )
+            ) +
+
+            `</option>`
+        )
+        .join('');
+
+  }
+
+}
+
+
+/* ============================================================
+   PURE EARPRINT
+   ============================================================ */
+
+
+async function loadPure(){
+
+  const text =
+    await rawText(
+      'output/pure_earprint_dynamic.txt'
+    );
+
+
+  pureCurve =
+    parseXY(
+      text
+    );
+
+}
+
+
+/* ============================================================
+   TARGET RESULT
+   ============================================================ */
+
+
+async function showTarget(){
+
+  if(!targets.length){
+    document.getElementById('targetChart').innerHTML='';
+    document.getElementById('maskChart').innerHTML='';
+    return;
+  }
+
+  try{
+    const encodedName=document.getElementById('targetSelect').value;
+    if(!encodedName) return;
+
+    const name=decodeURIComponent(encodedName);
+    const basePath='input/targets/'+encodeURIComponent(name);
+    const robustPath='output/'+stem(name)+'__robust_target.txt';
+    const maskPath='output/'+stem(name)+'__mask.txt';
+
+    document.getElementById('vizDataStatus').textContent='Loading original target and robust masked target…';
+
+    const results=await Promise.allSettled([
+      rawText(basePath),
+      rawText(robustPath),
+      rawText(maskPath),
+      pureCurve
+        ? Promise.resolve(null)
+        : rawText('output/pure_earprint_dynamic.txt')
+    ]);
+
+    let original=null, robust=null, mask=null, pure=pureCurve;
+
+    if(results[0].status==='fulfilled') original=parseXY(results[0].value);
+    if(results[1].status==='fulfilled') robust=parseXY(results[1].value);
+    if(results[2].status==='fulfilled') mask=parseXY(results[2].value);
+    if(!pure && results[3].status==='fulfilled') pure=parseXY(results[3].value);
+
+    /*
+      MASK CONSISTENCY LOCK:
+      Robust Target is authoritative for the displayed engine result.
+      The displayed Mask Δ must be exactly Robust Target - Original Target
+      on the common log-frequency grid. This prevents a stale/mismatched
+      mask artifact from disagreeing with the Robust curve and point readout.
+      The downloaded Robust Target is never modified.
+    */
+    if(original && robust){
+      const robustMinusOriginal=[];
+      for(const [f,rv] of robust){
+        const ov=curveValue(original,f);
+        if(Number.isFinite(rv) && Number.isFinite(ov)){
+          robustMinusOriginal.push([f,rv-ov]);
+        }
+      }
+      if(robustMinusOriginal.length) mask=robustMinusOriginal;
+    }
+
+    pureCurve=pure || pureCurve;
+
+    targetViz={
+      name,
+      original,
+      robust,
+      mask,
+      pure:pureCurve
+    };
+
+    const downloadButton =
+      document.getElementById(
+        'downloadRobustButton'
+      );
+
+    if(downloadButton){
+      downloadButton.disabled = !robust;
+    }
+
+    const selectedPath=robustPath;
+
+    const missing=[];
+    if(!original) missing.push('original target');
+    if(!robust) missing.push('robust target');
+
+    document.getElementById('targetStatus').textContent=
+      missing.length
+        ? selectedPath+' · missing: '+missing.join(', ')
+        : selectedPath+' · Robust Target (Masked)';
+
+    document.getElementById('vizDataStatus').textContent=
+      missing.length
+        ? 'Loaded with '+missing.join(', ')+' unavailable. Engine outputs were not changed.'
+        : 'Original + robust target loaded. Robust Target is the only downloadable target; mask is display-only.';
+
+    updateMaskSummary();
+    rerenderTargetViz();
+
+  }catch(error){
+    showErr(error.message);
+  }
+}
+
+
+/* ============================================================
+   DOWNLOAD ROBUST TARGET ONLY
+   ============================================================ */
+
+function downloadRobustTarget(){
+
+  if(!targetViz || !targetViz.robust){
+
+    showErr(
+      'Robust Target (Masked) is not available yet.'
+    );
+
+    return;
+
+  }
+
+  const name =
+    targetViz.name || 'target';
+
+  const lines =
+    targetViz.robust
+      .map(
+        ([frequency,value]) =>
+          Number(frequency).toPrecision(12) +
+          '\t' +
+          Number(value).toFixed(12)
+      )
+      .join('\n') +
+    '\n';
+
+  blobDownload(
+    lines,
+    stem(name) + '__robust_target.txt'
+  );
+}
+
+
+/* ============================================================
+   HYBRID
+   ============================================================ */
+
+async function generateHybrid(){
+
+  try{
+
+    if(!pureCurve){
+      await loadPure();
+    }
+
+    const encodedTarget=document.getElementById('hybridTarget').value;
+
+    if(!encodedTarget){
+      throw Error('No target selected.');
+    }
+
+    const targetName=decodeURIComponent(encodedTarget);
+
+    const target=parseXY(
+      await rawText(
+        'input/targets/'+encodeURIComponent(targetName)
+      )
+    );
+
+    const join=Number(document.getElementById('joinHz').value);
+
+    if(!(join>0)){
+      throw Error('Join frequency must be > 0 Hz.');
+    }
+
+    if(join<target[0][0] || join>target[target.length-1][0]){
+      throw Error('Selected target does not cover the join frequency.');
+    }
+
+    const frequencyGrid=pureCurve.map(point=>point[0]);
+
+    const lowerMax=Math.min(
+      join,
+      Math.max(...frequencyGrid)
+    );
+
+    if(
+      frequencyGrid[0]<target[0][0] ||
+      lowerMax>target[target.length-1][0]
+    ){
+      throw Error(
+        'Selected target does not cover the lower-frequency region required for this hybrid.'
+      );
+    }
+
+    /*
+      Locked hybrid logic:
+      target <=1 kHz; Pure EarPrint >1 kHz and <12 kHz; HF extension >=12 kHz.
+      Continuity shift is applied only inside the Hybrid output.
+    */
+
+    const result=buildHybrid(
+      frequencyGrid,
+      pureCurve,
+      target,
+      join
+    );
+
+    generatedHybrid={
+      curve:result.curve,
+      targetName,
+      join,
+      shift:result.shift
+    };
+
+    draw(result.curve,'hybridChart');
+
+    document.getElementById('hybridStatus').textContent=
+      'shift '+result.shift.toFixed(6)+' dB · target ≤join · EarPrint >join · constant shift';
+
+  }catch(error){
+    showErr(error.message);
+  }
+}
+
+
+/* ============================================================
+   DOWNLOAD HYBRID
+   ============================================================ */
+
+
+function downloadHybrid(){
+
+  if(!generatedHybrid){
+
+    showErr(
+      'Generate the hybrid first.'
+    );
+
+    return;
+
+  }
+
+
+  const lines =
+    generatedHybrid.curve
+
+      .map(
+        ([frequency,value]) =>
+
+          Number(
+            frequency
+          ).toPrecision(12) +
+
+          '\t' +
+
+          value.toFixed(12)
+      )
+
+      .join('\n') +
+
+      '\n';
+
+
+  const filename =
+
+    stem(
+      generatedHybrid.targetName
+    ) +
+
+    '__hybrid_' +
+
+    generatedHybrid.join +
+
+    'Hz.txt';
+
+
+  blobDownload(
+    lines,
+    filename
+  );
+
+}
+
+
+
+/* ============================================================
+   UI EVENT BINDINGS
+   Strict CSP-compatible event wiring.
+   ============================================================ */
+
+function bindUiEvents(){
+
+  const get=(id)=>document.getElementById(id);
+
+  const on=(id,event,handler)=>{
+    const el=get(id);
+    if(el) el.addEventListener(event,handler);
+  };
+
+  on('addIemButton','click',()=>openAdd('iem'));
+  on('addTargetButton','click',()=>openAdd('target'));
+  on('githubAccessButton','click',openSettings);
+  on('refreshButton','click',loadAll);
+
+  on('buildClose','click',hideBuildOverlay);
+  on('targetSelect','change',showTarget);
+  on('vizRange','change',rerenderTargetViz);
+  on('resetVizViewButton','click',resetVizView);
+  on('downloadRobustButton','click',downloadRobustTarget);
+
+  on('generateHybridButton','click',generateHybrid);
+  on('downloadHybridButton','click',downloadHybrid);
+
+  on('closeModalButton','click',closeModal);
+  on('useTokenButton','click',saveToken);
+  on('clearTokenButton','click',clearToken);
+  on('saveInputButton','click',saveInputToGitHub);
+  on('cancelAddButton','click',closeModal);
+
+  const targetList=get('targets');
+
+  if(targetList){
+
+    targetList.addEventListener(
+      'click',
+      function(event){
+
+        const button =
+          event.target.closest('.target-delete');
+
+        if(
+          !button ||
+          !targetList.contains(button)
+        )
+          return;
+
+        const filename =
+          button.getAttribute(
+            'data-target-name'
+          );
+
+        if(filename)
+          deleteTarget(filename);
+
+      }
+    );
+
+  }
+
+}
+
+/* ============================================================
+   START
+   ============================================================ */
+
+bindUiEvents();
+loadAll();
+
+</script>
+
+</body>
+</html>
