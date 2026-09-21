@@ -1,217 +1,958 @@
-# General Prompt EarPrint 8 — MATH LOCKED
-# Boundary / Adaptive Handoff Addendum
-# Version: 1.0
+GENERAL PROMPT EARPRINT 8
+MATH-LOCKED BOUNDARY HANDOFF ADDENDUM
+ENGINEERING LOCKED VERSION 3.3.0
 
-============================================================
+
+======================================================================
 1. PURPOSE
-============================================================
+======================================================================
 
-This addendum defines the boundary behavior for the target-specific
-Robust Target when the nominal 1 kHz splice is not locally compatible
-with the target's natural shape.
+This addendum defines the locked mathematical boundary behaviour between:
 
-The nominal 1 kHz anchor remains the declared personal-domain boundary.
-It is NOT an unconditional splice point.
+    BaseTarget
 
-The objective is to preserve the selected target naturally below the
-personal domain while introducing the target-specific masked EarPrint
-without creating an artificial kink, dip, hump, overshoot, undershoot,
-local extremum, oscillation, or unintended slope reversal.
+and
 
-============================================================
-2. LOCKED LOWER-BOUNDARY RULE
-============================================================
+    Masked EarPrint
 
-For every target:
+inside the personal EarPrint frequency domain.
 
-    BaseTarget(f) is preserved exactly for f <= 1000 Hz.
+The boundary handoff is a deterministic mathematical operation.
 
-The engine must never alter the target below or at the nominal 1 kHz
-anchor as a consequence of the adaptive handoff.
+It must not be treated as:
 
-The 1 kHz anchor is therefore a reference boundary, not necessarily the
-actual transition frequency.
+    - a subjective tuning preference
+    - a target preference
+    - a psychoacoustic optimisation
+    - a target ranking
+    - a curvature-minimisation problem
+    - a weighted multi-objective optimisation problem
 
-============================================================
-3. NOMINAL 1 kHz COMPATIBILITY TEST
-============================================================
+The purpose of the handoff is strictly geometric:
 
-Before searching for a later handoff, evaluate whether the nominal
-1 kHz boundary is locally compatible.
+    preserve the selected BaseTarget through the fixed nominal anchor,
+    transition smoothly into the Masked EarPrint,
+    and prevent artificial discontinuities, overshoot, extrema,
+    oscillation or slope reversal.
 
-The compatibility test must consider:
 
-- local target slope direction;
-- local masked-EarPrint slope direction;
-- local shape stability;
-- absence of an unintended local extremum or slope reversal.
+======================================================================
+2. INPUT DEFINITIONS
+======================================================================
 
-If the nominal boundary is compatible, retain the existing masked
-curve without introducing an adaptive bridge.
+The handoff operates on three aligned arrays:
 
-If it is incompatible, do not force the splice at 1 kHz.
+    freq[i]
 
-============================================================
-4. ADAPTIVE HANDOFF SEARCH
-============================================================
+    BaseTarget[i]
 
-When the nominal 1 kHz boundary is incompatible:
+    MaskedEarPrint[i]
 
-1. Preserve BaseTarget exactly through 1 kHz.
-2. Search upward in frequency for the earliest stable compatible
-   handoff H.
-3. Determine an endpoint E within the configured personal domain.
-4. Require the transition H -> E to have a positive or negative
-   direction that is consistent with the destination masked curve.
-5. Require the destination slope to remain directionally stable over
-   the configured stability window.
-6. Reject candidate handoffs that produce:
-   - overshoot;
-   - undershoot;
-   - artificial local extrema;
-   - oscillation;
-   - slope reversal;
-   - non-monotonic transition;
-   - discontinuous level.
+All three arrays MUST:
 
-The search must be deterministic and reproducible from the declared
-configuration.
+    - use the same frequency grid
+    - be strictly increasing in frequency
+    - contain finite numerical values
+    - use logarithmic-frequency geometry for slope and transition calculations
 
-============================================================
-5. SHAPE-PRESERVING BRIDGE
-============================================================
 
-For a valid H and E:
+The Masked EarPrint is assumed to have already been generated upstream.
 
-    f <= H:
-        RobustTarget(f) = BaseTarget(f)
+This addendum does NOT redefine:
 
-    H < f <= E:
-        RobustTarget(f) = monotonic_bridge(BaseTarget, MaskedEarPrint)
+    - target construction
+    - EarPrint construction
+    - robust-mask estimation
+    - Huber estimation
+    - alignment
+    - smoothing
+    - cross-IEM consensus
 
-    f > E:
-        RobustTarget(f) = MaskedEarPrint(f)
 
-The bridge must be shape-preserving and monotonic in log-frequency.
+======================================================================
+3. FIXED HANDOFF ANCHOR
+======================================================================
 
-Its endpoint values must equal the corresponding target and masked
-EarPrint values.
+The handoff anchor is permanently fixed at:
 
-The bridge must not overshoot or undershoot either endpoint.
+    H = 1000 Hz
 
-The bridge must not introduce an artificial local maximum or minimum.
 
-The bridge must not reverse slope unless the endpoint geometry itself
-requires that behavior.
+The 1000 Hz point is a computational anchor.
 
-============================================================
-6. CONTINUITY
-============================================================
+It is not an adaptive variable.
 
-The level must be continuous at both transition boundaries:
+The engine MUST NOT search for an alternative H.
 
-    RobustTarget(H-) = RobustTarget(H+)
+Therefore:
 
-    RobustTarget(E-) = RobustTarget(E+)
+    H = 1000 Hz
 
-No level discontinuity is permitted.
+is locked for all target families.
 
-The bridge should preserve a natural slope progression. The
-implementation may constrain endpoint slopes when necessary to
-guarantee monotonicity and prevent overshoot.
 
-Therefore, exact C1 slope equality is desirable but is subordinate to
-the locked requirement that the bridge remain shape-preserving,
-monotonic, and free of artificial extrema.
+======================================================================
+4. BASETARGET PRESERVATION
+======================================================================
 
-============================================================
-7. FAILURE CONDITION
-============================================================
+BaseTarget MUST be preserved exactly through H.
 
-If no stable compatible handoff can be found inside the configured
-personal domain:
+For:
 
-- do not invent a handoff;
-- do not distort the BaseTarget;
-- do not distort the MaskedEarPrint;
-- report NO_STABLE_HANDOFF;
-- preserve the mathematically defined curves rather than introducing
-  an undocumented correction.
+    f <= H
 
-============================================================
-8. CONFIGURATION
-============================================================
+the output MUST be:
 
-The adaptive handoff is controlled by:
+    Output(f) = BaseTarget(f)
 
-    adaptive_handoff.enabled
 
-    adaptive_handoff.nominal_anchor_hz
+No Masked EarPrint correction may be introduced below or at H.
 
-    adaptive_handoff.min_transition_octaves
 
-    adaptive_handoff.max_transition_octaves
+======================================================================
+5. TRANSITION ENDPOINT E
+======================================================================
 
-    adaptive_handoff.stability_window_octaves
+The transition endpoint E is searched above H.
 
-    adaptive_handoff.method
+The permitted transition width is:
 
-Current locked repository configuration:
+    1/3 octave <= log2(E / H) <= 0.8 octave
 
-    nominal_anchor_hz = 1000 Hz
-    min_transition_octaves = 0.125
-    max_transition_octaves = 0.8
-    stability_window_octaves = 0.20
 
-Method:
+Therefore:
 
-    earliest stable compatible handoff +
-    monotonic cubic Hermite bridge
+    E_min = H * 2^(1/3)
 
-============================================================
-9. SCOPE
-============================================================
+    E_max = H * 2^0.8
 
-This addendum changes only the boundary handoff behavior.
 
-It does NOT change:
+The search MUST proceed in ascending master-grid frequency order.
 
-- one-IEM-one-vote weighting;
-- the three alignment bands;
-- per-IEM median alignment;
-- per-IEM alignment uncertainty;
-- CrossIEM_MAD;
-- TotalUncertainty;
-- Retention;
-- RawMask;
-- Gaussian smoothing definition;
-- high-frequency display-only extension;
-- target discovery;
-- IEM discovery.
 
-The adaptive handoff is applied after the target-specific mask has been
-calculated and after the masked target has been formed.
+======================================================================
+6. E SELECTION RULE
+======================================================================
 
-============================================================
-10. VALIDATION REQUIREMENTS
-============================================================
+E selection is strictly:
 
-Every generated target must expose the adaptive handoff result in the
-build report.
+    EARLIEST FEASIBLE E
 
-At minimum report:
 
-- status;
-- nominal anchor;
-- selected handoff H;
-- endpoint E;
-- transition width in octaves;
-- continuity result;
-- monotonicity result;
-- overshoot result;
-- undershoot result;
-- extremum/slope-reversal result.
+The first candidate E that passes every mandatory hard gate MUST be selected.
 
-The validation must be deterministic.
+A later E MUST NOT replace an earlier feasible E because it has:
 
-No visual judgement alone is sufficient to declare the boundary valid.
+    - lower curvature
+    - better numerical score
+    - smaller slope mismatch
+    - a more attractive shape
+    - a preferred psychoacoustic interpretation
+    - a better target-specific outcome
+
+
+======================================================================
+7. PROHIBITED E OPTIMISATION
+======================================================================
+
+The locked implementation MUST NOT use:
+
+    - weighted candidate scores
+    - Pareto fronts
+    - curvature minimisation
+    - target-specific ranking
+    - subjective preference functions
+    - hand-tuned candidate weights
+    - arbitrary penalty functions
+    - hidden secondary optimisation
+
+
+The selection decision is binary:
+
+    feasible
+
+or
+
+    not feasible
+
+
+Among feasible candidates:
+
+    earliest E wins.
+
+
+======================================================================
+8. TRANSITION VARIABLE
+======================================================================
+
+For:
+
+    H < f <= E
+
+define:
+
+    t = log2(f / H) / log2(E / H)
+
+
+Therefore:
+
+    t = 0    at H
+
+    t = 1    at E
+
+
+The transition variable MUST be constrained to:
+
+    0 <= t <= 1
+
+
+======================================================================
+9. LOCKED TRANSITION FUNCTION
+======================================================================
+
+The transition MUST use the quintic smootherstep:
+
+    w(t) = 6t^5 - 15t^4 + 10t^3
+
+
+The final transition is:
+
+    Output(f)
+        =
+    BaseTarget(f)
+        +
+    w(t)
+    *
+    (
+        MaskedEarPrint(f)
+        -
+        BaseTarget(f)
+    )
+
+
+This is the only locked transition function.
+
+
+======================================================================
+10. EXACT SMOOTHERSTEP PROPERTIES
+======================================================================
+
+The locked quintic function satisfies:
+
+    w(0) = 0
+
+    w(1) = 1
+
+
+Its first derivative is:
+
+    w'(t)
+        =
+    30t^4 - 60t^3 + 30t^2
+
+
+Therefore:
+
+    w'(0) = 0
+
+    w'(1) = 0
+
+
+Its second derivative is:
+
+    w''(t)
+        =
+    120t^3 - 180t^2 + 60t
+
+
+Therefore:
+
+    w''(0) = 0
+
+    w''(1) = 0
+
+
+For:
+
+    0 <= t <= 1
+
+the function satisfies:
+
+    0 <= w(t) <= 1
+
+and:
+
+    w'(t) >= 0
+
+
+This guarantees a monotonic transition weight.
+
+
+======================================================================
+11. C1 BOUNDARY CONDITION
+======================================================================
+
+At H:
+
+    w(0) = 0
+
+    w'(0) = 0
+
+
+Therefore the transition begins from BaseTarget without an imposed
+transition-weight slope discontinuity.
+
+At E:
+
+    w(1) = 1
+
+    w'(1) = 0
+
+
+Therefore the transition arrives at Masked EarPrint without an imposed
+transition-weight slope discontinuity.
+
+
+The smootherstep boundary conditions are mathematical properties of the
+weight function.
+
+They MUST NOT be interpreted as a guarantee that arbitrary source curves
+are globally monotonic.
+
+
+======================================================================
+12. HARD BRIDGE GATES
+======================================================================
+
+Every candidate E MUST pass all mandatory bridge gates.
+
+
+12.1 FINITE VALUES
+
+The complete bridge MUST contain only finite values.
+
+Reject candidate if:
+
+    NaN
+
+or:
+
+    +Inf
+
+or:
+
+    -Inf
+
+appears anywhere in the bridge.
+
+
+12.2 MONOTONICITY
+
+The bridge MUST preserve one monotonic direction between its endpoint levels.
+
+If:
+
+    Output(E) > Output(H)
+
+then the bridge must not contain a negative local slope.
+
+If:
+
+    Output(E) < Output(H)
+
+then the bridge must not contain a positive local slope.
+
+
+12.3 NO OVERSHOOT
+
+The bridge MUST remain inside the endpoint level interval.
+
+Let:
+
+    L = min(Output(H), Output(E))
+
+    U = max(Output(H), Output(E))
+
+
+Then:
+
+    L <= Output(f) <= U
+
+
+must hold throughout the transition.
+
+
+12.4 NO UNDERSHOOT
+
+No bridge sample may fall below the lower endpoint level.
+
+
+12.5 NO ARTIFICIAL EXTREMA
+
+The bridge MUST NOT create an artificial local maximum or minimum.
+
+Repeated slope-sign reversal is a hard failure.
+
+
+12.6 NO SLOPE REVERSAL
+
+The bridge MUST NOT reverse its overall transition direction.
+
+
+======================================================================
+13. DESTINATION STABILITY
+======================================================================
+
+The destination region immediately after E must be geometrically stable.
+
+A destination candidate must satisfy:
+
+    - stable local slope direction
+    - no pathological repeated curvature oscillation
+
+
+The destination stability window is:
+
+    0.20 octave
+
+
+A candidate with insufficient samples for a meaningful stability decision
+must be rejected.
+
+
+======================================================================
+14. CURVATURE RULE
+======================================================================
+
+Curvature is used only as a HARD STABILITY GATE.
+
+Curvature MUST NOT be used to rank otherwise feasible candidates.
+
+
+A smooth curve may contain one natural curvature sign crossing.
+
+Therefore:
+
+    one curvature sign crossing
+
+does NOT automatically mean instability.
+
+
+Repeated alternating curvature behaviour is treated as instability.
+
+
+======================================================================
+15. MASTER-GRID RULE
+======================================================================
+
+Candidate E values MUST come from the actual master frequency grid.
+
+The engine MUST NOT invent an arbitrary continuous E between master-grid
+samples for the purpose of selecting the transition endpoint.
+
+
+The selected E is therefore deterministic for a fixed master grid.
+
+
+======================================================================
+16. REGION DEFINITIONS
+======================================================================
+
+The final output has exactly three conceptual regions.
+
+
+REGION A:
+
+    f <= H
+
+Output:
+
+    BaseTarget
+
+
+REGION B:
+
+    H < f <= E
+
+Output:
+
+    BaseTarget
+    +
+    smootherstep
+    *
+    (
+        MaskedEarPrint
+        -
+        BaseTarget
+    )
+
+
+REGION C:
+
+    f > E
+
+Output:
+
+    MaskedEarPrint
+
+
+No additional correction or blending operation is allowed after E.
+
+
+======================================================================
+17. FAIL-SAFE
+======================================================================
+
+If no candidate E satisfies every mandatory hard gate:
+
+    status = NO_STABLE_HANDOFF
+
+
+The engine MUST then return:
+
+    BaseTarget
+
+
+No forced transition is permitted.
+
+The engine MUST NOT:
+
+    - relax the gates automatically
+    - extend the transition beyond 0.8 octave
+    - select an arbitrary fallback E
+    - invoke a secondary optimisation
+    - force a seam because a result is desired
+
+
+Failure to find a valid handoff is preferable to introducing a
+mathematically invalid transition.
+
+
+======================================================================
+18. DETERMINISM
+======================================================================
+
+For identical:
+
+    - frequency grid
+    - BaseTarget
+    - Masked EarPrint
+    - configuration
+
+the engine MUST produce the same:
+
+    H
+
+    E
+
+    output
+
+    diagnostics
+
+on every run.
+
+
+No randomisation is permitted.
+
+No target-specific hidden parameter is permitted.
+
+
+======================================================================
+19. VERTICAL TRANSLATION INVARIANCE
+======================================================================
+
+Adding a constant vertical offset C to both source curves:
+
+    BaseTarget' = BaseTarget + C
+
+    MaskedEarPrint' = MaskedEarPrint + C
+
+
+must not alter:
+
+    H
+
+    E
+
+    transition width
+
+    slope geometry
+
+    curvature geometry
+
+    candidate feasibility
+
+
+The resulting output must satisfy:
+
+    Output' = Output + C
+
+
+within numerical precision.
+
+
+======================================================================
+20. POSITIVE SCALE INVARIANCE
+======================================================================
+
+Multiplying both source curves by a positive constant A:
+
+    A > 0
+
+
+must preserve the geometric decision:
+
+    H
+
+    E
+
+    transition width
+
+    feasibility
+
+
+The output must scale consistently:
+
+    Output' = A * Output
+
+
+within numerical precision.
+
+
+======================================================================
+21. NEGATIVE SCALE
+======================================================================
+
+Negative scaling is not a physically meaningful dB-domain transformation
+for this handoff and is therefore NOT part of the locked production
+invariance contract.
+
+
+======================================================================
+22. NO STITCHING
+======================================================================
+
+The handoff MUST NOT be implemented by stitching together unrelated
+target curves.
+
+There is only one BaseTarget and one Masked EarPrint.
+
+The transition is a continuous mathematical blend between those two
+source curves.
+
+
+======================================================================
+23. NO TARGET AVERAGING
+======================================================================
+
+The handoff MUST NOT average:
+
+    Harman
+    JM-1
+    VDSF
+    IEF Preference
+    Headphones.com IEM DF
+    SoundGuys
+    5128 DF
+    RTINGS
+    Sonarworks
+
+or any other target family.
+
+Target selection occurs upstream.
+
+The handoff engine is target-agnostic.
+
+
+======================================================================
+24. NO PSYCHOACOUSTIC TARGET OPTIMISATION
+======================================================================
+
+Audiophile or psychoacoustic research may justify why smooth transitions,
+spectral continuity and avoidance of artificial extrema matter.
+
+However, such research MUST NOT be converted into hidden target-specific
+selection weights inside the handoff algorithm.
+
+The locked algorithm remains geometrical and deterministic.
+
+
+======================================================================
+25. DIAGNOSTICS
+======================================================================
+
+The engine should expose diagnostics sufficient to audit the handoff.
+
+At minimum:
+
+    status
+
+    nominal_anchor_hz
+
+    actual_handoff_hz
+
+    transition_end_hz
+
+    transition_width_octaves
+
+    destination_slope_stable
+
+    destination_curvature_stable
+
+    bridge_curvature_stable
+
+    continuity_pass
+
+    monotonicity_pass
+
+    extrema_pass
+
+    overshoot_pass
+
+    undershoot_pass
+
+    oscillation_pass
+
+    slope_reversal_pass
+
+    smootherstep_endpoint_weight_pass
+
+    smootherstep_endpoint_derivative_pass
+
+    finite_pass
+
+    bridge_pass
+
+    selection_rule
+
+
+The diagnostics MUST NOT imply a candidate ranking when the locked selection
+rule is earliest feasible E.
+
+
+======================================================================
+26. LOCKED SELECTION DECLARATION
+======================================================================
+
+The canonical production declaration is:
+
+    H = 1000 Hz
+
+    E range = 1/3 to 0.8 octave above H
+
+    E selection = earliest feasible candidate
+
+    transition = quintic smootherstep
+
+    post-E source = Masked EarPrint
+
+    pre-H source = BaseTarget
+
+    invalid transition = NO_STABLE_HANDOFF
+
+
+======================================================================
+27. ENGINEERING RATIONALE
+======================================================================
+
+The architecture intentionally separates:
+
+    SOURCE CONSTRUCTION
+
+from:
+
+    BOUNDARY HANDOFF
+
+
+Source construction determines:
+
+    BaseTarget
+
+and:
+
+    Masked EarPrint
+
+
+Boundary handoff determines only how those two already-defined curves are
+connected.
+
+
+The locked handoff therefore does not attempt to determine what the target
+should sound like.
+
+It determines only whether and how the transition can be made without
+introducing mathematically artificial behaviour.
+
+
+======================================================================
+28. REMOVED OPTIMISATION LAYER
+======================================================================
+
+Any previous implementation containing:
+
+    candidate score
+
+    normalized endpoint mismatch ranking
+
+    Pareto candidate selection
+
+    curvature minimisation
+
+    weighted candidate objective
+
+
+MUST NOT be used by the locked production engine.
+
+
+The removal is intentional.
+
+A candidate that passes the hard constraints is sufficient.
+
+Among feasible candidates:
+
+    earliest E wins.
+
+
+======================================================================
+29. BACKWARD-COMPATIBILITY REQUIREMENT
+======================================================================
+
+Existing public helper imports should remain available where practical.
+
+In particular, removal of the old cubic implementation MUST NOT unnecessarily
+break unrelated diagnostic or test imports.
+
+However:
+
+    production adaptive handoff behaviour
+
+is governed exclusively by the locked quintic smootherstep architecture.
+
+
+======================================================================
+30. TEST REQUIREMENTS
+======================================================================
+
+The implementation MUST test at minimum:
+
+    1. smootherstep endpoint values
+
+    2. smootherstep endpoint derivatives
+
+    3. smootherstep boundedness
+
+    4. smootherstep monotonicity
+
+    5. fixed H = 1000 Hz
+
+    6. BaseTarget exact preservation through H
+
+    7. E minimum width = 1/3 octave
+
+    8. E maximum width = 0.8 octave
+
+    9. earliest-feasible-E selection
+
+    10. finite bridge
+
+    11. monotonic bridge
+
+    12. no overshoot
+
+    13. no undershoot
+
+    14. no artificial extrema
+
+    15. no slope reversal
+
+    16. destination slope stability
+
+    17. destination curvature stability
+
+    18. deterministic repeated execution
+
+    19. vertical translation invariance
+
+    20. fail-safe NO_STABLE_HANDOFF
+
+
+======================================================================
+31. FINAL MATHEMATICAL LOCK
+======================================================================
+
+The production boundary equation is:
+
+    Output(f)
+        =
+    BaseTarget(f)
+        +
+    w(t)
+    *
+    (
+        MaskedEarPrint(f)
+        -
+        BaseTarget(f)
+    )
+
+
+where:
+
+    t
+        =
+    log2(f / 1000)
+    /
+    log2(E / 1000)
+
+
+and:
+
+    w(t)
+        =
+    6t^5
+    -
+    15t^4
+    +
+    10t^3
+
+
+for:
+
+    1000 < f <= E
+
+
+with:
+
+    1/3 <= log2(E / 1000) <= 0.8
+
+
+and E selected as:
+
+    the earliest master-grid candidate satisfying all hard gates.
+
+
+For:
+
+    f <= 1000
+
+the output is exactly:
+
+    BaseTarget
+
+
+For:
+
+    f > E
+
+the output is exactly:
+
+    Masked EarPrint
+
+
+If no valid E exists:
+
+    output = BaseTarget
+
+    status = NO_STABLE_HANDOFF
+
+
+This constitutes the locked boundary-handoff specification.
