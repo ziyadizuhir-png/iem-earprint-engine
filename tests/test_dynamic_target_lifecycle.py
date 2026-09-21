@@ -10,7 +10,7 @@ import engine.earprint_engine as engine
 
 
 class DynamicTargetLifecycleTests(unittest.TestCase):
-    """End-to-end regression test for dynamic target discovery and output cleanup."""
+    """End-to-end regression test for dynamic target discovery and cleanup."""
 
     @staticmethod
     def _write_curve(path, freq, level):
@@ -83,10 +83,11 @@ class DynamicTargetLifecycleTests(unittest.TestCase):
             "adaptive_handoff": {
                 "enabled": True,
                 "nominal_anchor_hz": 1000,
-                "min_transition_octaves": 0.125,
+                "min_transition_octaves": 1 / 3,
                 "max_transition_octaves": 0.8,
                 "stability_window_octaves": 0.2,
-                "method": "earliest stable compatible handoff + monotonic cubic Hermite bridge",
+                "method": "earliest feasible E + quintic smootherstep bridge",
+                "transition_function": "smootherstep5",
             },
             "hybrids": {
                 "enabled": True,
@@ -145,30 +146,49 @@ class DynamicTargetLifecycleTests(unittest.TestCase):
                 engine.main()
 
                 self.assertTrue((out_dir / "Target_B__mask.txt").exists())
-                self.assertTrue((out_dir / "Target_B__robust_target.txt").exists())
-
-                stats = (reports_dir / "robust_statistics.csv").read_text(
-                    encoding="utf-8"
+                self.assertTrue(
+                    (out_dir / "Target_B__robust_target.txt").exists()
                 )
+
+                stats = (
+                    reports_dir / "robust_statistics.csv"
+                ).read_text(encoding="utf-8")
+
                 self.assertIn("huber_tuning_constant", stats)
                 self.assertIn("huber_scale_factor", stats)
                 self.assertIn("huber_scale_floor_db", stats)
                 self.assertNotIn("retention_median", stats)
                 self.assertNotIn("total_uncertainty_median_db", stats)
 
-                self._write_curve(target_dir / "Target_C.txt", freq, base - 1.0)
+                self._write_curve(
+                    target_dir / "Target_C.txt",
+                    freq,
+                    base - 1.0,
+                )
                 engine.main()
 
-                self.assertTrue((out_dir / "Target_C__mask.txt").exists())
-                self.assertTrue((out_dir / "Target_C__robust_target.txt").exists())
+                self.assertTrue(
+                    (out_dir / "Target_C__mask.txt").exists()
+                )
+                self.assertTrue(
+                    (out_dir / "Target_C__robust_target.txt").exists()
+                )
 
                 (target_dir / "Target_C.txt").unlink()
                 engine.main()
 
-                self.assertFalse((out_dir / "Target_C__mask.txt").exists())
-                self.assertFalse((out_dir / "Target_C__robust_target.txt").exists())
-                self.assertTrue((out_dir / "Target_B__mask.txt").exists())
-                self.assertTrue((out_dir / "Target_B__robust_target.txt").exists())
+                self.assertFalse(
+                    (out_dir / "Target_C__mask.txt").exists()
+                )
+                self.assertFalse(
+                    (out_dir / "Target_C__robust_target.txt").exists()
+                )
+                self.assertTrue(
+                    (out_dir / "Target_B__mask.txt").exists()
+                )
+                self.assertTrue(
+                    (out_dir / "Target_B__robust_target.txt").exists()
+                )
 
 
 if __name__ == "__main__":
