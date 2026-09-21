@@ -12,9 +12,9 @@ This engine follows the supplied prompt for:
 - per-IEM scenario centre = pointwise median of the 3 aligned scenarios
 - per-IEM alignment uncertainty(f) = pointwise max absolute distance from that centre
 - pure EarPrint construction and single Gaussian smoothing pass
-- target-specific robust masking with frequency-dependent AlignmentUncertainty
-- conditional RepeatabilityFloor: inactive when no valid same-IEM repeats exist
-- retention / raw mask / sin^2 boundary taper / domain-zero rules
+- target-specific one-pass Huber robust consensus masking
+- Cross-IEM MAD, AlignmentUncertainty and conditional RepeatabilityFloor as diagnostics
+- sin^2 boundary taper / domain-zero rules
 - dynamic target discovery and one hybrid per discovered target as an explicit extension
   of the prompt's two named hybrids.
 
@@ -348,23 +348,66 @@ def build_hybrid_curve(
     return hybrid, float(shift)
 
 
-def retention_and_mask(
-    centre: np.ndarray,
-    total_uncertainty: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
+def huber_consensus(
+    values: np.ndarray,
+    tuning_constant: float = 1.345,
+    scale_factor: float = 1.4826,
+    scale_floor_db: float = 0.15,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Prompt:
-      Retention = abs(Centre) / (abs(Centre) + TotalUncertainty)
-      RawMask   = Centre * Retention
+    One-pass Huber robust consensus across IEMs.
+
+    For each frequency:
+      median = median(values)
+      MAD = median(abs(values - median))
+      scale = max(1.4826 * MAD, 0.15 dB)
+      cutoff = 1.345 * scale
+      w_i = min(1, cutoff / |residual_i|)
+      Centre = sum(w_i * value_i) / sum(w_i)
+
+    The correction magnitude is NOT attenuated by a separate Retention
+    formula. Cross-IEM MAD remains a diagnostic of heterogeneity.
     """
-    denom = np.abs(centre) + total_uncertainty
-    retention = np.zeros_like(centre, dtype=float)
-    nz = denom > 0
-    retention[nz] = (
-        np.abs(centre[nz]) / denom[nz]
+    if values.ndim != 2:
+        fail("Huber consensus input must be a 2-D IEM x frequency array.")
+    if values.shape[0] < 1:
+        fail("Huber consensus requires at least one IEM.")
+    if not (
+        math.isfinite(tuning_constant)
+        and tuning_constant > 0
+        and math.isfinite(scale_factor)
+        and scale_factor > 0
+        and math.isfinite(scale_floor_db)
+        and scale_floor_db > 0
+    ):
+        fail("Huber parameters must be finite and > 0.")
+
+    median = np.median(values, axis=0)
+    mad = np.median(
+        np.abs(values - median[None, :]),
+        axis=0,
     )
-    raw_mask = centre * retention
-    return retention, raw_mask
+    robust_scale = np.maximum(
+        scale_factor * mad,
+        scale_floor_db,
+    )
+    cutoff = tuning_constant * robust_scale
+    residual = values - median[None, :]
+    abs_residual = np.abs(residual)
+
+    weights = np.minimum(
+        1.0,
+        cutoff[None, :]
+        / np.maximum(
+            abs_residual,
+            np.finfo(float).tiny,
+        ),
+    )
+    centre = (
+        np.sum(weights * values, axis=0)
+        / np.sum(weights, axis=0)
+    )
+    return centre, robust_scale, weights
 
 
 def safe_stem(filename: str) -> str:
@@ -494,6 +537,21 @@ def main() -> None:
     alignment_cfg = cfg["alignment"]
     smoothing_cfg = cfg["smoothing"]
     robust_cfg = cfg["robust_mask"]
+    huber_cfg = robust_cfg.get("huber", {})
+    huber_tuning_constant = float(
+        huber_cfg.get("tuning_constant", 1.345)
+    )
+    huber_scale_factor = float(
+        huber_cfg.get("scale_factor", 1.4826)
+    )
+    huber_scale_floor_db = float(
+        huber_cfg.get("scale_floor_db", 0.15)
+    )
+    huber_passes = int(
+        huber_cfg.get("passes", 1)
+    )
+    if huber_passes != 1:
+        fail("This engine implements exactly one Huber reweighting pass.")
     adaptive_cfg = cfg.get("adaptive_handoff", {})
     output_cfg = cfg["output"]
 
@@ -831,14 +889,18 @@ def main() -> None:
             per_iem_alignment_unc
         )
 
-        centre = np.median(
+        # One-pass Huber robust consensus.
+        centre, huber_scale, huber_weights = huber_consensus(
             delta_stack,
-            axis=0,
+            tuning_constant=huber_tuning_constant,
+            scale_factor=huber_scale_factor,
+            scale_floor_db=huber_scale_floor_db,
         )
+
         cross_iem_mad = np.median(
             np.abs(
                 delta_stack
-                - centre[None, :]
+                - np.median(delta_stack, axis=0)[None, :]
             ),
             axis=0,
         )
@@ -848,20 +910,9 @@ def main() -> None:
             axis=0,
         )
 
-        total_uncertainty = np.maximum(
-            np.maximum(
-                cross_iem_mad,
-                alignment_uncertainty,
-            ),
-            repeatability_floor,
-        )
-
-        retention, raw_mask = (
-            retention_and_mask(
-                centre,
-                total_uncertainty,
-            )
-        )
+        # These quantities remain diagnostics. They do not attenuate the
+        # Huber correction magnitude.
+        raw_mask = centre.copy()
 
         mask = gaussian_once_strict_domain(
             raw_mask,
@@ -953,8 +1004,17 @@ def main() -> None:
 
         robust_statistics.append({
             "target": target_name,
+            "huber_tuning_constant": huber_tuning_constant,
+            "huber_scale_factor": huber_scale_factor,
+            "huber_scale_floor_db": huber_scale_floor_db,
             "cross_iem_mad_median_db": float(
                 np.median(cross_iem_mad)
+            ),
+            "huber_scale_median_db": float(
+                np.median(huber_scale)
+            ),
+            "huber_downweighted_point_fraction": float(
+                np.mean(huber_weights < 1.0)
             ),
             "alignment_uncertainty_median_db": float(
                 np.median(alignment_uncertainty)
@@ -965,12 +1025,6 @@ def main() -> None:
             "repeatability_floor_median_db": float(
                 np.median(repeatability_floor)
             ),
-            "total_uncertainty_median_db": float(
-                np.median(total_uncertainty)
-            ),
-            "retention_median": float(
-                np.median(retention)
-            ),
             "mask_abs_max_db": float(
                 np.max(np.abs(mask))
             ),
@@ -980,9 +1034,9 @@ def main() -> None:
                 )
             ),
             "adaptive_handoff_status": handoff_report.get("status"),
-            "adaptive_handoff_hz": handoff_report.get("handoff_hz"),
-            "adaptive_endpoint_hz": handoff_report.get("endpoint_hz"),
-            "adaptive_transition_octaves": handoff_report.get("transition_octaves"),
+            "adaptive_handoff_hz": handoff_report.get("actual_handoff_hz"),
+            "adaptive_endpoint_hz": handoff_report.get("transition_end_hz"),
+            "adaptive_transition_octaves": handoff_report.get("transition_width_octaves"),
         })
 
         (
@@ -1130,7 +1184,7 @@ def main() -> None:
         "generated_utc": datetime.now(
             timezone.utc
         ).isoformat(),
-        "engine": "IEM EarPrint Engine 3.1.0",
+        "engine": "IEM EarPrint Engine 3.2.0",
         "specification": cfg.get(
             "specification",
             "General_Prompt_EarPrint_8_MATH_LOCKED.txt",
@@ -1174,6 +1228,15 @@ def main() -> None:
             "radius_indices": radius,
             "padding": "nearest",
             "passes": 1,
+        },
+        "robust_mask": {
+            "method": "one_pass_reweighted_huber",
+            "tuning_constant": huber_tuning_constant,
+            "scale_factor": huber_scale_factor,
+            "scale_floor_db": huber_scale_floor_db,
+            "passes": huber_passes,
+            "raw_mask_definition": "Huber robust consensus Centre",
+            "retention_formula": None,
         },
         "mask_boundary_taper": {
             "method": "sin2",
@@ -1265,13 +1328,14 @@ def main() -> None:
         "Gaussian parameters: sigma=16 grid indices, radius=64, nearest-endpoint padding.",
         "LF reference: preserved exactly at/below 1 kHz.",
         "HF extension: display-only -6 dB/octave log-frequency at/above 12 kHz.",
-        "Robust Centre: pointwise median across IEM Delta_i.",
-        "CrossIEM_MAD: pointwise median absolute deviation across IEM Delta_i.",
-        "AlignmentUncertainty: pointwise median across IEM per-IEM uncertainty curves.",
+        "Robust Centre: one-pass Huber consensus across IEM Delta_i.",
+        "Huber tuning constant: 1.345.",
+        "Huber scale: max(1.4826*MAD, 0.15 dB).",
+        "Huber correction magnitude is not attenuated by a Retention formula.",
+        "CrossIEM_MAD: pointwise median absolute deviation across IEM Delta_i; diagnostic only.",
+        "AlignmentUncertainty: pointwise median across IEM per-IEM uncertainty curves; diagnostic only.",
         "RepeatabilityFloor: inactive because no valid same-IEM repeat data are supplied.",
-        "TotalUncertainty: max(CrossIEM_MAD, AlignmentUncertainty, RepeatabilityFloor).",
-        "Retention: abs(Centre)/(abs(Centre)+TotalUncertainty).",
-        "RawMask: Centre*Retention.",
+        "RawMask: Huber Centre.",
         "Mask smoothing: exactly one Gaussian pass inside strict personal domain.",
         "Mask taper: sin-squared boundaries; lower/start transition is 1/3 octave and upper/end transition is 1/4 octave before adaptive handoff.",
         "Mask forced to zero at/below 1 kHz and at/above 12 kHz.",
@@ -1297,7 +1361,10 @@ def main() -> None:
             "This repository treats the supplied prompt as the mathematical source of truth.",
             "The lower personal-domain boundary uses a 1/3-octave sin-squared transition.",
             "The upper personal-domain boundary remains a 1/4-octave sin-squared transition.",
-            "No undocumented robust-mask constants are introduced.",
+            "Robust masking uses one-pass reweighted Huber consensus.",
+            "Huber constants are tuning_constant=1.345, scale_factor=1.4826, scale_floor=0.15 dB.",
+            "Cross-IEM MAD, AlignmentUncertainty and RepeatabilityFloor remain diagnostics and do not attenuate correction magnitude.",
+            "No Retention formula is applied to the Huber correction.",
             "When repeatability data are absent, the prompt's conditional RepeatabilityFloor term is inactive.",
             "Hybrid generation is on demand; any discovered target may be selected without changing robust-target mathematics.",
             "",
