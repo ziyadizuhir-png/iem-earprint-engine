@@ -10,9 +10,13 @@ Interpolation: log-frequency.
 Alignment bands: [(200.0, 1000.0), (200.0, 500.0), (500.0, 1000.0)]
 Per-IEM scenario centre: pointwise median of 3 aligned scenarios.
 Per-IEM alignment uncertainty: pointwise max absolute distance from scenario centre.
-Pure EarPrint direct centre: pointwise median across selected median-aligned IEM curves.
+Pure EarPrint consensus: one-pass reweighted Huber consensus across selected median-aligned IEM curves.
+Pure EarPrint Huber tuning constant: 1.345.
+Pure EarPrint Huber scale: max(1.4826*MAD, 0.15 dB).
+Pure EarPrint Huber correction is not attenuated by a Retention formula.
 Pure EarPrint smoothing: exactly one Gaussian pass, strict >1 kHz and <12 kHz.
-Gaussian parameters: sigma=16 grid indices, radius=64, nearest-endpoint padding.
+Pure EarPrint Gaussian parameters: sigma=4 grid indices, radius=16, nearest-endpoint padding.
+Target-specific Robust Mask smoothing continues to use the project smoothing parameters.
 LF reference: preserved exactly at/below 1 kHz.
 HF extension: display-only -6 dB/octave log-frequency at/above 12 kHz.
 Robust Centre: one-pass Huber consensus across IEM Delta_i.
