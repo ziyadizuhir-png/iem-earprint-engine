@@ -9,7 +9,7 @@ from engine.earprint_engine import (
     build_hybrid_curve,
     discover_txt,
     gaussian_once_strict_domain,
-    retention_and_mask,
+    huber_consensus,
     sin2_boundary_taper,
 )
 
@@ -43,35 +43,77 @@ class EarPrintMathTests(unittest.TestCase):
         )
         self.assertTrue(np.all(uncertainty >= 0))
 
-    def test_retention_zero_zero_is_deterministically_zero(self):
-        centre = np.array([-2.0, 0.0, 4.0, 0.0])
-        uncertainty = np.array([1.0, 0.0, 2.0, 3.0])
-        retention, mask = retention_and_mask(
-            centre,
-            uncertainty,
+    def test_huber_consensus_downweights_large_outlier(self):
+        values = np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [10.0, 10.0, 10.0],
+            ],
+            dtype=float,
         )
-        expected_r = np.array([
-            2 / 3,
-            0.0,
-            2 / 3,
-            0.0,
-        ])
-        expected_m = np.array([
-            -4 / 3,
-            0.0,
-            8 / 3,
-            0.0,
-        ])
+
+        centre, scale, weights = huber_consensus(
+            values,
+            tuning_constant=1.345,
+            scale_factor=1.4826,
+            scale_floor_db=0.15,
+        )
+
+        expected_weight = (1.345 * 0.15) / 10.0
+        expected_centre = (
+            10.0 * expected_weight
+            / (2.0 + expected_weight)
+        )
+
+        self.assertTrue(np.allclose(scale, 0.15))
         self.assertTrue(
             np.allclose(
-                retention,
-                expected_r,
+                weights[:2],
+                1.0,
             )
         )
         self.assertTrue(
             np.allclose(
-                mask,
-                expected_m,
+                weights[2],
+                expected_weight,
+            )
+        )
+        self.assertTrue(
+            np.allclose(
+                centre,
+                expected_centre,
+            )
+        )
+
+    def test_huber_consensus_preserves_consensus_without_outlier(self):
+        values = np.array(
+            [
+                [1.0, 2.0, 3.0],
+                [1.0, 2.0, 3.0],
+                [1.0, 2.0, 3.0],
+            ],
+            dtype=float,
+        )
+
+        centre, scale, weights = huber_consensus(values)
+
+        self.assertTrue(
+            np.allclose(
+                centre,
+                [1.0, 2.0, 3.0],
+            )
+        )
+        self.assertTrue(
+            np.allclose(
+                weights,
+                1.0,
+            )
+        )
+        self.assertTrue(
+            np.allclose(
+                scale,
+                0.15,
             )
         )
 
