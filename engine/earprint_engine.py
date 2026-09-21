@@ -714,7 +714,7 @@ def main() -> None:
     )
 
     # ------------------------------------------------------------
-    # PURE EARPRINT — ONE-PASS HUBER ROBUST CONSENSUS
+    # PURE EARPRINT â€” ONE-PASS HUBER ROBUST CONSENSUS
     # ------------------------------------------------------------
 
     (
