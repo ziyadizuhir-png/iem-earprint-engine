@@ -60,6 +60,7 @@ def log_curvature(freq, level):
 def _interp_log(freq, level, hz):
     return float(np.interp(math.log(hz), np.log(freq), level))
 
+
 # ---------------------------------------------------------------------------
 # Stability helpers
 # ---------------------------------------------------------------------------
@@ -100,6 +101,7 @@ def _smootherstep(t):
 def _smootherstep_derivative(t):
     t = np.asarray(t, dtype=float)
     return 30.0 * t**4 - 60.0 * t**3 + 30.0 * t**2
+
 
 def _smootherstep_second_derivative(t):
     t = np.asarray(t, dtype=float)
@@ -163,6 +165,7 @@ def _evaluate_quintic_bridge(freq, target, masked_target, h_index, e_index):
 
     if abs(delta) <= _EPS:
         return {"passed": False, "reason": "zero_endpoint_delta"}
+
     x = np.log2(f)
     slope = np.gradient(bridge, x, edge_order=1)
     direction = math.copysign(1.0, delta)
@@ -372,6 +375,7 @@ def _evaluate_monotone_cubic_bridge(
     c0, c1, c2, c3 = _hermite_coefficients(
         y0, y1, d0, d1, span
     )
+
     t_values = (
         np.log2(bridge_freq / H) / span
     )
@@ -496,6 +500,7 @@ def _evaluate_monotone_cubic_bridge(
         "H_hz": H,
         "E_hz": E,
     }
+
 
 def _monotone_bridge(y0, y1, d0, d1, span_octaves):
     """Backward-compatible endpoint-geometry helper."""
@@ -664,6 +669,7 @@ def adaptive_masked_handoff(
             "candidate_count": 0,
             "selected_candidate_rank": None,
         }
+
     h_index = int(h_candidates[0])
 
     target_slope = log_slope(freq, target)

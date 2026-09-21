@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 from scipy.ndimage import gaussian_filter1d
+
 try:
     from .adaptive_handoff import adaptive_masked_handoff
 except ImportError:
@@ -101,6 +102,7 @@ def parse_xy(path: Path) -> tuple[np.ndarray, np.ndarray]:
 
     return arr[:, 0], arr[:, 1]
 
+
 def interpolate_log_frequency(
     freq_src: np.ndarray,
     level_src: np.ndarray,
@@ -121,6 +123,7 @@ def band_mask(freq: np.ndarray, lo: float, hi: float) -> np.ndarray:
     if not np.any(mask):
         fail(f"No samples in inclusive alignment band [{lo}, {hi}] Hz")
     return mask
+
 
 def band_median(
     freq: np.ndarray,
@@ -309,6 +312,7 @@ def huber_consensus(
     cutoff = 1.345 * scale
     weight_i = min(1, cutoff / |residual_i|)
     Centre = sum(weight_i * value_i) / sum(weight_i)
+
     No Retention attenuation is applied.
     """
     if values.ndim != 2:
@@ -371,6 +375,7 @@ def safe_stem(filename: str) -> str:
     )
     stem = re.sub(r"_+", "_", stem).strip("_.")
     return stem or "target"
+
 
 def write_xy(
     path: Path,
@@ -475,6 +480,7 @@ def compare_curves(
         "rms_db": float(np.sqrt(np.mean(diff ** 2))),
         "max_abs_db": float(np.max(np.abs(diff))),
     }
+
 
 def main() -> None:
     cfg = read_config()
@@ -663,6 +669,7 @@ def main() -> None:
                 )
             )
         )
+
         master_lf = interpolate_log_frequency(
             original_master_freq,
             original_master_lf,
@@ -830,6 +837,7 @@ def main() -> None:
     anchor_freq = float(
         master_freq[anchor_idx]
     )
+
     anchor_level = float(
         pure[anchor_idx]
     )
@@ -934,6 +942,7 @@ def main() -> None:
             delta_i = (
                 scenario_centre - base_target
             )
+
             per_iem_delta.append(
                 delta_i
             )
@@ -975,6 +984,7 @@ def main() -> None:
             ),
             axis=0,
         )
+
         alignment_uncertainty = np.median(
             alignment_unc_stack,
             axis=0,
@@ -1163,6 +1173,7 @@ def main() -> None:
             encoding="utf-8",
         ) as f:
             writer = csv.writer(f)
+
             writer.writerow([
                 "iem",
                 "offset_200_1000_db",
@@ -1300,7 +1311,7 @@ def main() -> None:
             timezone.utc
         ).isoformat(),
 
-        "engine": "IEM EarPrint Engine 3.2.0",
+        "engine": "IEM EarPrint Engine 3.4.0",
 
         "specification": cfg.get(
             "specification",
@@ -1456,6 +1467,7 @@ def main() -> None:
         "grid_points": int(
             len(master_freq)
         ),
+
         "output_points": int(
             len(output_freq)
         ),
@@ -1514,10 +1526,11 @@ def main() -> None:
         "Mask smoothing: exactly one Gaussian pass inside strict personal domain.",
         "Mask taper: sin-squared boundaries; lower/start transition is 1/3 octave and upper/end transition is 1/4 octave before adaptive handoff.",
         "Mask forced to zero at/below 1 kHz and at/above 12 kHz.",
-        "Adaptive handoff preserves the base target to the selected handoff and uses the masked EarPrint after the validated monotonic bridge.",
+        "Adaptive handoff uses exact computational H=1000 Hz, earliest-feasible E, and a shape-preserving monotone cubic Hermite bridge; BaseTarget is preserved through H and Masked EarPrint is used exactly after E.",
         "No final normalization, manual tonal edit, arbitrary gain cap or extra tilt.",
         "Dynamic targets receive robust mask + robust target outputs; hybrids are generated on demand from any selected target.",
     ]
+
     (
         REPORTS / "validation.txt"
     ).write_text(
