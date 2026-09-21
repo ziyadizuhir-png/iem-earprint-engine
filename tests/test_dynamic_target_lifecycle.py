@@ -86,8 +86,8 @@ class DynamicTargetLifecycleTests(unittest.TestCase):
                 "min_transition_octaves": 1 / 3,
                 "max_transition_octaves": 0.8,
                 "stability_window_octaves": 0.2,
-                "method": "earliest feasible E + quintic smootherstep bridge",
-                "transition_function": "smootherstep5",
+                "method": "earliest feasible E + monotone cubic Hermite shape-preserving bridge",
+                "transition_function": "monotone_cubic_hermite_shape_preserving",
             },
             "hybrids": {
                 "enabled": True,
