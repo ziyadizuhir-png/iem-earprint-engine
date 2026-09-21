@@ -15,13 +15,14 @@ Pure EarPrint smoothing: exactly one Gaussian pass, strict >1 kHz and <12 kHz.
 Gaussian parameters: sigma=16 grid indices, radius=64, nearest-endpoint padding.
 LF reference: preserved exactly at/below 1 kHz.
 HF extension: display-only -6 dB/octave log-frequency at/above 12 kHz.
-Robust Centre: pointwise median across IEM Delta_i.
-CrossIEM_MAD: pointwise median absolute deviation across IEM Delta_i.
-AlignmentUncertainty: pointwise median across IEM per-IEM uncertainty curves.
+Robust Centre: one-pass Huber consensus across IEM Delta_i.
+Huber tuning constant: 1.345.
+Huber scale: max(1.4826*MAD, 0.15 dB).
+Huber correction magnitude is not attenuated by a Retention formula.
+CrossIEM_MAD: pointwise median absolute deviation across IEM Delta_i; diagnostic only.
+AlignmentUncertainty: pointwise median across IEM per-IEM uncertainty curves; diagnostic only.
 RepeatabilityFloor: inactive because no valid same-IEM repeat data are supplied.
-TotalUncertainty: max(CrossIEM_MAD, AlignmentUncertainty, RepeatabilityFloor).
-Retention: abs(Centre)/(abs(Centre)+TotalUncertainty).
-RawMask: Centre*Retention.
+RawMask: Huber Centre.
 Mask smoothing: exactly one Gaussian pass inside strict personal domain.
 Mask taper: sin-squared boundaries; lower/start transition is 1/3 octave and upper/end transition is 1/4 octave before adaptive handoff.
 Mask forced to zero at/below 1 kHz and at/above 12 kHz.
