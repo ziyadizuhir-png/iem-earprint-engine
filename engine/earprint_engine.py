@@ -18,7 +18,6 @@ from pathlib import Path
 import numpy as np
 import yaml
 from scipy.ndimage import gaussian_filter1d
-
 try:
     from .adaptive_handoff import adaptive_masked_handoff
 except ImportError:
@@ -102,7 +101,6 @@ def parse_xy(path: Path) -> tuple[np.ndarray, np.ndarray]:
 
     return arr[:, 0], arr[:, 1]
 
-
 def interpolate_log_frequency(
     freq_src: np.ndarray,
     level_src: np.ndarray,
@@ -123,7 +121,6 @@ def band_mask(freq: np.ndarray, lo: float, hi: float) -> np.ndarray:
     if not np.any(mask):
         fail(f"No samples in inclusive alignment band [{lo}, {hi}] Hz")
     return mask
-
 
 def band_median(
     freq: np.ndarray,
@@ -312,7 +309,6 @@ def huber_consensus(
     cutoff = 1.345 * scale
     weight_i = min(1, cutoff / |residual_i|)
     Centre = sum(weight_i * value_i) / sum(weight_i)
-
     No Retention attenuation is applied.
     """
     if values.ndim != 2:
@@ -375,7 +371,6 @@ def safe_stem(filename: str) -> str:
     )
     stem = re.sub(r"_+", "_", stem).strip("_.")
     return stem or "target"
-
 
 def write_xy(
     path: Path,
@@ -480,7 +475,6 @@ def compare_curves(
         "rms_db": float(np.sqrt(np.mean(diff ** 2))),
         "max_abs_db": float(np.max(np.abs(diff))),
     }
-
 
 def main() -> None:
     cfg = read_config()
@@ -634,6 +628,54 @@ def main() -> None:
         lf_reference_file
     ]
 
+    # Preserve the original repository grid for published outputs.
+    # The adaptive handoff, however, requires an exact computational
+    # nominal anchor at 1000 Hz. Insert that point internally when the
+    # source/master grid does not already contain it.
+    original_master_freq = master_freq.copy()
+    original_master_lf = master_lf.copy()
+    original_output_freq = original_master_freq[
+        (original_master_freq >= output_start)
+        & (original_master_freq <= output_end)
+    ].copy()
+
+    if not np.any(
+        np.isclose(
+            master_freq,
+            personal_start,
+            rtol=0.0,
+            atol=1e-12,
+        )
+    ):
+        anchor_level = log_interp_scalar(
+            original_master_freq,
+            original_master_lf,
+            personal_start,
+        )
+
+        master_freq = np.sort(
+            np.unique(
+                np.concatenate(
+                    [
+                        original_master_freq,
+                        np.asarray([personal_start], dtype=float),
+                    ]
+                )
+            )
+        )
+        master_lf = interpolate_log_frequency(
+            original_master_freq,
+            original_master_lf,
+            master_freq,
+        )
+
+        anchor_index = int(
+            np.argmin(
+                np.abs(master_freq - personal_start)
+            )
+        )
+        master_lf[anchor_index] = anchor_level
+
     if master_freq[0] > output_start:
         fail(
             "Low-frequency reference does not "
@@ -714,7 +756,7 @@ def main() -> None:
     )
 
     # ------------------------------------------------------------
-    # PURE EARPRINT â€” ONE-PASS HUBER ROBUST CONSENSUS
+    # PURE EARPRINT — ONE-PASS HUBER ROBUST CONSENSUS
     # ------------------------------------------------------------
 
     (
@@ -788,7 +830,6 @@ def main() -> None:
     anchor_freq = float(
         master_freq[anchor_idx]
     )
-
     anchor_level = float(
         pure[anchor_idx]
     )
@@ -811,12 +852,16 @@ def main() -> None:
         & (master_freq <= output_end)
     )
 
-    output_freq = master_freq[out_mask]
+    output_freq = original_output_freq
 
     write_xy(
         OUT / "pure_earprint_dynamic.txt",
         output_freq,
-        pure[out_mask],
+        interpolate_log_frequency(
+            master_freq,
+            pure,
+            output_freq,
+        ),
         decimals,
     )
 
@@ -889,7 +934,6 @@ def main() -> None:
             delta_i = (
                 scenario_centre - base_target
             )
-
             per_iem_delta.append(
                 delta_i
             )
@@ -931,7 +975,6 @@ def main() -> None:
             ),
             axis=0,
         )
-
         alignment_uncertainty = np.median(
             alignment_unc_stack,
             axis=0,
@@ -1031,7 +1074,11 @@ def main() -> None:
             write_xy(
                 OUT / f"{stem}__mask.txt",
                 output_freq,
-                mask[out_mask],
+                interpolate_log_frequency(
+                    master_freq,
+                    mask,
+                    output_freq,
+                ),
                 decimals,
             )
 
@@ -1041,7 +1088,11 @@ def main() -> None:
             write_xy(
                 OUT / f"{stem}__robust_target.txt",
                 output_freq,
-                robust_target[out_mask],
+                interpolate_log_frequency(
+                    master_freq,
+                    robust_target,
+                    output_freq,
+                ),
                 decimals,
             )
 
@@ -1112,7 +1163,6 @@ def main() -> None:
             encoding="utf-8",
         ) as f:
             writer = csv.writer(f)
-
             writer.writerow([
                 "iem",
                 "offset_200_1000_db",
@@ -1406,7 +1456,6 @@ def main() -> None:
         "grid_points": int(
             len(master_freq)
         ),
-
         "output_points": int(
             len(output_freq)
         ),
@@ -1469,7 +1518,6 @@ def main() -> None:
         "No final normalization, manual tonal edit, arbitrary gain cap or extra tilt.",
         "Dynamic targets receive robust mask + robust target outputs; hybrids are generated on demand from any selected target.",
     ]
-
     (
         REPORTS / "validation.txt"
     ).write_text(
