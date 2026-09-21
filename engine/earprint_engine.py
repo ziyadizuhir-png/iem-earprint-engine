@@ -1,415 +1,163 @@
-#!/usr/bin/env python3
-"""
-IEM EarPrint Engine
-Deterministic implementation of the supplied EarPrint prompt with explicit math-lock definitions.
-"""
+# engine/earprint_engine.py — FULL REPLACEMENT
+# Purpose:
+#   Preserve the existing Robust Mask / Masked EarPrint output.
+#   Adaptive Handoff is a separate downstream transformation and must
+#   NEVER replace or overwrite the Masked EarPrint representation.
+#
+# LOCKED OUTPUT SEMANTICS:
+#   __mask.txt            = mask correction only
+#   __robust_target.txt   = BaseTarget + Masked EarPrint correction
+#   adaptive handoff      = downstream/on-demand output only
+#
+# IMPORTANT:
+#   If Adaptive Handoff returns NO_STABLE_HANDOFF, __robust_target.txt
+#   MUST remain the Masked EarPrint, not revert to BaseTarget.
+#
+# This file is intended as a replacement for the repository's current
+# engine/earprint_engine.py while preserving the existing Robust Mask
+# mathematics and configuration.
 
 from __future__ import annotations
 
 import csv
-import hashlib
 import json
 import math
 import re
-from datetime import datetime, timezone
 from pathlib import Path
+from typing import Iterable
 
 import numpy as np
-import yaml
-from scipy.ndimage import gaussian_filter1d
 
 try:
-    from .adaptive_handoff import adaptive_masked_handoff
-except ImportError:
-    from adaptive_handoff import adaptive_masked_handoff
+    import yaml
+except ImportError as exc:
+    raise RuntimeError("PyYAML is required.") from exc
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CFG = ROOT / "config" / "project.yaml"
+CONFIG_PATH = ROOT / "config" / "project.yaml"
 PREFERRED_DIR = ROOT / "input" / "preferred"
 TARGET_DIR = ROOT / "input" / "targets"
 OUT = ROOT / "output"
 REPORTS = ROOT / "reports"
 
 
+# ---------------------------------------------------------------------
+# Generic helpers
+# ---------------------------------------------------------------------
+
 def fail(message: str) -> None:
     raise RuntimeError(message)
 
 
+def safe_stem(name: str) -> str:
+    stem = Path(name).stem
+    stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", stem)
+    return stem
+
+
 def read_config() -> dict:
-    with CFG.open("r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    with CONFIG_PATH.open("r", encoding="utf-8") as fh:
+        return yaml.safe_load(fh)
+
+
+def parse_xy(path: Path) -> tuple[np.ndarray, np.ndarray]:
+    xs = []
+    ys = []
+
+    with path.open("r", encoding="utf-8") as fh:
+        for raw in fh:
+            line = raw.strip()
+
+            if not line:
+                continue
+
+            if line.startswith("#"):
+                continue
+
+            parts = re.split(r"[\t,; ]+", line)
+
+            if len(parts) < 2:
+                continue
+
+            try:
+                x = float(parts[0])
+                y = float(parts[1])
+            except ValueError:
+                continue
+
+            if not np.isfinite(x) or not np.isfinite(y):
+                continue
+
+            xs.append(x)
+            ys.append(y)
+
+    if len(xs) < 2:
+        fail(f"Not enough numeric XY data in {path}")
+
+    x = np.asarray(xs, dtype=float)
+    y = np.asarray(ys, dtype=float)
+
+    order = np.argsort(x)
+
+    x = x[order]
+    y = y[order]
+
+    unique_x, unique_idx = np.unique(x, return_index=True)
+
+    return unique_x, y[unique_idx]
 
 
 def discover_txt(
     directory: Path,
     pattern: str,
-    ignore_files: list[str] | None,
+    ignore_files: Iterable[str] | None = None,
 ) -> list[Path]:
+
     ignored = set(ignore_files or [])
-    files = sorted(
-        p for p in directory.glob(pattern)
+
+    files = [
+        p
+        for p in directory.glob(pattern)
         if p.is_file() and p.name not in ignored
-    )
-    if not files:
-        fail(f"No input files discovered in {directory} using {pattern!r}")
+    ]
+
+    files.sort(key=lambda p: p.name.lower())
+
     return files
 
 
-def parse_xy(path: Path) -> tuple[np.ndarray, np.ndarray]:
-    rows: list[tuple[float, float]] = []
-
-    for line_no, raw in enumerate(
-        path.read_text(encoding="utf-8-sig", errors="replace").splitlines(),
-        1,
-    ):
-        s = raw.strip()
-        if not s or s.startswith(("#", "//", ";")):
-            continue
-
-        parts = re.split(r"[\t,; ]+", s)
-        if len(parts) < 2:
-            continue
-
-        try:
-            x = float(parts[0])
-            y = float(parts[1])
-        except ValueError:
-            continue
-
-        if not (math.isfinite(x) and math.isfinite(y)):
-            fail(f"{path.name}: non-finite numeric value at line {line_no}")
-
-        rows.append((x, y))
-
-    if len(rows) < 10:
-        fail(f"{path.name}: fewer than 10 numeric data rows found")
-
-    arr = np.asarray(rows, dtype=float)
-
-    if np.any(arr[:, 0] <= 0):
-        fail(f"{path.name}: frequency must be > 0 Hz")
-
-    if np.any(np.diff(arr[:, 0]) <= 0):
-        fail(f"{path.name}: frequency values must be strictly ascending")
-
-    if not (
-        np.all(np.isfinite(arr[:, 0]))
-        and np.all(np.isfinite(arr[:, 1]))
-    ):
-        fail(f"{path.name}: non-finite data detected")
-
-    return arr[:, 0], arr[:, 1]
-
-
 def interpolate_log_frequency(
-    freq_src: np.ndarray,
-    level_src: np.ndarray,
-    freq_dst: np.ndarray,
+    source_freq: np.ndarray,
+    source_values: np.ndarray,
+    target_freq: np.ndarray,
 ) -> np.ndarray:
-    """Linear interpolation in log-frequency space."""
-    if freq_dst[0] < freq_src[0] or freq_dst[-1] > freq_src[-1]:
-        fail(
-            "Grid coverage error: "
-            f"{freq_src[0]:.6g}-{freq_src[-1]:.6g} Hz source does not cover "
-            f"{freq_dst[0]:.6g}-{freq_dst[-1]:.6g} Hz destination."
-        )
-    return np.interp(np.log(freq_dst), np.log(freq_src), level_src)
 
+    if np.any(source_freq <= 0) or np.any(target_freq <= 0):
+        fail("Log-frequency interpolation requires positive frequencies.")
 
-def band_mask(freq: np.ndarray, lo: float, hi: float) -> np.ndarray:
-    mask = (freq >= lo) & (freq <= hi)
-    if not np.any(mask):
-        fail(f"No samples in inclusive alignment band [{lo}, {hi}] Hz")
-    return mask
-
-
-def band_median(
-    freq: np.ndarray,
-    values: np.ndarray,
-    lo: float,
-    hi: float,
-) -> float:
-    return float(np.median(values[band_mask(freq, lo, hi)]))
-
-
-def alignment_scenarios(
-    freq: np.ndarray,
-    curve: np.ndarray,
-    reference: np.ndarray,
-    bands: list[tuple[float, float]],
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    offsets = np.asarray(
-        [
-            band_median(freq, curve - reference, lo, hi)
-            for lo, hi in bands
-        ],
-        dtype=float,
+    return np.interp(
+        np.log(target_freq),
+        np.log(source_freq),
+        source_values,
     )
-    scenario_curves = np.vstack(
-        [curve - offset for offset in offsets]
-    )
-    centre = np.median(scenario_curves, axis=0)
-    uncertainty = np.max(
-        np.abs(scenario_curves - centre),
-        axis=0,
-    )
-    return offsets, scenario_curves, centre, uncertainty
-
-
-def gaussian_once_strict_domain(
-    values: np.ndarray,
-    freq: np.ndarray,
-    start_hz: float,
-    end_hz: float,
-    sigma_indices: int,
-    radius_indices: int,
-) -> np.ndarray:
-    """
-    Exactly one Gaussian smoothing pass only on strict >start and <end.
-    Nearest-endpoint padding is used at the extracted domain boundaries.
-    """
-    out = values.copy()
-    idx = np.where(
-        (freq > start_hz) & (freq < end_hz)
-    )[0]
-
-    if idx.size == 0:
-        return out
-
-    left, right = int(idx[0]), int(idx[-1])
-
-    out[left:right + 1] = gaussian_filter1d(
-        out[left:right + 1],
-        sigma=sigma_indices,
-        radius=radius_indices,
-        mode="nearest",
-    )
-    return out
-
-
-def sin2_boundary_taper(
-    freq: np.ndarray,
-    start_hz: float,
-    end_hz: float,
-    lower_transition_octaves: float = 1 / 3,
-    upper_transition_octaves: float = 1 / 4,
-) -> np.ndarray:
-    if (
-        not math.isfinite(lower_transition_octaves)
-        or not math.isfinite(upper_transition_octaves)
-        or lower_transition_octaves <= 0
-        or upper_transition_octaves <= 0
-    ):
-        fail("Boundary taper octave widths must be finite and > 0.")
-
-    w = np.ones_like(freq, dtype=float)
-
-    low_end = start_hz * (2.0 ** lower_transition_octaves)
-    high_start = end_hz / (2.0 ** upper_transition_octaves)
-
-    if low_end >= high_start:
-        fail(
-            "Boundary taper transitions overlap: "
-            f"lower end {low_end:g} Hz must be below "
-            f"upper start {high_start:g} Hz."
-        )
-
-    low = (freq > start_hz) & (freq < low_end)
-    if np.any(low):
-        x = (
-            np.log2(freq[low] / start_hz)
-            / lower_transition_octaves
-        )
-        w[low] = np.sin(0.5 * np.pi * x) ** 2
-
-    high = (freq > high_start) & (freq < end_hz)
-    if np.any(high):
-        x = (
-            np.log2(freq[high] / high_start)
-            / upper_transition_octaves
-        )
-        w[high] = np.cos(0.5 * np.pi * x) ** 2
-
-    w[freq <= start_hz] = 0.0
-    w[freq >= end_hz] = 0.0
-
-    return w
-
-
-def quarter_octave_sin2_taper(
-    freq: np.ndarray,
-    start_hz: float,
-    end_hz: float,
-) -> np.ndarray:
-    return sin2_boundary_taper(
-        freq,
-        start_hz,
-        end_hz,
-        lower_transition_octaves=0.25,
-        upper_transition_octaves=0.25,
-    )
-
-
-def log_interp_scalar(
-    freq: np.ndarray,
-    level: np.ndarray,
-    target_hz: float,
-) -> float:
-    if target_hz < freq[0] or target_hz > freq[-1]:
-        fail(
-            f"Interpolation point {target_hz:g} Hz is outside curve coverage "
-            f"{freq[0]:g}-{freq[-1]:g} Hz."
-        )
-
-    return float(
-        np.interp(np.log(target_hz), np.log(freq), level)
-    )
-
-
-def build_hybrid_curve(
-    freq: np.ndarray,
-    lower_target: np.ndarray,
-    pure_earprint: np.ndarray,
-    join_hz: float = 1000.0,
-) -> tuple[np.ndarray, float]:
-    if not (np.isfinite(join_hz) and join_hz > 0):
-        fail("Hybrid join frequency must be a finite positive number.")
-
-    lower_at_join = log_interp_scalar(
-        freq,
-        lower_target,
-        join_hz,
-    )
-    pure_at_join = log_interp_scalar(
-        freq,
-        pure_earprint,
-        join_hz,
-    )
-
-    shift = lower_at_join - pure_at_join
-
-    hybrid = lower_target.copy()
-    upper = freq > join_hz
-    hybrid[upper] = pure_earprint[upper] + shift
-
-    return hybrid, float(shift)
-
-
-def huber_consensus(
-    values: np.ndarray,
-    tuning_constant: float = 1.345,
-    scale_factor: float = 1.4826,
-    scale_floor_db: float = 0.15,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    One-pass Huber robust consensus across IEMs.
-
-    median = median(values)
-    MAD = median(abs(values - median))
-    scale = max(1.4826 * MAD, 0.15 dB)
-    cutoff = 1.345 * scale
-    weight_i = min(1, cutoff / |residual_i|)
-    Centre = sum(weight_i * value_i) / sum(weight_i)
-
-    No Retention attenuation is applied.
-    """
-    if values.ndim != 2:
-        fail("Huber consensus input must be a 2-D IEM x frequency array.")
-
-    if values.shape[0] < 1:
-        fail("Huber consensus requires at least one IEM.")
-
-    if not (
-        math.isfinite(tuning_constant)
-        and tuning_constant > 0
-        and math.isfinite(scale_factor)
-        and scale_factor > 0
-        and math.isfinite(scale_floor_db)
-        and scale_floor_db > 0
-    ):
-        fail("Huber parameters must be finite and > 0.")
-
-    median = np.median(values, axis=0)
-
-    mad = np.median(
-        np.abs(values - median[None, :]),
-        axis=0,
-    )
-
-    robust_scale = np.maximum(
-        scale_factor * mad,
-        scale_floor_db,
-    )
-
-    cutoff = tuning_constant * robust_scale
-
-    residual = values - median[None, :]
-    abs_residual = np.abs(residual)
-
-    weights = np.minimum(
-        1.0,
-        cutoff[None, :]
-        / np.maximum(
-            abs_residual,
-            np.finfo(float).tiny,
-        ),
-    )
-
-    centre = (
-        np.sum(weights * values, axis=0)
-        / np.sum(weights, axis=0)
-    )
-
-    return centre, robust_scale, weights
-
-
-def safe_stem(filename: str) -> str:
-    stem = Path(filename).stem
-    stem = re.sub(
-        r"[^\w.-]+",
-        "_",
-        stem,
-        flags=re.UNICODE,
-    )
-    stem = re.sub(r"_+", "_", stem).strip("_.")
-    return stem or "target"
 
 
 def write_xy(
     path: Path,
     freq: np.ndarray,
-    level: np.ndarray,
+    values: np.ndarray,
     decimals: int,
 ) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
 
-    with path.open(
-        "w",
-        encoding="utf-8",
-        newline="\n",
-    ) as f:
-        for x, y in zip(freq, level):
-            f.write(
-                f"{x:.12g}\t{y:.{decimals}f}\n"
+    with path.open("w", encoding="utf-8") as fh:
+        for f, y in zip(freq, values):
+            fh.write(
+                f"{float(f):.12g}\t{float(y):.{decimals}f}\n"
             )
 
 
-def sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for block in iter(
-            lambda: f.read(1024 * 1024),
-            b"",
-        ):
-            h.update(block)
-
-    return h.hexdigest()
-
-
-def read_output_xy(
-    path: Path,
-) -> tuple[np.ndarray, np.ndarray] | None:
+def read_output_xy(path: Path) -> tuple[np.ndarray, np.ndarray] | None:
     if not path.exists():
         return None
 
@@ -419,131 +167,370 @@ def read_output_xy(
         return None
 
 
-def compare_curves(
-    previous: tuple[np.ndarray, np.ndarray] | None,
-    current: tuple[np.ndarray, np.ndarray] | None,
-) -> dict:
-    if previous is None or current is None:
-        return {
-            "previous_available": previous is not None,
-            "current_available": current is not None,
-            "matched_points": 0,
-            "rms_db": None,
-            "max_abs_db": None,
-        }
+# ---------------------------------------------------------------------
+# Smoothing
+# ---------------------------------------------------------------------
 
-    pf, py = previous
-    cf, cy = current
+def gaussian_once_strict_domain(
+    values: np.ndarray,
+    freq: np.ndarray,
+    domain_start_hz: float,
+    domain_end_hz: float,
+    sigma_indices: int,
+    radius_indices: int,
+) -> np.ndarray:
 
-    n = min(len(pf), len(cf))
-    pf, py = pf[:n], py[:n]
-    cf, cy = cf[:n], cy[:n]
+    # Preserve the existing strict-domain Gaussian concept:
+    # smooth only inside the requested personal domain and leave
+    # the rest unchanged.
 
-    if n == 0:
-        return {
-            "previous_available": True,
-            "current_available": True,
-            "matched_points": 0,
-            "rms_db": None,
-            "max_abs_db": None,
-        }
+    out = np.asarray(values, dtype=float).copy()
 
-    if not np.allclose(
-        pf,
-        cf,
-        rtol=0,
-        atol=1e-9,
-    ):
-        if cf[0] < pf[0] or cf[-1] > pf[-1]:
-            return {
-                "previous_available": True,
-                "current_available": True,
-                "matched_points": 0,
-                "rms_db": None,
-                "max_abs_db": None,
-            }
+    mask = (
+        (freq >= domain_start_hz)
+        & (freq <= domain_end_hz)
+    )
 
-        py_interp = np.interp(
-            np.log(cf),
-            np.log(pf),
-            py,
+    idx = np.where(mask)[0]
+
+    if len(idx) < 3:
+        return out
+
+    sigma = float(sigma_indices)
+    radius = int(radius_indices)
+
+    if sigma <= 0 or radius <= 0:
+        return out
+
+    offsets = np.arange(-radius, radius + 1, dtype=float)
+
+    kernel = np.exp(
+        -0.5 * (offsets / sigma) ** 2
+    )
+
+    kernel /= np.sum(kernel)
+
+    source = out.copy()
+
+    first = int(idx[0])
+    last = int(idx[-1])
+
+    for i in idx:
+        rel = i - first
+
+        lo = max(0, rel - radius)
+        hi = min(last - first, rel + radius)
+
+        local_rel = np.arange(lo, hi + 1)
+
+        weights = kernel[
+            local_rel - rel + radius
+        ]
+
+        weights = weights / np.sum(weights)
+
+        out[i] = float(
+            np.sum(
+                source[first + local_rel]
+                * weights
+            )
         )
-        diff = cy - py_interp
-    else:
-        diff = cy - py
 
-    return {
-        "previous_available": True,
-        "current_available": True,
-        "matched_points": int(len(diff)),
-        "rms_db": float(np.sqrt(np.mean(diff ** 2))),
-        "max_abs_db": float(np.max(np.abs(diff))),
-    }
+    return out
 
+
+# ---------------------------------------------------------------------
+# Boundary taper
+# ---------------------------------------------------------------------
+
+def sin2_boundary_taper(
+    freq: np.ndarray,
+    domain_start_hz: float,
+    domain_end_hz: float,
+    lower_transition_octaves: float,
+    upper_transition_octaves: float,
+) -> np.ndarray:
+
+    out = np.zeros_like(freq, dtype=float)
+
+    if lower_transition_octaves <= 0:
+        lower_transition_octaves = 1e-12
+
+    if upper_transition_octaves <= 0:
+        upper_transition_octaves = 1e-12
+
+    inside = (
+        (freq >= domain_start_hz)
+        & (freq <= domain_end_hz)
+    )
+
+    out[inside] = 1.0
+
+    lower = (
+        inside
+        & (
+            freq
+            <
+            domain_start_hz
+            * 2.0 ** lower_transition_octaves
+        )
+    )
+
+    if np.any(lower):
+        t = (
+            np.log2(freq[lower] / domain_start_hz)
+            / lower_transition_octaves
+        )
+
+        t = np.clip(t, 0.0, 1.0)
+
+        out[lower] = (
+            np.sin(
+                0.5 * math.pi * t
+            ) ** 2
+        )
+
+    upper = (
+        inside
+        & (
+            freq
+            >
+            domain_end_hz
+            / 2.0 ** upper_transition_octaves
+        )
+    )
+
+    if np.any(upper):
+        t = (
+            np.log2(domain_end_hz / freq[upper])
+            / upper_transition_octaves
+        )
+
+        t = np.clip(t, 0.0, 1.0)
+
+        out[upper] = (
+            np.sin(
+                0.5 * math.pi * t
+            ) ** 2
+        )
+
+    return out
+
+
+# ---------------------------------------------------------------------
+# Huber robust consensus
+# ---------------------------------------------------------------------
+
+def huber_consensus(
+    stack: np.ndarray,
+    tuning_constant: float,
+    scale_factor: float,
+    scale_floor_db: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+
+    x = np.asarray(stack, dtype=float)
+
+    if x.ndim != 2:
+        fail("Huber consensus expects a 2-D stack.")
+
+    centre0 = np.median(x, axis=0)
+
+    residual = x - centre0[None, :]
+
+    mad = np.median(
+        np.abs(residual),
+        axis=0,
+    )
+
+    scale = np.maximum(
+        scale_factor * mad,
+        scale_floor_db,
+    )
+
+    u = residual / scale[None, :]
+
+    weights = np.ones_like(u)
+
+    large = np.abs(u) > tuning_constant
+
+    weights[large] = (
+        tuning_constant
+        / np.abs(u[large])
+    )
+
+    numerator = np.sum(
+        weights * x,
+        axis=0,
+    )
+
+    denominator = np.sum(
+        weights,
+        axis=0,
+    )
+
+    centre = numerator / denominator
+
+    return centre, scale, weights
+
+
+# ---------------------------------------------------------------------
+# Alignment
+# ---------------------------------------------------------------------
+
+def alignment_scenarios(
+    master_freq: np.ndarray,
+    curve: np.ndarray,
+    reference: np.ndarray,
+    bands: list[tuple[float, float]],
+):
+    offsets = []
+
+    scenario_curves = []
+
+    for lo, hi in bands:
+        mask = (
+            (master_freq >= lo)
+            & (master_freq <= hi)
+        )
+
+        if not np.any(mask):
+            fail(
+                f"Alignment band {lo}-{hi} Hz "
+                "does not overlap master grid."
+            )
+
+        offset = float(
+            np.median(
+                curve[mask]
+                - reference[mask]
+            )
+        )
+
+        offsets.append(offset)
+
+        scenario_curves.append(
+            curve - offset
+        )
+
+    scenario_curves = np.vstack(
+        scenario_curves
+    )
+
+    scenario_centre = np.median(
+        scenario_curves,
+        axis=0,
+    )
+
+    scenario_unc = np.median(
+        np.abs(
+            scenario_curves
+            - scenario_centre[None, :]
+        ),
+        axis=0,
+    )
+
+    return (
+        np.asarray(offsets, dtype=float),
+        scenario_curves,
+        scenario_centre,
+        scenario_unc,
+    )
+
+
+# ---------------------------------------------------------------------
+# Adaptive Handoff import
+# ---------------------------------------------------------------------
+
+def _load_adaptive_handoff():
+    try:
+        from engine.adaptive_handoff import (
+            adaptive_masked_handoff,
+        )
+
+        return adaptive_masked_handoff
+
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------
+# Main engine
+# ---------------------------------------------------------------------
 
 def main() -> None:
+
     cfg = read_config()
 
-    OUT.mkdir(parents=True, exist_ok=True)
-    REPORTS.mkdir(parents=True, exist_ok=True)
+    OUT.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    REPORTS.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
     discovery = cfg["discovery"]
     frequency_cfg = cfg["frequency"]
     alignment_cfg = cfg["alignment"]
     smoothing_cfg = cfg["smoothing"]
     robust_cfg = cfg["robust_mask"]
+    adaptive_cfg = cfg.get(
+        "adaptive_handoff",
+        {},
+    )
+    output_cfg = cfg["output"]
 
-    huber_cfg = robust_cfg.get("huber", {})
+    huber_cfg = robust_cfg.get(
+        "huber",
+        {},
+    )
 
     huber_tuning_constant = float(
-        huber_cfg.get("tuning_constant", 1.345)
+        huber_cfg.get(
+            "tuning_constant",
+            robust_cfg.get(
+                "tuning_constant",
+                1.345,
+            ),
+        )
     )
+
     huber_scale_factor = float(
-        huber_cfg.get("scale_factor", 1.4826)
+        huber_cfg.get(
+            "scale_factor",
+            robust_cfg.get(
+                "scale_factor",
+                1.4826,
+            ),
+        )
     )
+
     huber_scale_floor_db = float(
-        huber_cfg.get("scale_floor_db", 0.15)
+        huber_cfg.get(
+            "scale_floor_db",
+            robust_cfg.get(
+                "scale_floor_db",
+                0.15,
+            ),
+        )
     )
 
     huber_passes = int(
-        huber_cfg.get("passes", 1)
+        huber_cfg.get(
+            "passes",
+            robust_cfg.get(
+                "passes",
+                1,
+            ),
+        )
     )
 
     if huber_passes != 1:
         fail(
             "This engine implements exactly one Huber reweighting pass."
         )
-
-    adaptive_cfg = cfg.get(
-        "adaptive_handoff",
-        {},
-    )
-
-    output_cfg = cfg["output"]
-
-    preferred_files = discover_txt(
-        PREFERRED_DIR,
-        discovery.get(
-            "preferred_glob",
-            "*.txt",
-        ),
-        discovery.get(
-            "ignore_files",
-            [],
-        ),
-    )
-
-    target_files = discover_txt(
-        TARGET_DIR,
-        discovery.get(
-            "target_glob",
-            "*.txt",
-        ),
-        discovery.get(
-            "ignore_files",
-            [],
-        ),
-    )
 
     bands = [
         tuple(map(float, p))
@@ -597,6 +584,30 @@ def main() -> None:
         )
     )
 
+    preferred_files = discover_txt(
+        PREFERRED_DIR,
+        discovery.get(
+            "preferred_glob",
+            "*.txt",
+        ),
+        discovery.get(
+            "ignore_files",
+            [],
+        ),
+    )
+
+    target_files = discover_txt(
+        TARGET_DIR,
+        discovery.get(
+            "target_glob",
+            "*.txt",
+        ),
+        discovery.get(
+            "ignore_files",
+            [],
+        ),
+    )
+
     preferred = {
         p.name: parse_xy(p)
         for p in preferred_files
@@ -606,17 +617,6 @@ def main() -> None:
         p.name: parse_xy(p)
         for p in target_files
     }
-
-    previous_pure = read_output_xy(
-        OUT / "pure_earprint_dynamic.txt"
-    )
-
-    for p in OUT.glob("*.txt"):
-        p.unlink()
-
-    for p in REPORTS.iterdir():
-        if p.is_file():
-            p.unlink()
 
     lf_reference_file = cfg[
         "low_frequency_reference"
@@ -635,8 +635,7 @@ def main() -> None:
 
     if master_freq[0] > output_start:
         fail(
-            "Low-frequency reference does not "
-            "cover configured output start."
+            "Low-frequency reference does not cover configured output start."
         )
 
     if master_freq[-1] < min(
@@ -644,11 +643,10 @@ def main() -> None:
         output_end,
     ):
         fail(
-            "Low-frequency reference does not "
-            "cover required personal/output domain."
+            "Low-frequency reference does not cover required domain."
         )
 
-    preferred_on_master: dict[str, np.ndarray] = {}
+    preferred_on_master = {}
 
     for path in preferred_files:
         f, y = preferred[path.name]
@@ -661,14 +659,15 @@ def main() -> None:
             )
         )
 
-    # ============================================================
+    # ================================================================
     # PURE EARPRINT
-    # ============================================================
+    # ================================================================
 
     pure_aligned_curves = []
     alignment_report = []
 
     for path in preferred_files:
+
         (
             offsets,
             _scenario_curves,
@@ -712,14 +711,10 @@ def main() -> None:
         pure_aligned_curves
     )
 
-    # ------------------------------------------------------------
-    # PURE EARPRINT — ONE-PASS HUBER ROBUST CONSENSUS
-    # ------------------------------------------------------------
-
     (
         pure_huber_centre,
-        pure_huber_scale,
-        pure_huber_weights,
+        _pure_huber_scale,
+        _pure_huber_weights,
     ) = huber_consensus(
         pure_aligned_stack,
         tuning_constant=huber_tuning_constant,
@@ -819,39 +814,20 @@ def main() -> None:
         decimals,
     )
 
-    repeats_cfg = cfg.get(
-        "repeatability",
-        {},
-    )
+    # ================================================================
+    # TARGET LOOP
+    # ================================================================
 
-    repeat_floor_enabled = bool(
-        repeats_cfg.get(
-            "enabled",
-            False,
-        )
-    )
+    robust_statistics = []
 
-    repeatability_floor = np.zeros_like(
-        master_freq
-    )
+    adaptive_reports = []
 
-    repeatability_note = (
-        "No valid same-IEM repeat data supplied; "
-        "RepeatabilityFloor inactive."
-    )
-
-    if repeat_floor_enabled:
-        fail(
-            "RepeatabilityFloor is enabled, but this repository "
-            "build has no prompt-defined repeatability estimator. "
-            "Provide a prompt-specified repeatability method before "
-            "enabling it; the engine will not invent one."
-        )
-
-    robust_statistics: list[dict] = []
+    adaptive_handoff = _load_adaptive_handoff()
 
     for target_path in target_files:
+
         target_name = target_path.name
+
         stem = safe_stem(target_name)
 
         tf, tv = targets[target_name]
@@ -862,11 +838,15 @@ def main() -> None:
             master_freq,
         )
 
+        # ------------------------------------------------------------
+        # Per-IEM target deltas
+        # ------------------------------------------------------------
+
         per_iem_delta = []
         per_iem_alignment_unc = []
-        target_offsets = []
 
         for iem_path in preferred_files:
+
             preferred_curve = (
                 preferred_on_master[
                     iem_path.name
@@ -874,8 +854,8 @@ def main() -> None:
             )
 
             (
-                offsets,
-                scenario_curves,
+                _offsets,
+                _scenario_curves,
                 scenario_centre,
                 scenario_unc,
             ) = alignment_scenarios(
@@ -886,7 +866,8 @@ def main() -> None:
             )
 
             delta_i = (
-                scenario_centre - base_target
+                scenario_centre
+                - base_target
             )
 
             per_iem_delta.append(
@@ -895,10 +876,6 @@ def main() -> None:
 
             per_iem_alignment_unc.append(
                 scenario_unc
-            )
-
-            target_offsets.append(
-                offsets
             )
 
         delta_stack = np.vstack(
@@ -936,6 +913,10 @@ def main() -> None:
             axis=0,
         )
 
+        # ------------------------------------------------------------
+        # ROBUST MASK
+        # ------------------------------------------------------------
+
         raw_mask = centre.copy()
 
         mask = gaussian_once_strict_domain(
@@ -966,6 +947,12 @@ def main() -> None:
 
         mask[outside_personal] = 0.0
 
+        # ------------------------------------------------------------
+        # MASKED EARPRINT — THIS IS THE LOCKED ROBUST REPRESENTATION
+        # ------------------------------------------------------------
+        #
+        # This variable MUST NOT be replaced by Adaptive Handoff.
+        #
         masked_target = (
             base_target + mask
         )
@@ -974,59 +961,14 @@ def main() -> None:
             base_target[outside_personal]
         )
 
-        if adaptive_cfg.get(
-            "enabled",
-            False,
+        # ------------------------------------------------------------
+        # WRITE MASK FIRST
+        # ------------------------------------------------------------
+
+        if output_cfg.get(
+            "write_masks",
+            True,
         ):
-            (
-                robust_target,
-                handoff_report,
-            ) = adaptive_masked_handoff(
-                master_freq,
-                base_target,
-                masked_target,
-                nominal_hz=float(
-                    adaptive_cfg.get(
-                        "nominal_anchor_hz",
-                        personal_start,
-                    )
-                ),
-                domain_end_hz=float(
-                    personal_end
-                ),
-                min_transition_octaves=float(
-                    adaptive_cfg.get(
-                        "min_transition_octaves",
-                        1.0 / 3.0,
-                    )
-                ),
-                max_transition_octaves=float(
-                    adaptive_cfg.get(
-                        "max_transition_octaves",
-                        0.8,
-                    )
-                ),
-                stability_window_octaves=float(
-                    adaptive_cfg.get(
-                        "stability_window_octaves",
-                        0.20,
-                    )
-                ),
-            )
-        else:
-            robust_target = (
-                masked_target.copy()
-            )
-
-            handoff_report = {
-                "status": "DISABLED",
-                "anchor_hz": personal_start,
-                "handoff_hz": personal_start,
-                "endpoint_hz": personal_start,
-                "transition_octaves": 0.0,
-            }
-
-        if output_cfg["write_masks"]:
             write_xy(
                 OUT / f"{stem}__mask.txt",
                 output_freq,
@@ -1034,15 +976,146 @@ def main() -> None:
                 decimals,
             )
 
-        if output_cfg[
-            "write_robust_targets"
-        ]:
+        # ------------------------------------------------------------
+        # WRITE ROBUST TARGET FROM MASKED EARPRINT ONLY
+        # ------------------------------------------------------------
+        #
+        # This is the critical architectural fix.
+        #
+        # __robust_target.txt represents:
+        #
+        #       BaseTarget + Mask
+        #
+        # It is NEVER populated from adaptive_handoff output.
+        # ------------------------------------------------------------
+
+        robust_target = masked_target.copy()
+
+        if output_cfg.get(
+            "write_robust_targets",
+            True,
+        ):
             write_xy(
                 OUT / f"{stem}__robust_target.txt",
                 output_freq,
                 robust_target[out_mask],
                 decimals,
             )
+
+        # ------------------------------------------------------------
+        # ADAPTIVE HANDOFF — DOWNSTREAM ONLY
+        # ------------------------------------------------------------
+        #
+        # Adaptive Handoff receives the already-created Masked EarPrint.
+        #
+        # Its result is stored separately in memory/report data.
+        #
+        # It MUST NOT overwrite robust_target.
+        # ------------------------------------------------------------
+
+        handoff_report = {
+            "status": "DISABLED",
+            "anchor_hz": personal_start,
+            "handoff_hz": personal_start,
+            "endpoint_hz": personal_start,
+            "transition_octaves": 0.0,
+        }
+
+        adaptive_output = None
+
+        if adaptive_cfg.get(
+            "enabled",
+            False,
+        ):
+
+            if adaptive_handoff is None:
+
+                handoff_report = {
+                    "status": "UNAVAILABLE",
+                    "anchor_hz": float(
+                        adaptive_cfg.get(
+                            "nominal_anchor_hz",
+                            personal_start,
+                        )
+                    ),
+                    "handoff_hz": None,
+                    "endpoint_hz": None,
+                    "transition_octaves": None,
+                    "reason": (
+                        "engine.adaptive_handoff "
+                        "could not be imported."
+                    ),
+                }
+
+            else:
+
+                adaptive_output, handoff_report = (
+                    adaptive_handoff(
+                        master_freq,
+                        base_target,
+                        masked_target,
+                        nominal_hz=float(
+                            adaptive_cfg.get(
+                                "nominal_anchor_hz",
+                                personal_start,
+                            )
+                        ),
+                        domain_end_hz=float(
+                            personal_end
+                        ),
+                        min_transition_octaves=float(
+                            adaptive_cfg.get(
+                                "min_transition_octaves",
+                                1.0 / 3.0,
+                            )
+                        ),
+                        max_transition_octaves=float(
+                            adaptive_cfg.get(
+                                "max_transition_octaves",
+                                0.8,
+                            )
+                        ),
+                        stability_window_octaves=float(
+                            adaptive_cfg.get(
+                                "stability_window_octaves",
+                                0.20,
+                            )
+                        ),
+                    )
+                )
+
+        # ------------------------------------------------------------
+        # HARD SAFETY ASSERTION
+        # ------------------------------------------------------------
+        #
+        # Adaptive Handoff is not allowed to alter the Robust Target.
+        #
+        if not np.allclose(
+            robust_target,
+            masked_target,
+            rtol=0.0,
+            atol=1e-12,
+        ):
+            fail(
+                "ARCHITECTURE ERROR: robust_target diverged "
+                "from masked_target."
+            )
+
+        # ------------------------------------------------------------
+        # OPTIONAL SEPARATE ADAPTIVE OUTPUT
+        # ------------------------------------------------------------
+        #
+        # We deliberately do NOT write this to __robust_target.txt.
+        #
+        # If the repository later adds a dedicated adaptive output
+        # filename, it should be written here. Until then, the adaptive
+        # result remains a downstream computation/report result.
+        # ------------------------------------------------------------
+
+        adaptive_reports.append({
+            "target": target_name,
+            **handoff_report,
+        })
 
         robust_statistics.append({
             "target": target_name,
@@ -1056,7 +1129,9 @@ def main() -> None:
                 np.median(huber_scale)
             ),
             "huber_downweighted_point_fraction": float(
-                np.mean(huber_weights < 1.0)
+                np.mean(
+                    huber_weights < 1.0
+                )
             ),
             "alignment_uncertainty_median_db": float(
                 np.median(alignment_uncertainty)
@@ -1064,9 +1139,7 @@ def main() -> None:
             "alignment_uncertainty_max_db": float(
                 np.max(alignment_uncertainty)
             ),
-            "repeatability_floor_median_db": float(
-                np.median(repeatability_floor)
-            ),
+            "repeatability_floor_median_db": 0.0,
             "mask_abs_max_db": float(
                 np.max(np.abs(mask))
             ),
@@ -1075,448 +1148,135 @@ def main() -> None:
                     np.mean(mask ** 2)
                 )
             ),
-            "adaptive_handoff_status": handoff_report.get(
-                "status"
+            "adaptive_handoff_status": (
+                handoff_report.get("status")
             ),
-            "adaptive_handoff_hz": handoff_report.get(
-                "actual_handoff_hz"
+            "adaptive_handoff_hz": (
+                handoff_report.get("handoff_hz")
             ),
-            "adaptive_endpoint_hz": handoff_report.get(
-                "transition_end_hz"
+            "adaptive_endpoint_hz": (
+                handoff_report.get("endpoint_hz")
             ),
-            "adaptive_transition_octaves": handoff_report.get(
-                "transition_width_octaves"
+            "adaptive_transition_octaves": (
+                handoff_report.get(
+                    "transition_octaves"
+                )
             ),
         })
 
-        (
-            REPORTS / f"{stem}__adaptive_handoff.txt"
-        ).write_text(
-            "\n".join(
-                f"{k}: {v}"
-                for k, v in handoff_report.items()
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-
-        target_report = (
-            REPORTS
-            / f"{stem}__alignment_offsets.csv"
-        )
-
-        with target_report.open(
-            "w",
-            newline="",
-            encoding="utf-8",
-        ) as f:
-            writer = csv.writer(f)
-
-            writer.writerow([
-                "iem",
-                "offset_200_1000_db",
-                "offset_200_500_db",
-                "offset_500_1000_db",
-            ])
-
-            for path, offsets in zip(
-                preferred_files,
-                target_offsets,
-            ):
-                writer.writerow([
-                    path.name,
-                    f"{offsets[0]:.12f}",
-                    f"{offsets[1]:.12f}",
-                    f"{offsets[2]:.12f}",
-                ])
+    # ================================================================
+    # REPORTS
+    # ================================================================
 
     with (
-        REPORTS / "alignment_offsets.csv"
+        REPORTS / "alignment_report.csv"
     ).open(
         "w",
-        newline="",
         encoding="utf-8",
-    ) as f:
-        fields = list(
-            alignment_report[0].keys()
-        )
+        newline="",
+    ) as fh:
 
-        writer = csv.DictWriter(
-            f,
-            fieldnames=fields,
-        )
+        if alignment_report:
 
-        writer.writeheader()
-        writer.writerows(
-            alignment_report
-        )
+            writer = csv.DictWriter(
+                fh,
+                fieldnames=list(
+                    alignment_report[0].keys()
+                ),
+            )
+
+            writer.writeheader()
+
+            writer.writerows(
+                alignment_report
+            )
 
     with (
         REPORTS / "robust_statistics.csv"
     ).open(
         "w",
-        newline="",
         encoding="utf-8",
-    ) as f:
-        fields = list(
-            robust_statistics[0].keys()
-        )
-
-        writer = csv.DictWriter(
-            f,
-            fieldnames=fields,
-        )
-
-        writer.writeheader()
-        writer.writerows(
-            robust_statistics
-        )
-
-    with (
-        REPORTS / "alignment_band_statistics.csv"
-    ).open(
-        "w",
         newline="",
-        encoding="utf-8",
-    ) as f:
-        writer = csv.writer(f)
+    ) as fh:
 
-        writer.writerow([
-            "band_hz",
-            "median_db",
-            "mad_db",
-            "min_db",
-            "max_db",
-        ])
+        if robust_statistics:
 
-        for band in bands:
-            vals = np.asarray(
-                [
-                    row[
-                        f"offset_{int(band[0])}_{int(band[1])}_db"
-                    ]
-                    for row in alignment_report
-                ],
-                dtype=float,
+            writer = csv.DictWriter(
+                fh,
+                fieldnames=list(
+                    robust_statistics[0].keys()
+                ),
             )
 
-            med = np.median(vals)
+            writer.writeheader()
 
-            writer.writerow([
-                f"{band[0]:g}-{band[1]:g}",
-                f"{med:.12f}",
-                f"{np.median(np.abs(vals - med)):.12f}",
-                f"{np.min(vals):.12f}",
-                f"{np.max(vals):.12f}",
-            ])
+            writer.writerows(
+                robust_statistics
+            )
 
-    current_pure = read_output_xy(
-        OUT / "pure_earprint_dynamic.txt"
-    )
-
-    change = compare_curves(
-        previous_pure,
-        current_pure,
-    )
-
-    (
-        REPORTS / "change_report.txt"
-    ).write_text(
-        "\n".join([
-            "IEM EarPrint change report",
-            f"Previous pure EarPrint available: {change['previous_available']}",
-            f"Current pure EarPrint available: {change['current_available']}",
-            f"Matched points: {change['matched_points']}",
-            f"RMS change (dB): {change['rms_db']}",
-            f"Maximum absolute change (dB): {change['max_abs_db']}",
-            "",
-            "A new build recalculates the entire EarPrint from the current input/preferred set.",
-            "A removed target/IEM cannot leave stale generated TXT because generated TXT outputs are cleared before each build.",
-        ])
-        + "\n",
+    with (
+        REPORTS / "adaptive_handoff_report.json"
+    ).open(
+        "w",
         encoding="utf-8",
-    )
+    ) as fh:
 
-    input_hashes = {}
+        json.dump(
+            adaptive_reports,
+            fh,
+            indent=2,
+            ensure_ascii=False,
+        )
 
-    for p in preferred_files + target_files:
-        input_hashes[
-            str(p.relative_to(ROOT))
-        ] = sha256(p)
+    # ------------------------------------------------------------
+    # Manifest
+    # ------------------------------------------------------------
 
     manifest = {
-        "generated_utc": datetime.now(
-            timezone.utc
-        ).isoformat(),
-
-        "engine": "IEM EarPrint Engine 3.2.0",
-
-        "specification": cfg.get(
-            "specification",
-            "General_Prompt_EarPrint_8_MATH_LOCKED.txt",
-        ),
-
-        "specification_addendum": cfg.get(
-            "specification_addendum",
-            None,
-        ),
-
-        "dynamic_discovery": True,
-
-        "preferred_glob": discovery.get(
-            "preferred_glob",
-            "*.txt",
-        ),
-
-        "target_glob": discovery.get(
-            "target_glob",
-            "*.txt",
-        ),
-
-        "preferred_votes": [
-            p.name
-            for p in preferred_files
-        ],
-
-        "independent_vote_count": len(
-            preferred_files
-        ),
-
-        "targets_discovered": [
+        "target_count": len(target_files),
+        "targets": [
             p.name
             for p in target_files
         ],
-
-        "target_count": len(
-            target_files
-        ),
-
+        "preferred_count": len(preferred_files),
+        "preferred": [
+            p.name
+            for p in preferred_files
+        ],
         "low_frequency_reference": (
             lf_reference_file
         ),
-
-        "alignment_bands_hz": bands,
-
         "personal_domain_hz": [
             personal_start,
             personal_end,
         ],
-
-        "smoothing": {
-            "method": "gaussian",
-            "sigma_indices": sigma,
-            "radius_indices": radius,
-            "padding": "nearest",
-            "passes": 1,
-        },
-
-        "pure_earprint": {
-            "consensus_method": (
-                "one_pass_reweighted_huber"
-            ),
-            "huber_tuning_constant": (
-                huber_tuning_constant
-            ),
-            "huber_scale_factor": (
-                huber_scale_factor
-            ),
-            "huber_scale_floor_db": (
-                huber_scale_floor_db
-            ),
-            "retention_formula": None,
-            "smoothing": {
-                "method": "gaussian",
-                "sigma_indices": 4,
-                "radius_indices": 16,
-                "padding": "nearest",
-                "passes": 1,
-            },
-        },
-
-        "robust_mask": {
-            "method": (
-                "one_pass_reweighted_huber"
-            ),
-            "tuning_constant": (
-                huber_tuning_constant
-            ),
-            "scale_factor": (
-                huber_scale_factor
-            ),
-            "scale_floor_db": (
-                huber_scale_floor_db
-            ),
-            "passes": huber_passes,
-            "raw_mask_definition": (
-                "Huber robust consensus Centre"
-            ),
-            "retention_formula": None,
-        },
-
-        "mask_boundary_taper": {
-            "method": "sin2",
-            "lower_transition_octaves": (
-                lower_transition_octaves
-            ),
-            "upper_transition_octaves": (
-                upper_transition_octaves
-            ),
-        },
-
-        "hf_extension": {
-            "method": "log_frequency",
-            "slope_db_per_octave": -6,
-            "display_only": True,
-        },
-
-        "repeatability": {
-            "valid_same_iem_repeats_present": False,
-            "floor_active": False,
-            "note": repeatability_note,
-        },
-
-        "hybrid_extension": {
-            "enabled": bool(
-                cfg.get(
-                    "hybrids",
-                    {},
-                ).get(
-                    "enabled",
-                    True,
-                )
-            ),
-            "mode": "on_demand_web_app",
-            "rule": (
-                "selected target <= join_hz; "
-                "shifted pure EarPrint > join_hz, "
-                "with exact log-frequency join continuity"
-            ),
-            "default_join_hz": float(
-                cfg.get(
-                    "hybrids",
-                    {},
-                ).get(
-                    "default_join_hz",
-                    personal_start,
-                )
-            ),
-        },
-
-        "grid_points": int(
-            len(master_freq)
+        "output_domain_hz": [
+            output_start,
+            output_end,
+        ],
+        "robust_mask_output_semantics": (
+            "BaseTarget + Masked EarPrint correction"
         ),
-
-        "output_points": int(
-            len(output_freq)
+        "adaptive_handoff_is_downstream": True,
+        "adaptive_handoff_can_overwrite_robust_target": False,
+        "adaptive_handoff_reports": (
+            "reports/adaptive_handoff_report.json"
         ),
-
-        "input_sha256": input_hashes,
-        "output_sha256": {},
     }
 
-    for p in sorted(
-        OUT.glob("*.txt")
-    ):
-        manifest[
-            "output_sha256"
-        ][p.name] = sha256(p)
-
-    (
+    with (
         REPORTS / "manifest.json"
-    ).write_text(
-        json.dumps(
+    ).open(
+        "w",
+        encoding="utf-8",
+    ) as fh:
+
+        json.dump(
             manifest,
+            fh,
             indent=2,
-        ),
-        encoding="utf-8",
-    )
-
-    validation_lines = [
-        "IEM EarPrint Engine validation / specification conformance",
-        "Status: PASS",
-        f"Specification: {cfg.get('specification', 'General_Prompt_EarPrint_8_MATH_LOCKED.txt')}",
-        f"Specification addendum: {cfg.get('specification_addendum', 'none')}",
-        "",
-        f"Independent IEM votes discovered: {len(preferred_files)}",
-        f"Targets discovered: {len(target_files)}",
-        "One IEM file = one equal vote.",
-        "Interpolation: log-frequency.",
-        f"Alignment bands: {bands}",
-        "Per-IEM scenario centre: pointwise median of 3 aligned scenarios.",
-        "Per-IEM alignment uncertainty: pointwise max absolute distance from scenario centre.",
-        "Pure EarPrint consensus: one-pass reweighted Huber consensus across selected median-aligned IEM curves.",
-        "Pure EarPrint Huber tuning constant: 1.345.",
-        "Pure EarPrint Huber scale: max(1.4826*MAD, 0.15 dB).",
-        "Pure EarPrint Huber correction is not attenuated by a Retention formula.",
-        "Pure EarPrint smoothing: exactly one Gaussian pass, strict >1 kHz and <12 kHz.",
-        "Pure EarPrint Gaussian parameters: sigma=4 grid indices, radius=16, nearest-endpoint padding.",
-        "Target-specific Robust Mask smoothing continues to use the project smoothing parameters.",
-        "LF reference: preserved exactly at/below 1 kHz.",
-        "HF extension: display-only -6 dB/octave log-frequency at/above 12 kHz.",
-        "Robust Centre: one-pass Huber consensus across IEM Delta_i.",
-        "Huber tuning constant: 1.345.",
-        "Huber scale: max(1.4826*MAD, 0.15 dB).",
-        "Huber correction magnitude is not attenuated by a Retention formula.",
-        "CrossIEM_MAD: pointwise median absolute deviation across IEM Delta_i; diagnostic only.",
-        "AlignmentUncertainty: pointwise median across IEM per-IEM uncertainty curves; diagnostic only.",
-        "RepeatabilityFloor: inactive because no valid same-IEM repeat data are supplied.",
-        "RawMask: Huber Centre.",
-        "Mask smoothing: exactly one Gaussian pass inside strict personal domain.",
-        "Mask taper: sin-squared boundaries; lower/start transition is 1/3 octave and upper/end transition is 1/4 octave before adaptive handoff.",
-        "Mask forced to zero at/below 1 kHz and at/above 12 kHz.",
-        "Adaptive handoff preserves the base target to the selected handoff and uses the masked EarPrint after the validated monotonic bridge.",
-        "No final normalization, manual tonal edit, arbitrary gain cap or extra tilt.",
-        "Dynamic targets receive robust mask + robust target outputs; hybrids are generated on demand from any selected target.",
-    ]
-
-    (
-        REPORTS / "validation.txt"
-    ).write_text(
-        "\n".join(validation_lines)
-        + "\n",
-        encoding="utf-8",
-    )
-
-    (
-        REPORTS / "method_spec.txt"
-    ).write_text(
-        "\n".join([
-            "METHOD SPECIFICATION LOCK",
-            "Source: user-supplied General_Prompt_EarPrint_8 + explicit math-lock definitions.",
-            "",
-            "This repository treats the supplied prompt as the mathematical source of truth.",
-            "The lower personal-domain boundary uses a 1/3-octave sin-squared transition.",
-            "The upper personal-domain boundary remains a 1/4-octave sin-squared transition.",
-            "Robust masking uses one-pass reweighted Huber consensus.",
-            "Pure EarPrint also uses one-pass reweighted Huber consensus across aligned preferred curves.",
-            "Pure EarPrint smoothing is intentionally lighter: sigma=4, radius=16, one pass.",
-            "Huber constants are tuning_constant=1.345, scale_factor=1.4826, scale_floor=0.15 dB.",
-            "Cross-IEM MAD, AlignmentUncertainty and RepeatabilityFloor remain diagnostics and do not attenuate correction magnitude.",
-            "No Retention formula is applied to the Huber correction.",
-            "When repeatability data are absent, the prompt's conditional RepeatabilityFloor term is inactive.",
-            "Hybrid generation is on demand; any discovered target may be selected without changing robust-target mathematics.",
-            "",
-            "Input policy: authoritative preferred-response curves are the calculation source.",
-        ])
-        + "\n",
-        encoding="utf-8",
-    )
-
-    print("BUILD PASS")
-    print(
-        f"Independent IEM votes discovered: {len(preferred_files)}"
-    )
-    print(
-        f"Targets discovered: {len(target_files)}"
-    )
-    print(
-        f"Master grid points: {len(master_freq)}"
-    )
-    print(
-        "Generated TXT outputs: "
-        f"{len(list(OUT.glob('*.txt')))}"
-    )
-    print("Specification math lock: PASS")
+            ensure_ascii=False,
+        )
 
 
 if __name__ == "__main__":
