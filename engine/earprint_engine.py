@@ -40,7 +40,6 @@ def read_config() -> dict:
     with CFG.open("r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
-
 def discover_txt(
     directory: Path,
     pattern: str,
@@ -81,7 +80,6 @@ def parse_xy(path: Path) -> tuple[np.ndarray, np.ndarray]:
             fail(f"{path.name}: non-finite numeric value at line {line_no}")
 
         rows.append((x, y))
-
     if len(rows) < 10:
         fail(f"{path.name}: fewer than 10 numeric data rows found")
 
@@ -122,7 +120,6 @@ def band_mask(freq: np.ndarray, lo: float, hi: float) -> np.ndarray:
     if not np.any(mask):
         fail(f"No samples in inclusive alignment band [{lo}, {hi}] Hz")
     return mask
-
 
 def band_median(
     freq: np.ndarray,
@@ -187,7 +184,6 @@ def gaussian_once_strict_domain(
     )
     return out
 
-
 def sin2_boundary_taper(
     freq: np.ndarray,
     start_hz: float,
@@ -207,7 +203,6 @@ def sin2_boundary_taper(
 
     low_end = start_hz * (2.0 ** lower_transition_octaves)
     high_start = end_hz / (2.0 ** upper_transition_octaves)
-
     if low_end >= high_start:
         fail(
             "Boundary taper transitions overlap: "
@@ -249,7 +244,6 @@ def quarter_octave_sin2_taper(
         lower_transition_octaves=0.25,
         upper_transition_octaves=0.25,
     )
-
 
 def log_interp_scalar(
     freq: np.ndarray,
@@ -375,7 +369,6 @@ def safe_stem(filename: str) -> str:
     stem = re.sub(r"_+", "_", stem).strip("_.")
     return stem or "target"
 
-
 def write_xy(
     path: Path,
     freq: np.ndarray,
@@ -397,7 +390,6 @@ def write_xy(
 
 def sha256(path: Path) -> str:
     h = hashlib.sha256()
-
     with path.open("rb") as f:
         for block in iter(
             lambda: f.read(1024 * 1024),
@@ -419,7 +411,6 @@ def read_output_xy(
     except Exception:
         return None
 
-
 def compare_curves(
     previous: tuple[np.ndarray, np.ndarray] | None,
     current: tuple[np.ndarray, np.ndarray] | None,
@@ -439,7 +430,6 @@ def compare_curves(
     n = min(len(pf), len(cf))
     pf, py = pf[:n], py[:n]
     cf, cy = cf[:n], cy[:n]
-
     if n == 0:
         return {
             "previous_available": True,
@@ -480,7 +470,6 @@ def compare_curves(
         "rms_db": float(np.sqrt(np.mean(diff ** 2))),
         "max_abs_db": float(np.max(np.abs(diff))),
     }
-
 
 def main() -> None:
     cfg = read_config()
@@ -607,7 +596,6 @@ def main() -> None:
         p.name: parse_xy(p)
         for p in target_files
     }
-
     previous_pure = read_output_xy(
         OUT / "pure_earprint_dynamic.txt"
     )
@@ -712,21 +700,8 @@ def main() -> None:
     pure_aligned_stack = np.vstack(
         pure_aligned_curves
     )
-
     # ------------------------------------------------------------
     # PURE EARPRINT — ONE-PASS HUBER ROBUST CONSENSUS
-    #
-    # Each IEM remains one equal vote.
-    #
-    # Huber is applied across the selected median-aligned
-    # preferred curves before frequency-domain smoothing.
-    #
-    # Locked parameters:
-    #   tuning constant = 1.345
-    #   scale factor    = 1.4826
-    #   scale floor     = 0.15 dB
-    #
-    # No Retention formula is applied.
     # ------------------------------------------------------------
 
     (
@@ -739,21 +714,6 @@ def main() -> None:
         scale_factor=huber_scale_factor,
         scale_floor_db=huber_scale_floor_db,
     )
-
-    # ------------------------------------------------------------
-    # PURE EARPRINT — LIGHT SINGLE-PASS SMOOTHING
-    #
-    # Huber handles cross-IEM outlier robustness.
-    # Gaussian smoothing handles frequency-domain roughness.
-    #
-    # Pure EarPrint:
-    #   sigma  = 4 grid indices
-    #   radius = 16 grid indices
-    #   passes = 1
-    #
-    # This is intentionally lighter than the target-specific
-    # Robust Mask smoothing.
-    # ------------------------------------------------------------
 
     pure_earprint_smoothing_sigma = 4
     pure_earprint_smoothing_radius = 16
@@ -781,7 +741,6 @@ def main() -> None:
         master_lf[idx_1k]
         - smoothed_personal[idx_1k]
     )
-
     shifted_personal = (
         smoothed_personal
         + join_shift
@@ -806,7 +765,6 @@ def main() -> None:
         shifted_personal[strict_personal]
     )
 
-    # Display-only -6 dB/oct extension at/above 12 kHz.
     hf = master_freq >= personal_end
 
     anchor_idx = np.where(
@@ -848,10 +806,6 @@ def main() -> None:
         decimals,
     )
 
-    # ============================================================
-    # CONDITIONAL REPEATABILITY FLOOR
-    # ============================================================
-
     repeats_cfg = cfg.get(
         "repeatability",
         {},
@@ -882,10 +836,6 @@ def main() -> None:
         )
 
     robust_statistics: list[dict] = []
-
-    # ============================================================
-    # ROBUST MASKING — EVERY DISCOVERED TARGET
-    # ============================================================
 
     for target_path in target_files:
         target_name = target_path.name
@@ -937,7 +887,6 @@ def main() -> None:
             target_offsets.append(
                 offsets
             )
-
         delta_stack = np.vstack(
             per_iem_delta
         )
@@ -946,7 +895,6 @@ def main() -> None:
             per_iem_alignment_unc
         )
 
-        # One-pass Huber robust consensus.
         (
             centre,
             huber_scale,
@@ -974,8 +922,6 @@ def main() -> None:
             axis=0,
         )
 
-        # Diagnostics only.
-        # They do not attenuate the Huber correction magnitude.
         raw_mask = centre.copy()
 
         mask = gaussian_once_strict_domain(
@@ -1003,7 +949,6 @@ def main() -> None:
             (master_freq <= personal_start)
             | (master_freq >= personal_end)
         )
-
         mask[outside_personal] = 0.0
 
         masked_target = (
@@ -1037,7 +982,7 @@ def main() -> None:
                 min_transition_octaves=float(
                     adaptive_cfg.get(
                         "min_transition_octaves",
-                        0.125,
+                        1.0 / 3.0,
                     )
                 ),
                 max_transition_octaves=float(
@@ -1170,10 +1115,6 @@ def main() -> None:
                     f"{offsets[2]:.12f}",
                 ])
 
-    # ============================================================
-    # REPORTS
-    # ============================================================
-
     with (
         REPORTS / "alignment_offsets.csv"
     ).open(
@@ -1280,7 +1221,6 @@ def main() -> None:
         + "\n",
         encoding="utf-8",
     )
-
     input_hashes = {}
 
     for p in preferred_files + target_files:
@@ -1346,7 +1286,6 @@ def main() -> None:
             personal_end,
         ],
 
-        # Target-specific Robust Mask smoothing.
         "smoothing": {
             "method": "gaussian",
             "sigma_indices": sigma,
@@ -1355,7 +1294,6 @@ def main() -> None:
             "passes": 1,
         },
 
-        # Pure EarPrint has its own lighter smoothing.
         "pure_earprint": {
             "consensus_method": (
                 "one_pass_reweighted_huber"
@@ -1408,7 +1346,6 @@ def main() -> None:
                 upper_transition_octaves
             ),
         },
-
         "hf_extension": {
             "method": "log_frequency",
             "slope_db_per_octave": -6,
