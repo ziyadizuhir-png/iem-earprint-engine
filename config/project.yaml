@@ -1,6 +1,5 @@
-id: ynxae2
 project_name: IEM EarPrint Personal Web App
-version: 3.1.0
+version: 3.2.0
 specification: General_Prompt_EarPrint_8_MATH_LOCKED.txt
 specification_addendum: General_Prompt_EarPrint_8_MATH_LOCKED_boundary_addendum.txt
 discovery:
@@ -40,13 +39,18 @@ repeatability:
     is supplied.
 robust_mask:
   enabled: true
-  retention_formula: abs(centre)/(abs(centre)+total_uncertainty)
-  zero_zero_rule: Retention=0 and RawMask=0 when both centre and total_uncertainty
-    are exactly zero.
-  total_uncertainty_components:
+  method: one_pass_reweighted_huber
+  raw_mask_definition: Huber robust consensus Centre
+  huber:
+    tuning_constant: 1.345
+    scale_factor: 1.4826
+    scale_floor_db: 0.15
+    passes: 1
+  diagnostics:
   - cross_iem_mad
   - alignment_uncertainty
   - repeatability_floor
+  note: Correction magnitude is not attenuated by a Retention formula.
   boundary_taper:
     method: sin2
     lower_transition_octaves: 0.3333333333333333
