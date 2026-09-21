@@ -30,6 +30,6 @@ RawMask: Huber Centre.
 Mask smoothing: exactly one Gaussian pass inside strict personal domain.
 Mask taper: sin-squared boundaries; lower/start transition is 1/3 octave and upper/end transition is 1/4 octave before adaptive handoff.
 Mask forced to zero at/below 1 kHz and at/above 12 kHz.
-Adaptive handoff preserves the base target to the selected handoff and uses the masked EarPrint after the validated monotonic bridge.
+Adaptive handoff uses exact computational H=1000 Hz, earliest-feasible E, and a shape-preserving monotone cubic Hermite bridge; BaseTarget is preserved through H and Masked EarPrint is used exactly after E.
 No final normalization, manual tonal edit, arbitrary gain cap or extra tilt.
 Dynamic targets receive robust mask + robust target outputs; hybrids are generated on demand from any selected target.

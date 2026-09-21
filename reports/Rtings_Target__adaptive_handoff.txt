@@ -20,4 +20,11 @@ overshoot_pass: False
 undershoot_pass: False
 oscillation_pass: False
 slope_reversal_pass: False
-c1_slope_match: False
+bridge_pass: False
+shape_preserving: True
+selection_rule: earliest_feasible_E
+candidate_scoring: False
+pareto_selection: False
+curvature_optimization: False
+smootherstep_endpoint_weight_pass: False
+smootherstep_endpoint_derivative_pass: False
