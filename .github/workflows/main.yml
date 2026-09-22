@@ -9,6 +9,9 @@ on:
       - "tests/**"
       - "requirements.txt"
       - ".github/workflows/main.yml"
+      - "ARCHITECTURE_LOCK.md"
+      - "General_Prompt_EarPrint_8_MATH_LOCKED_boundary_addendum.txt"
+      - "README.md"
   workflow_dispatch:
 
 permissions:
