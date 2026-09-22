@@ -68,9 +68,9 @@ adaptive_handoff:
   min_transition_octaves: 0.3333333333333333
   max_transition_octaves: 0.8
   stability_window_octaves: 0.2
-  method: earliest feasible E + monotone cubic Hermite shape-preserving bridge
-  transition_function: monotone_cubic_hermite_shape_preserving
-  transition_formula: cubic Hermite with endpoint slopes limited by normalized alpha+beta <= 3
+  method: earliest feasible E + exact-C1 monotone cubic Hermite shape-preserving bridge
+  transition_function: monotone_cubic_hermite_true_C1
+  transition_formula: cubic Hermite with raw endpoint slopes retained exactly; candidate is feasible only when alpha>=0, beta>=0, and alpha+beta<=3
   selection_rule: earliest_feasible_E
   candidate_scoring: false
   pareto_selection: false
