@@ -4704,7 +4704,12 @@ loadAll();
 
 </script>
 
-<script src="./pudding_peq.js?v=20260922-5.1" nonce="9HKSOsB546xzOv-LNV9nGCiZix5pNLIC"></script>
+<script nonce="9HKSOsB546xzOv-LNV9nGCiZix5pNLIC">
+  const s = document.createElement('script');
+  s.src = './pudding_peq.js?v=' + Date.now();
+  s.nonce = '9HKSOsB546xzOv-LNV9nGCiZix5pNLIC';
+  document.body.appendChild(s);
+</script>
 
 </body>
 </html>
