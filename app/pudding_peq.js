@@ -26,8 +26,8 @@
 (function () {
   'use strict';
 
-  const CFG = Object.freeze({
-    version: '2026-09-22.6',
+  const CFG = {
+    version: '2026-09-22.9-DualQ',
     shapeGuard: true,
     shapeGuardToleranceDb: 0.01,
     bands: 10,
@@ -36,8 +36,8 @@
     optHi: 10000,
     minGain: -12,
     maxGain: 3,
-    minQ: 0.50,
-    maxQ: 2,
+    minQ: 0.30,
+    maxQ: 10,
     sampleRate: 48000,
     points: 360,
     alignLo: 100,
@@ -48,7 +48,7 @@
     minActiveGain: 0.05,
     trebleStart: 7000,
     maxPasses: 3
-  });
+  };
 
   const $ = id => document.getElementById(id);
   const clamp = (x,a,b) => Math.max(a,Math.min(b,x));
@@ -176,7 +176,7 @@
     Source architecture: squiglink/lab equalizer.js
     - TrebleStartFrom = 7000 Hz
     - AutoEQRange = 20–15000 Hz (Pudding output is capped at 12 kHz)
-    - Q = 0.5–2
+    - conservative branch Q = 0.30–2.00; extended branch Q = 0.30–10.00
     - candidate thresholds = 1 dB then 0.5 dB
     - two directional coordinate optimization
     - merge close filters + delete unnecessary filters
@@ -207,7 +207,6 @@
     if(freq<10000)return 100;
     return 1000;
   }
-
   function strip(filters){
     return filters.map(f=>({
       freq:Math.floor(f.freq-f.freq%freqUnit(f.freq)),
@@ -249,6 +248,15 @@
     [10,10,10,1,0.1,0.1]
   ];
 
+  function qSearchValues(current,iteration){
+    const anchors=[0.30,0.40,0.50,0.60,0.75,1.00,1.25,1.50,1.75,2.00,2.50,3.00,3.50,4.00,5.00,6.00,7.50,10.00];
+    const step=[0.5,0.2,0.1][iteration] || 0.1;
+    const vals=new Set();
+    for(const a of anchors) vals.add(Math.round(clamp(a,CFG.minQ,CFG.maxQ)*10)/10);
+    for(let k=-5;k<=5;k++) vals.add(Math.round(clamp(current+k*step,CFG.minQ,CFG.maxQ)*10)/10);
+    return Array.from(vals).sort((a,b)=>Math.abs(a-current)-Math.abs(b-current));
+  }
+
   function optimizePass(freqs,base,target,filters,iteration,dir){
     filters=strip(filters);
     const [maxDF,maxDQ,maxDG,stepDF,stepDQ,stepDG]=OPT_DELTAS[iteration];
@@ -266,21 +274,31 @@
       let bestFilter=f;
       let bestDistance=distance(freqs,applyFilters(baseWithout,[f],freqs),target);
 
-      const test=(df,dq,dg)=>{
-        const freq=f.freq+df*freqUnit(f.freq)*stepDF;
-        const q=f.q+dq*stepDQ;
-        const gain=f.gain+dg*stepDG;
-        if(freq<minFreq||freq>maxFreq||q<minQ||q>maxQ||gain<minGain||gain>maxGain)return false;
-        const nf={freq,q,gain};
+      const test=(nf)=>{
+        if(nf.freq<minFreq||nf.freq>maxFreq||nf.q<minQ||nf.q>maxQ||nf.gain<minGain||nf.gain>maxGain)return;
         const score=distance(freqs,applyFilters(baseWithout,[nf],freqs),target);
-        if(score<bestDistance){bestFilter=nf;bestDistance=score;return true;}
-        return false;
+        if(score<bestDistance-1e-12){bestFilter=nf;bestDistance=score;}
       };
 
+      const qvals=qSearchValues(f.q,iteration);
+      const gvals=[];
+      for(let dg=-maxDG;dg<=maxDG;dg++){
+        gvals.push(Math.round((f.gain+dg*stepDG)*10)/10);
+      }
       for(let df=-maxDF;df<maxDF;df++){
-        for(let dq=maxDQ-1;dq>=-maxDQ;dq--){
-          for(let dg=1;dg<maxDG;dg++)if(!test(df,dq,dg))break;
-          for(let dg=-1;dg>=-maxDG;dg--)if(!test(df,dq,dg))break;
+        const freq=f.freq+df*freqUnit(f.freq)*stepDF;
+        if(freq<minFreq||freq>maxFreq)continue;
+        for(const q of qvals){
+          for(const gain of gvals)test({freq,q,gain});
+        }
+      }
+      // A final local refinement around the best point at 0.1 Q / small gain/frequency steps.
+      const bf=bestFilter;
+      for(const df of [-2,-1,0,1,2]){
+        for(const q of [bf.q-0.2,bf.q-0.1,bf.q,bf.q+0.1,bf.q+0.2]){
+          for(const dg of [-2,-1,0,1,2]){
+            test({freq:bf.freq+df*freqUnit(bf.freq),q,gain:bf.gain+dg*0.1});
+          }
         }
       }
       filters[i]=bestFilter;
@@ -314,7 +332,6 @@
     for(let i=0;i<curve.length;i++){const e=curve[i]-target[i];s+=e*e;}
     return Math.sqrt(s/curve.length);
   }
-
   /* Response-aware cleanup:
      Squiglink's stock merge condition also requires nearly identical Q.
      For Pudding, two nearby same-sign PK filters can still be functionally
@@ -335,7 +352,7 @@
     const fGrid=logspace(fcLo,fcHi,18);
     let best=null;
     for(const fc of fGrid){
-      for(let q=CFG.minQ;q<=CFG.maxQ+1e-9;q+=0.1){
+      for(const q of qSearchValues((a.q+b.q)/2,2)){
         for(let gain=CFG.minGain;gain<=CFG.maxGain+1e-9;gain+=0.2){
           const rr=rbj(freqs,{freq:fc,q,gain});
           let se=0,mx=0;
@@ -482,8 +499,7 @@
     }
     return {filters:preFilters.map(b=>({...b})),accepted:false,reason:'shape_guard_rollback',pre,fin,delta};
   }
-
-  function optimize(rawCurve,targetCurve){
+  function optimizeSingle(rawCurve,targetCurve){
     const lo=Math.max(CFG.minFreq,rawCurve[0][0],targetCurve[0][0]);
     const hi=Math.min(CFG.maxFreq,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
     if(hi<=lo||hi<2000)throw Error('Raw Pudding and target curves have insufficient frequency overlap.');
@@ -555,6 +571,126 @@
     }};
   }
 
+
+  // Dual-Q v2 selector: full Q<=2 baseline + fast high-Q rescue.
+  // The rescue explores only Q>2 around the conservative solution plus a
+  // small residual-seed pass, then applies the same transactional guards.
+  function extendHighQFromQ2(rawCurve,targetCurve,q2){
+    const oldMinQ=CFG.minQ, oldMaxQ=CFG.maxQ;
+    CFG.minQ=0.30; CFG.maxQ=10.00;
+    const lo=Math.max(CFG.minFreq,rawCurve[0][0],targetCurve[0][0]);
+    const hi=Math.min(CFG.maxFreq,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
+    const freqs=logspace(lo,hi,CFG.points);
+    const raw=resample(rawCurve,freqs),target=resample(targetCurve,freqs);
+    const aligned=alignLevel(freqs,raw,target),rawA=aligned.curve;
+    const active=q2.bands.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain).map(b=>({...b}));
+    let work=active.slice();
+    const highQs=[2.0,2.5,3.0,3.5,4.0,5.0,6.0,7.5,10.0];
+    // Local high-Q rescue around each existing band.
+    // Evaluate candidates against a precomputed response with the current
+    // band removed; this preserves the objective exactly while avoiding a
+    // full multi-filter recomputation for every candidate.
+    for(let i=0;i<work.length;i++){
+      const f0=work[i].freq, fu=freqUnit(f0), g0=work[i].gain;
+      const others=work.filter((_,j)=>j!==i);
+      const baseWithout=applyFilters(rawA,others,freqs);
+      let best={...work[i]};
+      let bestM=responseRmse(freqs,applyFilters(baseWithout,[best],freqs),target);
+      const fvals=[];
+      for(let k=-4;k<=4;k++)fvals.push(clamp(f0+k*fu,CFG.minFreq,CFG.maxFreq));
+      const gvals=[];
+      for(let k=-5;k<=5;k++)gvals.push(clamp(Math.round((g0+k*0.2)*10)/10,CFG.minGain,CFG.maxGain));
+      for(const f of fvals){
+        for(const q of highQs){
+          for(const gain of gvals){
+            const cand={freq:f,q,gain};
+            const m=responseRmse(freqs,applyFilters(baseWithout,[cand],freqs),target);
+            if(m<bestM-1e-12){bestM=m;best=cand;}
+          }
+        }
+      }
+      work[i]=best;
+    }
+
+    // Residual-seed pass: try up to two new high-Q peaks where the current
+    // response has the largest local absolute error.
+    for(let pass=0;pass<2 && work.length<CFG.bands;pass++){
+      const cur=applyFilters(rawA,work,freqs);
+      const cand=[];
+      for(let i=2;i<freqs.length-2;i++){
+        const e=Math.abs(cur[i]-target[i]);
+        if(e<0.35)continue;
+        if(e>=Math.abs(cur[i-1]-target[i-1]) && e>=Math.abs(cur[i+1]-target[i+1])) cand.push({i,e});
+      }
+      cand.sort((a,b)=>b.e-a.e);
+      let added=false;
+      for(const c of cand){
+        const f=freqs[c.i];
+        if(f<CFG.minFreq||f>CFG.maxFreq)continue;
+        if(work.some(b=>Math.abs(Math.log2(b.freq/f))<0.15))continue;
+        const localGain=clamp(Math.round((target[c.i]-cur[c.i])*10)/10,CFG.minGain,CFG.maxGain);
+        const baseExisting=applyFilters(rawA,work,freqs);
+        let best=null,bestM=responseRmse(freqs,baseExisting,target);
+        for(const q of highQs.slice(1)){
+          for(const dg of [-1,-0.5,0,0.5,1]){
+            const gain=clamp(localGain+dg,CFG.minGain,CFG.maxGain);
+            const cand={freq:f,q,gain};
+            const rr=rbj(freqs,cand);
+            const candidateCurve=new Float64Array(baseExisting);
+            for(let i=0;i<candidateCurve.length;i++)candidateCurve[i]+=rr[i];
+            const m=responseRmse(freqs,candidateCurve,target);
+            if(m<bestM-1e-12){bestM=m;best=cand;}
+          }
+        }
+        if(best){work.push(best);work.sort((a,b)=>a.freq-b.freq);added=true;break;}
+      }
+      if(!added)break;
+    }
+
+    work=mergeOverlappingFilters(freqs,rawA,target,work);
+    work=strip(work);
+    const pre=work.map(b=>({...b}));
+    work=ceilingAwareReoptimize(freqs,rawA,target,work);
+    work=strip(work);
+    const pure=window.__EARPRINT_PURE_CURVE__||null;
+    const sg=earprintShapeGuard(freqs,rawA,target,pre,work,pure);
+    work=sg.filters;
+    CFG.minQ=oldMinQ; CFG.maxQ=oldMaxQ;
+    while(work.length<CFG.bands)work.push({freq:0,gain:0,q:1});
+    const corrected=applyFilters(rawA,work,freqs), before=rawA.map((v,i)=>Math.abs(v-target[i])), after=corrected.map((v,i)=>Math.abs(v-target[i]));
+    return {bands:work,metrics:{
+      rmseBefore:rmse(before),rmseAfter:rmse(after),p95Before:percentile(before,.95),p95After:percentile(after,.95),
+      maxBefore:Math.max(...before),maxAfter:Math.max(...after),activeBands:work.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain).length,
+      maxBoost:Math.max(...work.map(b=>b.gain)),maxCut:Math.min(...work.map(b=>b.gain)),maxQ:Math.max(...work.map(b=>b.q)),
+      levelOffsetDb:aligned.offset,coverage:[lo,hi],objective:distance(freqs,corrected,target),shapeGuardEnabled:CFG.shapeGuard,
+      shapeGuardToleranceDb:CFG.shapeGuardToleranceDb,shapeGuardAccepted:sg.accepted,shapeGuardReason:sg.reason,shapeGuardDeltaDb:sg.delta===undefined?null:sg.delta,
+      shapeGuardPreRmsDb:sg.pre?sg.pre.rms:null,shapeGuardFinalRmsDb:sg.fin?sg.fin.rms:null
+    }};
+  }
+
+  function optimize(rawCurve,targetCurve){
+    const savedMinQ=CFG.minQ, savedMaxQ=CFG.maxQ;
+    CFG.minQ=0.30; CFG.maxQ=2.00;
+    const q2=optimizeSingle(rawCurve,targetCurve);
+    const q10=extendHighQFromQ2(rawCurve,targetCurve,q2);
+    const q10PassGlobal =
+      q10.metrics.rmseAfter <= q2.metrics.rmseAfter - 0.002 &&
+      q10.metrics.p95After <= q2.metrics.p95After + 0.05 &&
+      q10.metrics.maxAfter <= q2.metrics.maxAfter + 0.05;
+    const branchShapeDelta = (q10.metrics.shapeGuardFinalRmsDb!=null && q2.metrics.shapeGuardFinalRmsDb!=null)
+      ? q10.metrics.shapeGuardFinalRmsDb-q2.metrics.shapeGuardFinalRmsDb : null;
+    const q10PassShape = q10.metrics.shapeGuardAccepted !== false &&
+      (branchShapeDelta==null || branchShapeDelta<=CFG.shapeGuardToleranceDb+1e-12);
+    const useExtended=q10PassGlobal&&q10PassShape;
+    CFG.minQ=savedMinQ; CFG.maxQ=savedMaxQ;
+    const chosen=useExtended?q10:q2;
+    chosen.metrics.qAllowed=[0.30,10.00];
+    chosen.metrics.qRangeSelected=useExtended?'0.30–10.00':'0.30–2.00';
+    chosen.metrics.q2Candidate={rmse:q2.metrics.rmseAfter,p95:q2.metrics.p95After,max:q2.metrics.maxAfter,maxQ:q2.metrics.maxQ,shapeGuardAccepted:q2.metrics.shapeGuardAccepted,shapeGuardDeltaDb:q2.metrics.shapeGuardDeltaDb};
+    chosen.metrics.q10Candidate={rmse:q10.metrics.rmseAfter,p95:q10.metrics.p95After,max:q10.metrics.maxAfter,maxQ:q10.metrics.maxQ,shapeGuardAccepted:q10.metrics.shapeGuardAccepted,shapeGuardDeltaDb:q10.metrics.shapeGuardDeltaDb};
+    chosen.metrics.q10GlobalGuard=q10PassGlobal;chosen.metrics.q10ShapeGuard=q10PassShape;chosen.metrics.q10BranchShapeDeltaDb=branchShapeDelta;chosen.metrics.q10Committed=useExtended;
+    return chosen;
+  }
   const fmt=v=>Math.abs(v-Math.round(v))<1e-9?String(Math.round(v)):v.toFixed(1);
   const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -577,7 +713,7 @@
       optimizer:{initialization:'Squiglink candidate segmentation + geometric-centre Fc + bandwidth-derived Q',
                  loss:'mean absolute error with errors below 0.1 dB ignored',
                  batches:'first batch <=7 kHz, second residual batch, then full two-direction optimization; response-aware overlap merge after final pass'},
-      constraints:{bands:CFG.bands,frequency_hz:[CFG.minFreq,CFG.maxFreq],gain_db:[CFG.minGain,CFG.maxGain],q:[CFG.minQ,CFG.maxQ]},
+      constraints:{bands:CFG.bands,frequency_hz:[CFG.minFreq,CFG.maxFreq],gain_db:[CFG.minGain,CFG.maxGain],q:[0.30,10.00],q_range_selected:result.metrics.qRangeSelected},
       source:meta,metrics:result.metrics,earprint_shape_guard:{enabled:CFG.shapeGuard,tolerance_db:CFG.shapeGuardToleranceDb,reference:'output/pure_earprint_dynamic.txt',domain_hz:[1000,12000],transactional:true},peq:result.bands
     },null,2)+'\n';
   }
@@ -695,7 +831,7 @@
 
     table.innerHTML='<div class="pudding-peq-head"><span>Band</span><span>Type</span><span>Freq</span><span>Gain</span><span>Q</span></div>'+
       result.bands.map((b,i)=>`<div class="pudding-peq-row"><span>${i+1}</span><span>PK</span><span>${fmt(b.freq)} Hz</span><span>${b.gain>=0?'+':''}${b.gain.toFixed(2)} dB</span><span>${b.q.toFixed(2)}</span></div>`).join('')+
-      '<div class="pudding-note">Squiglink-style PK only · 20 Hz–12 kHz · -12 to +3 dB · Q 0.50–2.00 · first batch ≤7 kHz · level-align 100 Hz–10 kHz · RBJ @ 48 kHz provisional · EarPrint Shape Guard 0.01 dB transactional rollback.</div>';
+      '<div class="pudding-note">Squiglink-style PK only · 20 Hz–12 kHz · -12 to +3 dB · Q allowed 0.30–10.00 · dual-range search 0.30–2.00 + extended 0.30–10.00 · first batch ≤7 kHz · level-align 100 Hz–10 kHz · RBJ @ 48 kHz provisional · EarPrint Shape Guard 0.01 dB transactional rollback.</div>';
   }
 
   function downloadTxt(){
