@@ -1,8 +1,8 @@
 /* ============================================================
    MOONDROP PUDDING PEQ ENGINE
-   v2026-09-22.4
+   v2026-09-22.5
 
-   AutoEq-inspired PK-only optimizer for MOONDROP Link.
+   Squiglink-style AutoEQ PK-only optimizer for MOONDROP Link.
 
    Principles adapted from AutoEq:
    - level alignment before tonal optimization
@@ -27,15 +27,15 @@
   'use strict';
 
   const CFG = Object.freeze({
-    version: '2026-09-22.4',
+    version: '2026-09-22.5',
     bands: 10,
     minFreq: 20,
     maxFreq: 12000,
     optHi: 10000,
     minGain: -12,
     maxGain: 3,
-    minQ: 0.30,
-    maxQ: 10,
+    minQ: 0.50,
+    maxQ: 2,
     sampleRate: 48000,
     points: 360,
     alignLo: 100,
@@ -44,8 +44,8 @@
     minSeedGain: 0.20,
     minSeedSeparationOct: 0.18,
     minActiveGain: 0.05,
-    maxPasses: 5,
-    sharpnessSlope: 18
+    trebleStart: 7000,
+    maxPasses: 3
   });
 
   const $ = id => document.getElementById(id);
@@ -167,115 +167,152 @@
     return {offset,curve:raw.map(v=>v-offset)};
   }
 
-  /* AutoEq-inspired sharpness penalty:
-     AutoEq derives a gain limit for ~18 dB/oct maximum derivative,
-     then applies a steep sigmoid coefficient to the filter response. */
-  function sharpnessPenalty(freqs,b){
-    if(Math.abs(b.gain)<1e-9)return 0;
-    const gainLimit=-0.09503189270199464+20.575128011847003*(1/b.q);
-    const x=b.gain/gainLimit-1;
-    const k=1/(1+Math.exp(-x*100));
-    const fr=rbj(freqs,b);
-    let s=0;
-    for(const v of fr)s+=v*v*k*k;
-    return s/fr.length;
-  }
-
-  function objective(freqs,raw,target,bands){
-    const eq=totalEq(freqs,bands);
+  function alignLevel(freqs,raw,target){
     let s=0,n=0;
     for(let i=0;i<freqs.length;i++){
-      if(freqs[i]<=CFG.optHi){
-        const e=raw[i]+eq[i]-target[i];
-        s+=e*e;n++;
-      }
+      if(freqs[i]>=CFG.alignLo&&freqs[i]<=CFG.alignHi){s+=raw[i]-target[i];n++;}
     }
-    const ix=Math.max(0,freqs.findIndex(f=>f>CFG.optHi));
-    if(ix<freqs.length){
-      let a=0,b=0;
-      for(let i=ix;i<freqs.length;i++){a+=target[i];b+=raw[i]+eq[i];}
-      const m=freqs.length-ix;
-      const e=(b/m)-(a/m);
-      s+=0.25*e*e;
-    }
-    s/=Math.max(1,n);
-
-    let p=0;
-    for(const b of bands)p+=sharpnessPenalty(freqs,b);
-    return Math.sqrt(s+p);
+    const offset=n?s/n:0;
+    return {offset,curve:raw.map(v=>v-offset)};
   }
 
-  function findFeature(freqs,residual){
-    const sm=smooth(residual,CFG.smoothSpan);
+  /*
+    Squiglink Lab's equalizer.js AutoEQ algorithm, adapted to the
+    MOONDROP PUDDING / MOONDROP Link constraint set.
+
+    Source architecture: squiglink/lab equalizer.js
+    - TrebleStartFrom = 7000 Hz
+    - AutoEQRange = 20–15000 Hz (Pudding output is capped at 12 kHz)
+    - Q = 0.5–2
+    - candidate thresholds = 1 dB then 0.5 dB
+    - two directional coordinate optimization
+    - merge close filters + delete unnecessary filters
+    - distance = mean absolute error, ignoring errors < 0.1 dB
+  */
+  function applyFilters(fr,bands,freqs){
+    const out=new Float64Array(fr);
+    for(const b of bands){
+      if(Math.abs(b.gain)<1e-12)continue;
+      const r=rbj(freqs,b);
+      for(let i=0;i<out.length;i++)out[i]+=r[i];
+    }
+    return out;
+  }
+
+  function distance(freqs,curve,target){
+    let d=0;
+    for(let i=0;i<freqs.length;i++){
+      const e=Math.abs(curve[i]-target[i]);
+      if(e>=0.1)d+=e;
+    }
+    return d/freqs.length;
+  }
+
+  function freqUnit(freq){
+    if(freq<100)return 1;
+    if(freq<1000)return 10;
+    if(freq<10000)return 100;
+    return 1000;
+  }
+
+  function strip(filters){
+    return filters.map(f=>({
+      freq:Math.floor(f.freq-f.freq%freqUnit(f.freq)),
+      q:clamp(Math.floor(f.q*10)/10,CFG.minQ,CFG.maxQ),
+      gain:clamp(Math.floor(f.gain*10)/10,CFG.minGain,CFG.maxGain)
+    }));
+  }
+
+  function searchCandidates(freqs,fr,frTarget,threshold){
+    let state=0,startIndex=-1;
     const candidates=[];
-    for(let i=2;i<sm.length-2;i++){
-      const isMax=sm[i]>=sm[i-1]&&sm[i]>sm[i+1];
-      const isMin=sm[i]<=sm[i-1]&&sm[i]<sm[i+1];
-      if(isMax||isMin)candidates.push({i,amp:Math.abs(sm[i])});
+    for(let i=0;i<fr.length;i++){
+      const delta=fr[i]-frTarget[i];
+      const abs=Math.abs(delta);
+      const next=(abs<threshold)?0:(delta/abs);
+      if(next===state)continue;
+      if(startIndex>=0){
+        if(state!==0){
+          const start=fr[startIndex]!==undefined?freqs[startIndex]:freqs[startIndex];
+          const end=freqs[i];
+          const center=Math.sqrt(start*end);
+          const gain=gridInterp(freqs.slice(startIndex,i),frTarget.slice(startIndex,i),center)
+                    -gridInterp(freqs.slice(startIndex,i),fr.slice(startIndex,i),center);
+          const q=center/(end-start);
+          if(center>=CFG.minFreq&&center<=CFG.maxFreq)candidates.push({freq:center,q,gain});
+        }
+        startIndex=-1;
+      }else{
+        startIndex=i;
+      }
+      state=next;
     }
-    candidates.sort((a,b)=>b.amp-a.amp);
-
-    for(const c of candidates){
-      if(c.amp<CFG.minSeedGain)break;
-      const sign=sm[c.i]>=0?1:-1;
-      const peak=Math.abs(sm[c.i]);
-      const half=peak*0.5;
-      let l=c.i,r=c.i;
-      while(l>0&&Math.abs(sm[l])>half)l--;
-      while(r<sm.length-1&&Math.abs(sm[r])>half)r++;
-      const bw=Math.max(0.10,Math.log2(freqs[r]/freqs[l]));
-      let q=Math.sqrt(Math.pow(2,bw))/(Math.pow(2,bw)-1);
-      q=clamp(q,CFG.minQ,CFG.maxQ);
-      return {freq:freqs[c.i],gain:clamp(sign*peak,CFG.minGain,CFG.maxGain),q};
-    }
-    return null;
+    return candidates;
   }
 
-  function initializeAutoEq(freqs,raw,target){
-    let residual=target.map((v,i)=>v-raw[i]);
-    const bands=[];
-    for(let k=0;k<CFG.bands;k++){
-      const f=findFeature(freqs,residual);
-      if(!f)break;
-      if(bands.some(b=>Math.abs(Math.log2(f.freq/b.freq))<CFG.minSeedSeparationOct)){
-        const idx=freqs.reduce((best,_,i)=>Math.abs(residual[i])>Math.abs(residual[best])?i:best,0);
-        const alt={freq:freqs[idx],gain:clamp(residual[idx],CFG.minGain,CFG.maxGain),q:f.q};
-        if(bands.some(b=>Math.abs(Math.log2(alt.freq/b.freq))<CFG.minSeedSeparationOct))break;
-        f.freq=alt.freq;f.gain=alt.gain;
+  const OPT_DELTAS=[
+    [10,10,10,5,0.1,0.5],
+    [10,10,10,2,0.1,0.2],
+    [10,10,10,1,0.1,0.1]
+  ];
+
+  function optimizePass(freqs,base,target,filters,iteration,dir){
+    filters=strip(filters);
+    const [maxDF,maxDQ,maxDG,stepDF,stepDQ,stepDG]=OPT_DELTAS[iteration];
+    const [minFreq,maxFreq]=[CFG.minFreq,CFG.maxFreq];
+    const [minQ,maxQ]=[CFG.minQ,CFG.maxQ];
+    const [minGain,maxGain]=[CFG.minGain,CFG.maxGain];
+    const begin=dir?filters.length-1:0;
+    const end=dir?-1:filters.length;
+    const step=dir?-1:1;
+
+    for(let i=begin;i!==end;i+=step){
+      const f=filters[i];
+      const others=filters.filter((_,fi)=>fi!==i);
+      const baseWithout=applyFilters(base,others,freqs);
+      let bestFilter=f;
+      let bestDistance=distance(freqs,applyFilters(baseWithout,[f],freqs),target);
+
+      const test=(df,dq,dg)=>{
+        const freq=f.freq+df*freqUnit(f.freq)*stepDF;
+        const q=f.q+dq*stepDQ;
+        const gain=f.gain+dg*stepDG;
+        if(freq<minFreq||freq>maxFreq||q<minQ||q>maxQ||gain<minGain||gain>maxGain)return false;
+        const nf={freq,q,gain};
+        const score=distance(freqs,applyFilters(baseWithout,[nf],freqs),target);
+        if(score<bestDistance){bestFilter=nf;bestDistance=score;return true;}
+        return false;
+      };
+
+      for(let df=-maxDF;df<maxDF;df++){
+        for(let dq=maxDQ-1;dq>=-maxDQ;dq--){
+          for(let dg=1;dg<maxDG;dg++)if(!test(df,dq,dg))break;
+          for(let dg=-1;dg>=-maxDG;dg--)if(!test(df,dq,dg))break;
+        }
       }
-      bands.push(f);
-      const fr=rbj(freqs,f);
-      residual=residual.map((v,i)=>v-fr[i]);
-    }
-    while(bands.length<CFG.bands){
-      bands.push({freq:logspace(35,9000,CFG.bands)[bands.length],gain:0,q:1});
-    }
-    return bands;
-  }
-
-  function optimizeOne(freqs,raw,target,bands,idx){
-    let best=cloneBands(bands), bestScore=objective(freqs,raw,target,best);
-    const b=best[idx];
-
-    function test(vals,setter){
-      for(const v of vals){
-        const t=cloneBands(best);
-        setter(t[idx],v);
-        const s=objective(freqs,raw,target,t);
-        if(s+1e-9<bestScore){best=t;bestScore=s;}
-      }
+      filters[i]=bestFilter;
     }
 
-    test([b.gain-1,b.gain-0.5,b.gain-0.25,b.gain,b.gain+0.25,b.gain+0.5,b.gain+1,0,CFG.minGain,CFG.maxGain],
-      (x,v)=>x.gain=clamp(v,CFG.minGain,CFG.maxGain));
+    if(!dir)return optimizePass(freqs,base,target,filters,iteration,true);
 
-    test([0.30,0.40,0.50,0.60,0.75,1,1.3,1.7,2.2,3,4,5.5,7.5,10],
-      (x,v)=>x.q=v);
+    filters.sort((a,b)=>a.freq-b.freq);
+    for(let i=0;i<filters.length-1;){
+      const f1=filters[i],f2=filters[i+1];
+      if(Math.abs(f1.freq-f2.freq)<=freqUnit(f1.freq)&&Math.abs(f1.q-f2.q)<=0.1){
+        f1.gain+=f2.gain;
+        f1.gain=clamp(f1.gain,minGain,maxGain);
+        filters.splice(i+1,1);
+      }else i++;
+    }
 
-    test([b.freq/1.35,b.freq/1.20,b.freq/1.10,b.freq,b.freq*1.10,b.freq*1.20,b.freq*1.35],
-      (x,v)=>x.freq=clamp(v,CFG.minFreq,CFG.maxFreq));
-
-    return {bands:best,score:bestScore};
+    let bestDistance=distance(freqs,applyFilters(base,filters,freqs),target);
+    for(let i=0;i<filters.length;){
+      if(Math.abs(filters[i].gain)<=0.1){filters.splice(i,1);continue;}
+      const reduced=filters.filter((_,fi)=>fi!==i);
+      const score=distance(freqs,applyFilters(base,reduced,freqs),target);
+      if(score<bestDistance){filters.splice(i,1);bestDistance=score;}else i++;
+    }
+    return filters;
   }
 
   function optimize(rawCurve,targetCurve){
@@ -284,47 +321,50 @@
     if(hi<=lo||hi<2000)throw Error('Raw Pudding and target curves have insufficient frequency overlap.');
 
     const freqs=logspace(lo,hi,CFG.points);
-    const raw=resample(rawCurve,freqs), target=resample(targetCurve,freqs);
-    const aligned=alignLevel(freqs,raw,target), rawA=aligned.curve;
+    const raw=resample(rawCurve,freqs),target=resample(targetCurve,freqs);
+    const aligned=alignLevel(freqs,raw,target),rawA=aligned.curve;
 
-    let bands=initializeAutoEq(freqs,rawA,target);
-    let best=objective(freqs,rawA,target,bands);
+    const firstBatchSize=Math.max(Math.floor(CFG.bands/2)-1,1);
+    const firstCandidates=searchCandidates(freqs,rawA,target,1)
+      .filter(c=>c.freq<=CFG.trebleStart)
+      .sort((a,b)=>a.q-b.q)
+      .slice(0,firstBatchSize)
+      .sort((a,b)=>a.freq-b.freq);
 
-    for(let pass=0;pass<CFG.maxPasses;pass++){
-      let improved=false;
-      for(let i=0;i<bands.length;i++){
-        const r=optimizeOne(freqs,rawA,target,bands,i);
-        if(r.score+1e-8<best){bands=r.bands;best=r.score;improved=true;}
-      }
-      if(!improved)break;
-    }
+    let firstFilters=firstCandidates;
+    for(let i=0;i<OPT_DELTAS.length;i++)firstFilters=optimizePass(freqs,rawA,target,firstFilters,i,false);
 
-    for(const b of bands){
-      b.freq=Math.round(clamp(b.freq,CFG.minFreq,CFG.maxFreq)*10)/10;
-      b.gain=Math.round(clamp(b.gain,CFG.minGain,CFG.maxGain)*100)/100;
-      b.q=Math.round(clamp(b.q,CFG.minQ,CFG.maxQ)*100)/100;
-    }
+    const secondFR=applyFilters(rawA,firstFilters,freqs);
+    const secondBatchSize=CFG.bands-firstFilters.length;
+    let secondFilters=searchCandidates(freqs,secondFR,target,0.5)
+      .sort((a,b)=>a.q-b.q)
+      .slice(0,secondBatchSize)
+      .sort((a,b)=>a.freq-b.freq);
 
-    const eq=totalEq(freqs,bands);
+    for(let i=0;i<OPT_DELTAS.length;i++)secondFilters=optimizePass(freqs,rawA,target,secondFilters,i,false);
+
+    let allFilters=firstFilters.concat(secondFilters);
+    for(let i=0;i<OPT_DELTAS.length;i++)allFilters=optimizePass(freqs,rawA,target,allFilters,i,false);
+    allFilters=strip(allFilters);
+
+    while(allFilters.length<CFG.bands)allFilters.push({freq:0,gain:0,q:1});
+
+    const eq=applyFilters(rawA,allFilters,freqs);
     const before=rawA.map((v,i)=>Math.abs(v-target[i]));
     const after=rawA.map((v,i)=>Math.abs(v+eq[i]-target[i]));
-    const active=bands.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain);
+    const active=allFilters.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain);
 
-    return {
-      bands,
-      metrics:{
-        rmseBefore:rmse(before),rmseAfter:rmse(after),
-        p95Before:percentile(before,.95),p95After:percentile(after,.95),
-        maxBefore:Math.max(...before),maxAfter:Math.max(...after),
-        activeBands:active.length,
-        maxBoost:Math.max(...bands.map(b=>b.gain)),
-        maxCut:Math.min(...bands.map(b=>b.gain)),
-        maxQ:Math.max(...bands.map(b=>b.q)),
-        levelOffsetDb:aligned.offset,
-        coverage:[lo,hi],
-        objective:best
-      }
-    };
+    return {bands:allFilters,metrics:{
+      rmseBefore:rmse(before),rmseAfter:rmse(after),
+      p95Before:percentile(before,.95),p95After:percentile(after,.95),
+      maxBefore:Math.max(...before),maxAfter:Math.max(...after),
+      activeBands:active.length,
+      maxBoost:Math.max(...allFilters.map(b=>b.gain)),
+      maxCut:Math.min(...allFilters.map(b=>b.gain)),
+      maxQ:Math.max(...allFilters.map(b=>b.q)),
+      levelOffsetDb:aligned.offset,coverage:[lo,hi],
+      objective:distance(freqs,rawA.map((v,i)=>v+eq[i]),target)
+    }};
   }
 
   const fmt=v=>Math.abs(v-Math.round(v))<1e-9?String(Math.round(v)):v.toFixed(1);
@@ -339,15 +379,15 @@
   function jsonPEQ(result,meta){
     return JSON.stringify({
       device:'MOONDROP PUDDING',
-      engine:'AutoEq-inspired PK-only optimizer',
+      engine:'Squiglink-style AutoEQ PK-only optimizer',
       version:CFG.version,
       filter_type:'PK',
       implementation:'MOONDROP Link-compatible constraint set',
       dsp_model:{type:'RBJ peaking biquad',sample_rate_hz:CFG.sampleRate,status:'PROVISIONAL'},
       level_alignment:{method:'mean raw-target error over 100 Hz–10 kHz',removed_offset_db:result.metrics.levelOffsetDb},
-      optimizer:{initialization:'largest residual feature + bandwidth-derived Q + residual peeling',
-                 loss:'MSE 20 Hz–10 kHz + low-weight average-energy term above 10 kHz',
-                 sharpness:'AutoEq-style 18 dB/oct sigmoid penalty'},
+      optimizer:{initialization:'Squiglink candidate segmentation + geometric-centre Fc + bandwidth-derived Q',
+                 loss:'mean absolute error with errors below 0.1 dB ignored',
+                 batches:'first batch <=7 kHz, second residual batch, then full two-direction optimization'},
       constraints:{bands:CFG.bands,frequency_hz:[CFG.minFreq,CFG.maxFreq],gain_db:[CFG.minGain,CFG.maxGain],q:[CFG.minQ,CFG.maxQ]},
       source:meta,metrics:result.metrics,peq:result.bands
     },null,2)+'\n';
@@ -430,7 +470,7 @@
       const raw=await selected('puddingRawFile','puddingRawSelect',n=>'input/preferred/'+encodeURIComponent(n));
       const robust=$('puddingRobustTarget')?.checked!==false;
       const target=await selected('puddingTargetFile','puddingTargetSelect',n=>targetPath(n,robust));
-      status('AutoEq-inspired initialization + residual peeling + constrained refinement…');
+      status('Squiglink-style candidate search + two-batch optimization + filter cleanup…');
       const result=optimize(raw.curve,target.curve);
       last=result;lastMeta={raw:raw.source,target:target.source,target_mode:robust?'Robust Target':'Original Target'};
       render(result,lastMeta);
@@ -457,7 +497,7 @@
 
     table.innerHTML='<div class="pudding-peq-head"><span>Band</span><span>Type</span><span>Freq</span><span>Gain</span><span>Q</span></div>'+
       result.bands.map((b,i)=>`<div class="pudding-peq-row"><span>${i+1}</span><span>PK</span><span>${fmt(b.freq)} Hz</span><span>${b.gain>=0?'+':''}${b.gain.toFixed(2)} dB</span><span>${b.q.toFixed(2)}</span></div>`).join('')+
-      '<div class="pudding-note">AutoEq-inspired PK only · 20 Hz–12 kHz · -12 to +3 dB · Q 0.30–10 · level-align 100 Hz–10 kHz · RBJ @ 48 kHz provisional.</div>';
+      '<div class="pudding-note">Squiglink-style PK only · 20 Hz–12 kHz · -12 to +3 dB · Q 0.50–2.00 · first batch ≤7 kHz · level-align 100 Hz–10 kHz · RBJ @ 48 kHz provisional.</div>';
   }
 
   function downloadTxt(){
