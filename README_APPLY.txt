@@ -1,33 +1,36 @@
-# EarPrint TRUE-C1 Hardening Update — corrected
+# EarPrint TRUE-C1 Full CI Fix
 
-This package fixes the earlier hardening ZIP.
+Overwrite the corresponding files in the existing repository.
 
-## Important fixes
-1. The validated 257-point Hermite diagnostic curve is no longer written directly
-   into the caller's target grid. The exact cubic polynomial is evaluated on the
-   actual production frequency grid.
-2. Destination stability is evaluated over the intended ± stability window around
-   E rather than unintentionally extending to the end of the target.
-3. Slope/curvature stability tolerances are scale-normalized so the locked positive
-   scaling invariance is preserved.
-4. Tests use an explicit 1000 Hz computational anchor where required.
+## Files
+- engine/adaptive_handoff.py
+- tests/test_adaptive_handoff.py
+- project.yaml
+- config/project.yaml
+- README_APPLY.txt
 
-## Locked architecture preserved
-- 1000 Hz nominal anchor.
-- Minimum 1/3 octave transition width.
-- Maximum 0.8 octave transition width.
-- Earliest feasible E.
-- Exact-C1 cubic Hermite bridge.
-- Raw endpoint slopes retained exactly.
-- alpha >= 0, beta >= 0, alpha + beta <= 3.
-- Analytic derivative gate.
-- Destination slope and curvature stability hard gates.
-- BaseTarget fail-safe on NO_STABLE_HANDOFF.
-- No candidate scoring, Pareto selection, curvature optimization, target averaging,
-  or target-specific optimization.
+## CI failure fixed
+Existing `engine/earprint_engine.py` calls:
+`adaptive_masked_handoff(..., nominal_hz=...)`
 
-## Verification
-Local pytest result: 11 passed.
+The adaptive handoff now accepts `nominal_hz` as a compatibility alias while
+retaining the locked 1000 Hz nominal anchor.
 
-Run:
-`pytest -q`
+## Additional implementation fixes
+- Hermite validation samples are no longer inserted into the production grid.
+- The exact cubic is evaluated on the actual H→E production grid.
+- Destination stability is checked only in the post-E stability window.
+- Stability checks are normalized to preserve positive vertical-scale invariance.
+- Backward-compatible bridge aliases are retained.
+
+## Do NOT upload
+- `.pytest_cache/`
+- `__pycache__/`
+- `*.pyc`
+
+## Locked architecture remains unchanged
+TRUE-C1, raw endpoint slopes, alpha/beta gate, analytic derivative gate,
+earliest feasible E, 1/3–0.8 octave bounds, destination stability gates,
+and NO_STABLE_HANDOFF → BaseTarget fail-safe.
+
+Run `pytest -q` after copying.
