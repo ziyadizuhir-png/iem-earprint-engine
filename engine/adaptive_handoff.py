@@ -271,6 +271,7 @@ def adaptive_masked_handoff(
             "selection_rule": "earliest_feasible_E",
             "reason": "exact 1000 Hz computational anchor is required",
             "fail_safe": "BaseTarget",
+            "domain_end_hz": domain_end_hz,
         }
     h_idx = int(h_matches[0])
 
