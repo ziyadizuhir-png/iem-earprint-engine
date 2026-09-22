@@ -1,69 +1,118 @@
 import numpy as np
+import pytest
 
-from engine.adaptive_handoff import adaptive_masked_handoff
+import engine.adaptive_handoff as ah
 
 
 def _grid():
-    # 1/48-octave grid: exact 1000 Hz plus ample post-E stability samples.
+    # Dense logarithmic grid containing the locked 1000 Hz anchor.
     return 1000.0 * 2.0 ** (np.arange(-48, 49, dtype=float) / 48.0)
 
 
-def _make_masked_with_bad_first_candidate():
+def _simple_curves():
     f = _grid()
     x = np.log2(f / 1000.0)
-    base = 1.0 * x
 
-    # Stable rising destination, with a narrow perturbation centred on the
-    # first legal E candidate. This makes the first legal candidate fail
-    # the destination/bridge hard gates while a later candidate recovers.
+    # Simple monotone curves. The test isolates candidate-selection semantics
+    # by controlling only the destination-stability gate.
+    base = 1.0 * x
     masked = 2.0 * x
-    first_e = 1000.0 * 2.0 ** (1.0 / 3.0)
-    i = int(np.argmin(np.abs(f - first_e)))
-    masked[i] += 2.5
-
-    return f, base, masked, i
+    return f, base, masked
 
 
-def test_earliest_feasible_not_earliest_candidate():
-    f, base, masked, first_candidate = _make_masked_with_bad_first_candidate()
+def _legal_candidates(f):
+    return [
+        i for i in range(len(f))
+        if f[i] > 1000.0
+        and np.log2(f[i] / 1000.0) >= 1.0 / 3.0 - 1e-12
+        and np.log2(f[i] / 1000.0) <= 0.8 + 1e-12
+    ]
 
-    out, diag = adaptive_masked_handoff(f, base, masked)
 
-    assert diag["status"] == "HANDOFF_ACCEPTED"
+def test_earliest_feasible_skips_first_infeasible_candidate(monkeypatch):
+    """
+    Strong adversarial test of the locked selection rule.
 
-    # The first legal candidate is intentionally invalid, so the engine must
-    # continue searching and choose a later candidate that passes every gate.
-    assert diag["actual_handoff_hz"] > f[first_candidate]
+    The first legal E is forced to fail destination stability.
+    The second legal E is forced to pass. Therefore the engine MUST select
+    the second candidate, proving it searches for earliest FEASIBLE E rather
+    than blindly taking the first legal candidate.
+    """
+    f, base, masked = _simple_curves()
+    legal = _legal_candidates(f)
+    assert len(legal) >= 2
 
-    # The selected candidate must remain inside the locked transition range.
-    assert (
-        np.log2(diag["actual_handoff_hz"] / 1000.0)
-        <= 0.8 + 1e-12
+    first_idx, second_idx = legal[:2]
+    calls = []
+
+    def fake_destination_stability(freq_hz, level_db, e_index, window):
+        calls.append(e_index)
+        if e_index == first_idx:
+            return False, False, np.nan, np.nan
+        return True, True, 2.0, 0.0
+
+    monkeypatch.setattr(
+        ah, "_destination_stability",
+        fake_destination_stability,
     )
 
+    out, diag = ah.adaptive_masked_handoff(f, base, masked)
+
+    assert diag["status"] == "HANDOFF_ACCEPTED"
+    assert diag["actual_handoff_hz"] == pytest.approx(f[second_idx])
+
+    # The first candidate was actually evaluated and rejected.
+    assert calls[0] == first_idx
+    assert second_idx in calls
     assert np.all(np.isfinite(out))
 
 
-def test_all_feasible_candidates_choose_first():
-    f = _grid()
-    x = np.log2(f / 1000.0)
+def test_earliest_feasible_selects_first_passing_candidate(monkeypatch):
+    """
+    All legal candidates are declared stable. The engine MUST therefore
+    select the first legal candidate.
+    """
+    f, base, masked = _simple_curves()
+    legal = _legal_candidates(f)
+    assert len(legal) >= 1
 
-    base = 1.0 * x
-    masked = 1.5 * x
+    calls = []
 
-    out, diag = adaptive_masked_handoff(f, base, masked)
+    def fake_destination_stability(freq_hz, level_db, e_index, window):
+        calls.append(e_index)
+        return True, True, 2.0, 0.0
 
-    assert diag["status"] == "HANDOFF_ACCEPTED"
-
-    legal = np.flatnonzero(
-        (f > 1000.0)
-        & (np.log2(f / 1000.0) >= 1.0 / 3.0 - 1e-12)
-        & (np.log2(f / 1000.0) <= 0.8 + 1e-12)
+    monkeypatch.setattr(
+        ah, "_destination_stability",
+        fake_destination_stability,
     )
 
-    assert len(legal) > 0
+    out, diag = ah.adaptive_masked_handoff(f, base, masked)
 
-    # Here the candidates are intentionally well behaved, so the first
-    # candidate in the legal range should also be the first feasible one.
-    assert diag["actual_handoff_hz"] == f[legal[0]]
+    assert diag["status"] == "HANDOFF_ACCEPTED"
+    assert diag["actual_handoff_hz"] == pytest.approx(f[legal[0]])
+    assert calls[0] == legal[0]
     assert np.all(np.isfinite(out))
+
+
+def test_no_feasible_candidate_fails_safe(monkeypatch):
+    """
+    If every legal candidate fails the stability gate, the locked fail-safe
+    must return the original BaseTarget.
+    """
+    f, base, masked = _simple_curves()
+
+    def fake_destination_stability(freq_hz, level_db, e_index, window):
+        return False, False, np.nan, np.nan
+
+    monkeypatch.setattr(
+        ah,
+        "_destination_stability",
+        fake_destination_stability,
+    )
+
+    out, diag = ah.adaptive_masked_handoff(f, base, masked)
+
+    assert diag["status"] == "NO_STABLE_HANDOFF"
+    assert diag["fail_safe"] == "BaseTarget"
+    assert np.array_equal(out, base)
