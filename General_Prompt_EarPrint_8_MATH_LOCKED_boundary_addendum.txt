@@ -238,17 +238,16 @@ The raw endpoint slopes are taken from the source curves in dB/octave:
 
     d1_raw = slope(MaskedEarPrint, E)
 
-Before constructing the cubic, the endpoint slopes are direction-limited so
-that they cannot point opposite to Delta and cannot violate the sufficient
-single-interval monotonicity condition.
+The raw endpoint slopes MUST be retained exactly. They MUST NOT be clipped,
+scaled, direction-limited, or otherwise altered before bridge construction.
 
 The normalized endpoint derivatives are:
 
-    alpha = d0 * L / Delta
+    alpha = d0_raw * L / Delta
 
-    beta  = d1 * L / Delta
+    beta  = d1_raw * L / Delta
 
-with the required constraints:
+A candidate is feasible only when:
 
     alpha >= 0
 
@@ -256,11 +255,12 @@ with the required constraints:
 
     alpha + beta <= 3
 
-If alpha + beta > 3, both normalized derivatives are scaled together until:
-
-    alpha + beta = 3
+If any of these conditions fails, the candidate E MUST be rejected. The
+engine MUST NOT repair the candidate by changing either endpoint slope.
 
 The bridge MUST then be validated with an exact analytic derivative test.
+This makes TRUE-C1 continuity a feasibility requirement rather than a
+post-construction smoothing operation.
 
 
 ======================================================================
@@ -740,13 +740,16 @@ let:
 
     L = log2(E / 1000)
 
-and let the endpoint slopes be direction-limited so that:
+and let the raw endpoint slopes be retained exactly, with:
 
-    alpha = d0*L/Delta >= 0
+    alpha = d0_raw*L/Delta >= 0
 
-    beta  = d1*L/Delta >= 0
+    beta  = d1_raw*L/Delta >= 0
 
     alpha + beta <= 3
+
+A candidate that violates any of these conditions is rejected; endpoint
+slopes are never clipped or rescaled.
 
 The output is the cubic Hermite bridge between:
 
