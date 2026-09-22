@@ -1,42 +1,34 @@
-# IEM EarPrint Engine — Dynamic
+# IEM EarPrint Engine
 
-A deterministic Python implementation of the EarPrint workflow designed so that the **data directory is the source of truth**.
+Deterministic implementation of the locked EarPrint architecture.
 
-## Dynamic IEM discovery
+## Data interpretation
 
-Every:
+`input/preferred/*.txt` contains listener-adjusted response curves produced through a human PEQ adjustment procedure using a SoundOre sine sweep over approximately 1–12 kHz.
 
-```text
-input/preferred/*.txt
-```
-
-is automatically discovered and treated as **one independent IEM vote**.
-
-The calculation does not depend on a fixed number of IEMs.
-
-For example:
+They are observed listener-adjustment data, not raw IEM measurements and not simply a list of IEMs the listener likes.
 
 ```text
-Pudding.txt
-Ceramics_Ultra.txt
-Kato.txt
-Origin.txt
+Raw IEM FR
+→ SoundOre 1–12 kHz sweep
+→ human PEQ adjustment
+→ listener-adjusted response
+→ alignment
+→ robust EarPrint consensus
 ```
 
-means four independent IEM votes.
+`input/original_711/` contains source IEM measurements. `input/targets/` contains external target/reference frameworks.
 
-Adding another valid preferred-response file automatically adds one independent vote on the next build. Removing one removes that vote.
+EarPrint is not an anatomical hearing reconstruction.
 
-**One IEM = one vote.**
-
-Repeated measurements of the same IEM must not become additional independent votes.
-
-## Dynamic target discovery
-
-Every:
+## Locked handoff
 
 ```text
-input/targets/*.txt
+<= 1000 Hz → BaseTarget
+1000 Hz → E → exact-C1 monotone cubic Hermite bridge
+> E        → Masked EarPrint
 ```
 
-is automatically discovered and processed independently.
+`E` is the earliest feasible candidate in the locked 1/3–0.8 octave range. If no candidate passes every mandatory gate, the engine returns `NO_STABLE_HANDOFF` and retains BaseTarget.
+
+See `ARCHITECTURE_LOCK.md` and the math-locked specification/addendum.
