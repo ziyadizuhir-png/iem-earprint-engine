@@ -784,3 +784,31 @@ If no valid E exists:
     status = NO_STABLE_HANDOFF
 
 This constitutes the locked boundary-handoff specification.
+PRE-LOCK EXPLICIT ACCEPTANCE CONSTANTS
+
+The existing production implementation uses these acceptance limits:
+
+DESTINATION SLOPE STABILITY
+slope_variation / slope_scale <= 0.35
+
+DESTINATION CURVATURE STABILITY
+curvature_variation / curvature_scale <= 1.50
+
+These are acceptance constants, not user-tunable preferences. They do not introduce candidate scoring, optimisation, target ranking, or subjective selection.
+
+Existing hard gates remain:
+finite
+monotonicity
+no overshoot
+no undershoot
+no artificial extrema
+no slope reversal
+destination slope stability
+destination curvature stability
+analytic bridge derivative
+endpoint direction compatibility
+
+If no candidate passes the complete gate set:
+NO_STABLE_HANDOFF
+
+BaseTarget remains in force.
