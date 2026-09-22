@@ -4,8 +4,8 @@ Adaptive Masked-EarPrint handoff.
 Locked production architecture:
 - BaseTarget is preserved through the nominal 1 kHz anchor.
 - E is the earliest feasible candidate on the master grid.
-- The bridge is an exact-C1 cubic Hermite bridge with raw endpoint
-  slopes retained exactly.
+- The bridge is an exact-C1 cubic Hermite bridge with raw endpoint slopes
+  retained exactly.
 - Feasibility requires alpha >= 0, beta >= 0, alpha + beta <= 3.
 - Analytic derivative validation is mandatory.
 - Destination slope and curvature stability are hard gates.
@@ -14,7 +14,8 @@ Locked production architecture:
 
 Integration compatibility:
 - Existing callers may use nominal_hz=... .
-- nominal_anchor_hz=... is retained as the explicit configuration name.
+- Existing engine callers may pass domain_end_hz=... .
+- nominal_anchor_hz=... remains the explicit configuration name.
 """
 
 from __future__ import annotations
@@ -183,8 +184,6 @@ def _destination_stability(
     local_slope = slopes[idx]
     local_curv = curvature[idx]
 
-    # Normalize variation to the local slope/curvature scale so positive
-    # vertical scaling does not alter the handoff decision.
     slope_scale = max(float(np.max(np.abs(local_slope))), 1e-12)
     curv_scale = max(float(np.max(np.abs(local_curv))), 1e-12)
 
@@ -209,12 +208,18 @@ def adaptive_masked_handoff(
     *,
     nominal_anchor_hz: float = 1000.0,
     nominal_hz: float | None = None,
+    domain_end_hz: float | None = None,
     min_transition_octaves: float = 1.0 / 3.0,
     max_transition_octaves: float = 0.8,
     stability_window_octaves: float = 0.2,
 ) -> Tuple[np.ndarray, Dict[str, object]]:
     """
     Locked adaptive handoff.
+
+    domain_end_hz is the caller's personal/output-domain ceiling. It is a
+    candidate-domain constraint only: E may be accepted only when E <=
+    domain_end_hz. The target arrays themselves are not truncated or modified
+    by this parameter.
 
     `nominal_hz` is a compatibility alias for existing engine callers.
     The locked nominal anchor remains exactly 1000 Hz.
@@ -246,6 +251,18 @@ def adaptive_masked_handoff(
     if min_transition_octaves > max_transition_octaves:
         raise ValueError("Transition bounds are invalid.")
 
+    if domain_end_hz is not None:
+        domain_end_hz = float(domain_end_hz)
+        if not np.isfinite(domain_end_hz) or domain_end_hz <= 1000.0:
+            return base.copy(), {
+                "status": "NO_STABLE_HANDOFF",
+                "nominal_anchor_hz": 1000.0,
+                "selection_rule": "earliest_feasible_E",
+                "fail_safe": "BaseTarget",
+                "reason": "domain_end_hz does not extend above the 1000 Hz anchor",
+                "domain_end_hz": domain_end_hz,
+            }
+
     h_matches = np.flatnonzero(np.isclose(f, 1000.0, atol=1e-9, rtol=0.0))
     if len(h_matches) != 1:
         return base.copy(), {
@@ -262,6 +279,12 @@ def adaptive_masked_handoff(
 
     for e_idx in range(h_idx + 1, len(f)):
         e_hz = float(f[e_idx])
+
+        # domain_end_hz is an upper bound on candidate E. Do not alter the
+        # production grid and do not extrapolate beyond the caller domain.
+        if domain_end_hz is not None and e_hz > domain_end_hz + 1e-9:
+            break
+
         width = _octaves_between(1000.0, e_hz)
 
         if width < min_transition_octaves - 1e-12:
@@ -297,9 +320,6 @@ def adaptive_masked_handoff(
         except ValueError:
             continue
 
-        # Evaluate the exact validated polynomial on the ACTUAL production
-        # frequency grid between H and E. Do not insert the 257 validation
-        # samples into the target grid.
         bridge_idx = np.arange(h_idx, e_idx + 1)
         t = np.log2(f[bridge_idx] / 1000.0) / width
         bridge = _evaluate_hermite_on_grid(
@@ -337,6 +357,7 @@ def adaptive_masked_handoff(
             "endpoint_end_level": float(masked[e_idx]),
             "endpoint_start_slope": d0,
             "endpoint_end_slope": d1,
+            "domain_end_hz": domain_end_hz,
             **bridge_diag,
         }
         return out, diagnostics
@@ -346,6 +367,7 @@ def adaptive_masked_handoff(
         "nominal_anchor_hz": 1000.0,
         "selection_rule": "earliest_feasible_E",
         "fail_safe": "BaseTarget",
+        "domain_end_hz": domain_end_hz,
     }
 
 
