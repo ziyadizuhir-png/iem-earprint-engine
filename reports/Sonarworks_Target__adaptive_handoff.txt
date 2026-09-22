@@ -1,5 +1,0 @@
-status: NO_STABLE_HANDOFF
-nominal_anchor_hz: 1000.0
-selection_rule: earliest_feasible_E
-fail_safe: BaseTarget
-domain_end_hz: 12000.0
