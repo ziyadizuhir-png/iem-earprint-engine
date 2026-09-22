@@ -4,7 +4,7 @@ Specification: General_Prompt_EarPrint_8_MATH_LOCKED.txt
 Specification addendum: General_Prompt_EarPrint_8_MATH_LOCKED_boundary_addendum.txt
 
 Independent IEM votes discovered: 8
-Targets discovered: 8
+Targets discovered: 9
 One IEM file = one equal vote.
 Interpolation: log-frequency.
 Alignment bands: [(200.0, 1000.0), (200.0, 500.0), (500.0, 1000.0)]
