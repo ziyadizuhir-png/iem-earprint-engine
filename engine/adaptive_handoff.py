@@ -11,6 +11,10 @@ Locked production architecture:
 - Destination slope and curvature stability are hard gates.
 - No target averaging, scoring, Pareto selection, or curvature optimization.
 - NO_STABLE_HANDOFF fails safe to the original BaseTarget.
+
+Integration compatibility:
+- Existing callers may use nominal_hz=... .
+- nominal_anchor_hz=... is retained as the explicit configuration name.
 """
 
 from __future__ import annotations
@@ -21,24 +25,25 @@ import numpy as np
 _EPS = 1e-12
 
 
-def _log10_ratio_octaves(f0: float, f1: float) -> float:
+def _octaves_between(f0: float, f1: float) -> float:
     return float(np.log2(float(f1) / float(f0)))
 
 
 def log_slope(freq_hz: np.ndarray, level_db: np.ndarray) -> np.ndarray:
-    """Numerical dB/octave slope using centered finite differences."""
     f = np.asarray(freq_hz, dtype=float)
     y = np.asarray(level_db, dtype=float)
     if f.ndim != 1 or y.ndim != 1 or len(f) != len(y) or len(f) < 3:
         raise ValueError("freq_hz and level_db must be equal 1-D arrays of length >= 3.")
-    x = np.log2(f)
-    return np.gradient(y, x)
+    if not np.all(np.isfinite(f)) or not np.all(np.isfinite(y)):
+        raise ValueError("Frequency and level arrays must be finite.")
+    if not np.all(np.diff(f) > 0):
+        raise ValueError("Frequency grid must be strictly increasing.")
+    return np.gradient(y, np.log2(f))
 
 
 def _analytic_derivative_check(
     a: float, b: float, c: float, direction: float
 ) -> Tuple[bool, np.ndarray, np.ndarray]:
-    """Check the Hermite bridge derivative analytically on t in [0, 1]."""
     # q(t) = 3*a*t^2 + 2*b*t + c
     qa, qb, qc = 3.0 * a, 2.0 * b, c
     roots = []
@@ -49,14 +54,11 @@ def _analytic_derivative_check(
     else:
         disc = qb * qb - 4.0 * qa * qc
         if disc >= -_EPS:
-            disc = max(0.0, disc)
-            sqrt_disc = float(np.sqrt(disc))
-            roots.extend(
-                [
-                    float((-qb - sqrt_disc) / (2.0 * qa)),
-                    float((-qb + sqrt_disc) / (2.0 * qa)),
-                ]
-            )
+            sqrt_disc = float(np.sqrt(max(0.0, disc)))
+            roots.extend([
+                float((-qb - sqrt_disc) / (2.0 * qa)),
+                float((-qb + sqrt_disc) / (2.0 * qa)),
+            ])
 
     candidates = [0.0, 1.0]
     candidates.extend(r for r in roots if 0.0 < r < 1.0)
@@ -72,12 +74,7 @@ def _analytic_derivative_check(
 def _evaluate_exact_c1_bridge(
     y0: float, y1: float, d0: float, d1: float, span_octaves: float
 ) -> Tuple[np.ndarray, Dict[str, object]]:
-    """
-    Construct and validate the exact-C1 cubic Hermite bridge.
-
-    Raw endpoint slopes are retained exactly. No clipping, scaling,
-    or direction limiting is permitted.
-    """
+    """Exact-C1 cubic Hermite bridge; raw endpoint slopes are never clipped."""
     span = float(span_octaves)
     if span <= 0:
         raise ValueError("Bridge span must be positive.")
@@ -89,7 +86,6 @@ def _evaluate_exact_c1_bridge(
     direction = float(np.sign(delta))
     if abs(d0) <= _EPS or abs(d1) <= _EPS:
         raise ValueError("Endpoint slope is too close to zero.")
-
     if np.sign(d0) != direction or np.sign(d1) != direction:
         raise ValueError("Endpoint slopes are direction-incompatible.")
 
@@ -98,7 +94,7 @@ def _evaluate_exact_c1_bridge(
     if alpha < -1e-12 or beta < -1e-12 or alpha + beta > 3.0 + 1e-12:
         raise ValueError("Endpoint slopes violate the locked monotone-C1 condition.")
 
-    # y(t) = a t^3 + b t^2 + c t + y0
+    # y(t) = a*t^3 + b*t^2 + c*t + y0
     a = 2.0 * y0 - 2.0 * y1 + span * d0 + span * d1
     b = -3.0 * y0 + 3.0 * y1 - 2.0 * span * d0 - span * d1
     c = span * d0
@@ -109,9 +105,10 @@ def _evaluate_exact_c1_bridge(
     if not derivative_ok:
         raise ValueError("Analytic derivative monotonicity gate failed.")
 
+    # Validation samples are only confirmation; the analytic derivative gate
+    # remains authoritative.
     t = np.linspace(0.0, 1.0, 257)
     values = a * t**3 + b * t**2 + c * t + y0
-
     if not np.all(np.isfinite(values)):
         raise ValueError("Bridge contains non-finite values.")
 
@@ -125,7 +122,6 @@ def _evaluate_exact_c1_bridge(
     if np.any(direction * sampled_derivative < -1e-8):
         raise ValueError("Sampled slope reversal gate failed.")
 
-    # Exact endpoint conditions.
     start_slope = c / span
     end_slope = (3.0 * a + 2.0 * b + c) / span
     if not np.isclose(start_slope, d0, atol=1e-10, rtol=0.0):
@@ -133,7 +129,7 @@ def _evaluate_exact_c1_bridge(
     if not np.isclose(end_slope, d1, atol=1e-10, rtol=0.0):
         raise ValueError("End C1 slope mismatch.")
 
-    diagnostics = {
+    return values, {
         "alpha": alpha,
         "beta": beta,
         "alpha_plus_beta": alpha + beta,
@@ -152,11 +148,17 @@ def _evaluate_exact_c1_bridge(
         "continuity_pass": True,
         "derivative_root_count": int(len(roots)),
         "analytic_derivative_values": derivative_values.tolist(),
-        "polynomial_a": float(a),
-        "polynomial_b": float(b),
-        "polynomial_c": float(c),
     }
-    return values, diagnostics
+
+
+def _evaluate_hermite_on_grid(
+    t: np.ndarray, y0: float, y1: float, d0: float, d1: float, span: float
+) -> np.ndarray:
+    """Evaluate the exact same cubic on arbitrary production-grid t values."""
+    a = 2.0 * y0 - 2.0 * y1 + span * d0 + span * d1
+    b = -3.0 * y0 + 3.0 * y1 - 2.0 * span * d0 - span * d1
+    c = span * d0
+    return a * t**3 + b * t**2 + c * t + y0
 
 
 def _destination_stability(
@@ -165,39 +167,39 @@ def _destination_stability(
     e_index: int,
     stability_window_octaves: float,
 ) -> Tuple[bool, bool, float, float]:
-    """Return slope-stable, curvature-stable flags and diagnostic magnitudes."""
+    """Check slope/curvature only inside the post-E stability window."""
     f = np.asarray(freq_hz, dtype=float)
     y = np.asarray(level_db, dtype=float)
     x = np.log2(f)
 
     e_x = x[e_index]
-    mask = (
-        (x >= e_x - stability_window_octaves)
-        & (x <= e_x + stability_window_octaves)
-        & (np.arange(len(x)) >= e_index)
-    )
-    idx = np.flatnonzero(mask)
+    end_x = e_x + float(stability_window_octaves)
+    idx = np.flatnonzero((x >= e_x) & (x <= end_x))
     if len(idx) < 4:
         return False, False, float("nan"), float("nan")
 
     slopes = np.gradient(y, x)
     curvature = np.gradient(slopes, x)
-
     local_slope = slopes[idx]
     local_curv = curvature[idx]
 
-    slope_ref = float(local_slope[0])
-    curvature_ref = float(local_curv[0])
+    # Normalize variation to the local slope/curvature scale so positive
+    # vertical scaling does not alter the handoff decision.
+    slope_scale = max(float(np.max(np.abs(local_slope))), 1e-12)
+    curv_scale = max(float(np.max(np.abs(local_curv))), 1e-12)
 
-    slope_scale = max(abs(slope_ref), _EPS)
-    curvature_scale = max(abs(curvature_ref), _EPS)
-    slope_stable = bool(
-        np.max(np.abs(local_slope - slope_ref)) / slope_scale <= 0.35
+    slope_variation = float(np.max(local_slope) - np.min(local_slope))
+    curvature_variation = float(np.max(local_curv) - np.min(local_curv))
+
+    slope_stable = slope_variation / slope_scale <= 0.35
+    curvature_stable = curvature_variation / curv_scale <= 1.50
+
+    return (
+        bool(slope_stable),
+        bool(curvature_stable),
+        float(local_slope[0]),
+        float(local_curv[0]),
     )
-    curvature_stable = bool(
-        np.max(np.abs(local_curv - curvature_ref)) / curvature_scale <= 1.50
-    )
-    return slope_stable, curvature_stable, slope_ref, curvature_ref
 
 
 def adaptive_masked_handoff(
@@ -206,11 +208,20 @@ def adaptive_masked_handoff(
     masked_earprint_db: np.ndarray,
     *,
     nominal_anchor_hz: float = 1000.0,
+    nominal_hz: float | None = None,
     min_transition_octaves: float = 1.0 / 3.0,
     max_transition_octaves: float = 0.8,
     stability_window_octaves: float = 0.2,
 ) -> Tuple[np.ndarray, Dict[str, object]]:
-    """Apply the locked adaptive handoff architecture."""
+    """
+    Locked adaptive handoff.
+
+    `nominal_hz` is a compatibility alias for existing engine callers.
+    The locked nominal anchor remains exactly 1000 Hz.
+    """
+    if nominal_hz is not None:
+        nominal_anchor_hz = float(nominal_hz)
+
     f = np.asarray(freq_hz, dtype=float)
     base = np.asarray(base_target_db, dtype=float)
     masked = np.asarray(masked_earprint_db, dtype=float)
@@ -219,11 +230,11 @@ def adaptive_masked_handoff(
         raise ValueError("All inputs must be 1-D arrays.")
     if not (len(f) == len(base) == len(masked)):
         raise ValueError("All inputs must have equal length.")
-    if len(f) < 5 or not np.all(np.isfinite(f)):
+    if len(f) < 5:
+        raise ValueError("Frequency grid is too short.")
+    if not np.all(np.isfinite(f)) or not np.all(np.diff(f) > 0):
         raise ValueError("Frequency grid is invalid.")
-    if not np.all(np.diff(f) > 0):
-        raise ValueError("Frequency grid must be strictly increasing.")
-    if not (np.all(np.isfinite(base)) and np.all(np.isfinite(masked))):
+    if not np.all(np.isfinite(base)) or not np.all(np.isfinite(masked)):
         raise ValueError("Target arrays must be finite.")
 
     if abs(float(nominal_anchor_hz) - 1000.0) > 1e-9:
@@ -235,22 +246,24 @@ def adaptive_masked_handoff(
     if min_transition_octaves > max_transition_octaves:
         raise ValueError("Transition bounds are invalid.")
 
-    h_idx = np.flatnonzero(np.isclose(f, 1000.0, atol=1e-9, rtol=0.0))
-    if len(h_idx) != 1:
+    h_matches = np.flatnonzero(np.isclose(f, 1000.0, atol=1e-9, rtol=0.0))
+    if len(h_matches) != 1:
         return base.copy(), {
             "status": "NO_STABLE_HANDOFF",
             "nominal_anchor_hz": 1000.0,
+            "selection_rule": "earliest_feasible_E",
             "reason": "exact 1000 Hz computational anchor is required",
+            "fail_safe": "BaseTarget",
         }
-    h_idx = int(h_idx[0])
+    h_idx = int(h_matches[0])
 
-    # Candidates are evaluated in ascending frequency: earliest feasible E wins.
     base_slopes = log_slope(f, base)
     masked_slopes = log_slope(f, masked)
 
     for e_idx in range(h_idx + 1, len(f)):
         e_hz = float(f[e_idx])
-        width = _log10_ratio_octaves(1000.0, e_hz)
+        width = _octaves_between(1000.0, e_hz)
+
         if width < min_transition_octaves - 1e-12:
             continue
         if width > max_transition_octaves + 1e-12:
@@ -274,7 +287,7 @@ def adaptive_masked_handoff(
             continue
 
         try:
-            bridge, bridge_diag = _evaluate_exact_c1_bridge(
+            _, bridge_diag = _evaluate_exact_c1_bridge(
                 float(base[h_idx]),
                 float(masked[e_idx]),
                 d0,
@@ -284,17 +297,24 @@ def adaptive_masked_handoff(
         except ValueError:
             continue
 
-        # Evaluate the validated polynomial on the caller's actual grid.
-        x_bridge = np.log2(f[h_idx : e_idx + 1] / 1000.0) / width
-        out = masked.copy()
-        out[h_idx : e_idx + 1] = (
-            bridge_diag["polynomial_a"] * x_bridge**3
-            + bridge_diag["polynomial_b"] * x_bridge**2
-            + bridge_diag["polynomial_c"] * x_bridge
-            + float(base[h_idx])
+        # Evaluate the exact validated polynomial on the ACTUAL production
+        # frequency grid between H and E. Do not insert the 257 validation
+        # samples into the target grid.
+        bridge_idx = np.arange(h_idx, e_idx + 1)
+        t = np.log2(f[bridge_idx] / 1000.0) / width
+        bridge = _evaluate_hermite_on_grid(
+            t,
+            float(base[h_idx]),
+            float(masked[e_idx]),
+            d0,
+            d1,
+            width,
         )
-        # Exact masked EarPrint after E.
-        out[e_idx + 1 :] = masked[e_idx + 1 :]
+
+        out = masked.copy()
+        out[h_idx:e_idx + 1] = bridge
+        out[:h_idx + 1] = base[:h_idx + 1]
+        out[e_idx + 1:] = masked[e_idx + 1:]
 
         diagnostics = {
             "status": "HANDOFF_ACCEPTED",
@@ -327,3 +347,12 @@ def adaptive_masked_handoff(
         "selection_rule": "earliest_feasible_E",
         "fail_safe": "BaseTarget",
     }
+
+
+# Backward-compatible aliases used by existing tests/tools.
+def _c1_monotone_bridge(y0, y1, d0, d1, span_octaves):
+    return _evaluate_exact_c1_bridge(y0, y1, d0, d1, span_octaves)
+
+
+def _monotone_bridge(y0, y1, d0, d1, span_octaves):
+    return _evaluate_exact_c1_bridge(y0, y1, d0, d1, span_octaves)
