@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-09-22T04:20:34.737596+00:00",
+  "generated_utc": "2026-09-22T04:31:59.145994+00:00",
   "engine": "IEM EarPrint Engine 3.4.0",
   "specification": "General_Prompt_EarPrint_8_MATH_LOCKED.txt",
   "specification_addendum": "General_Prompt_EarPrint_8_MATH_LOCKED_boundary_addendum.txt",
@@ -123,7 +123,7 @@
     "5128_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "54229133cde127b2a59b033bbb37abe5578d4e9d1336f3e00df60c77abf07696",
     "Harman_IE_2019_v2_Target__mask.txt": "7249aff3e07a4999d12eb8f43d7c6ab6d479a3cca9cce42b1a662d2b309f7eaf",
     "Harman_IE_2019_v2_Target__robust_target.txt": "98b9d23e8a38a56d35066bd5aa1eaf7f76ba43ba2cb6b09b2b7eb57c95d39a9f",
-    "Headphones.com_IEM_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "80235e0875ae74b1b498d70b985b957e718dca0f48c0ebba1d171e2f1632a27f",
+    "Headphones.com_IEM_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "8600e2bca6564799cf18557213a389782554df07371b2efc00ede4c20b0bedf5",
     "Headphones.com_IEM_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "8ce907c791138714c3746ad03d72880eca0b930938d70e983868fe8ca0bd784f",
     "IEF2025__mask.txt": "5158b5d31966905ed6333aad620ec1a142e67ca3585fc70640779f7cb9118e09",
     "IEF2025__robust_target.txt": "fc9241232e2516fb287611ef55ab71ea8dd71b5422f399918622906c085c0752",
@@ -135,6 +135,6 @@
     "Sonarworks_Target__robust_target.txt": "3a8a7cd2ebdb049bff83eb485899d3a82f11f60c0065e1df86505c98e79b4305",
     "SoundGuys__mask.txt": "19b77c21c45a9d17d59cecaaccdddee151d3d44b504e40dccdeaa361d8c8ea1a",
     "SoundGuys__robust_target.txt": "ddc68d1e31de44b450e65fae8bd637c97d80588155f5e2d8d634e53a59c2416e",
-    "pure_earprint_dynamic.txt": "0a0b4daa934b501f271179763925ea2a4a01e81ca5e269aef3d4edd7af7ed62b"
+    "pure_earprint_dynamic.txt": "9b1de9955b799b4cd3359976dd3b2a388f1e75387c82d9e592665b9a4211f931"
   }
 }
