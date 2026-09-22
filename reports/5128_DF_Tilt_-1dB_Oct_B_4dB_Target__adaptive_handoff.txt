@@ -7,7 +7,7 @@ transition_width_octaves: 0.3353104768919842
 endpoint_target_level_db: -9.808024936098672
 endpoint_masked_level_db: -7.659699458612446
 endpoint_target_slope_db_per_octave: 1.5552107510801092
-endpoint_masked_slope_db_per_octave: 6.5518710355489995
+endpoint_masked_slope_db_per_octave: 6.551871035549021
 destination_slope_stable: True
 destination_curvature_stable: True
 bridge_curvature_stable: True
@@ -28,8 +28,8 @@ curvature_optimization: False
 candidate_count: 1
 selected_candidate_rank: 1
 limited_start_slope_db_per_octave: 1.5552107510801092
-limited_end_slope_db_per_octave: 6.5518710355489995
+limited_end_slope_db_per_octave: 6.551871035549021
 analytic_derivative_min_db_per_octave: 1.5552107510801092
-analytic_derivative_max_db_per_octave: 6.551871035548988
+analytic_derivative_max_db_per_octave: 6.551871035549009
 smootherstep_endpoint_weight_pass: False
 smootherstep_endpoint_derivative_pass: False

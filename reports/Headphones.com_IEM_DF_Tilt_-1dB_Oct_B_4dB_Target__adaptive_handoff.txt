@@ -5,9 +5,9 @@ actual_handoff_hz: 1000.0
 transition_end_hz: 1261.648894259477
 transition_width_octaves: 0.3353104768919842
 endpoint_target_level_db: -7.420977440378685
-endpoint_masked_level_db: -5.282186086184858
+endpoint_masked_level_db: -5.282186086184859
 endpoint_target_slope_db_per_octave: 1.8547845588155425
-endpoint_masked_slope_db_per_octave: 6.567836437506977
+endpoint_masked_slope_db_per_octave: 6.567836437506998
 destination_slope_stable: True
 destination_curvature_stable: True
 bridge_curvature_stable: True
@@ -27,9 +27,9 @@ pareto_selection: False
 curvature_optimization: False
 candidate_count: 1
 selected_candidate_rank: 1
-limited_start_slope_db_per_octave: 1.8547845588155425
-limited_end_slope_db_per_octave: 6.567836437506977
-analytic_derivative_min_db_per_octave: 1.8547845588155425
-analytic_derivative_max_db_per_octave: 6.567836437506977
+limited_start_slope_db_per_octave: 1.8547845588155423
+limited_end_slope_db_per_octave: 6.5678364375069975
+analytic_derivative_min_db_per_octave: 1.8547845588155423
+analytic_derivative_max_db_per_octave: 6.567836437506993
 smootherstep_endpoint_weight_pass: False
 smootherstep_endpoint_derivative_pass: False
