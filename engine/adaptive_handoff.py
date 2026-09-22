@@ -152,6 +152,9 @@ def _evaluate_exact_c1_bridge(
         "continuity_pass": True,
         "derivative_root_count": int(len(roots)),
         "analytic_derivative_values": derivative_values.tolist(),
+        "polynomial_a": float(a),
+        "polynomial_b": float(b),
+        "polynomial_c": float(c),
     }
     return values, diagnostics
 
@@ -168,7 +171,11 @@ def _destination_stability(
     x = np.log2(f)
 
     e_x = x[e_index]
-    mask = (x >= e_x - stability_window_octaves) & (np.arange(len(x)) >= e_index)
+    mask = (
+        (x >= e_x - stability_window_octaves)
+        & (x <= e_x + stability_window_octaves)
+        & (np.arange(len(x)) >= e_index)
+    )
     idx = np.flatnonzero(mask)
     if len(idx) < 4:
         return False, False, float("nan"), float("nan")
@@ -182,11 +189,13 @@ def _destination_stability(
     slope_ref = float(local_slope[0])
     curvature_ref = float(local_curv[0])
 
+    slope_scale = max(abs(slope_ref), _EPS)
+    curvature_scale = max(abs(curvature_ref), _EPS)
     slope_stable = bool(
-        np.max(np.abs(local_slope - slope_ref)) <= 0.35
+        np.max(np.abs(local_slope - slope_ref)) / slope_scale <= 0.35
     )
     curvature_stable = bool(
-        np.max(np.abs(local_curv - curvature_ref)) <= 1.50
+        np.max(np.abs(local_curv - curvature_ref)) / curvature_scale <= 1.50
     )
     return slope_stable, curvature_stable, slope_ref, curvature_ref
 
@@ -275,8 +284,15 @@ def adaptive_masked_handoff(
         except ValueError:
             continue
 
+        # Evaluate the validated polynomial on the caller's actual grid.
+        x_bridge = np.log2(f[h_idx : e_idx + 1] / 1000.0) / width
         out = masked.copy()
-        out[: e_idx + 1] = base[: h_idx + 1].tolist() + bridge[1:].tolist()
+        out[h_idx : e_idx + 1] = (
+            bridge_diag["polynomial_a"] * x_bridge**3
+            + bridge_diag["polynomial_b"] * x_bridge**2
+            + bridge_diag["polynomial_c"] * x_bridge
+            + float(base[h_idx])
+        )
         # Exact masked EarPrint after E.
         out[e_idx + 1 :] = masked[e_idx + 1 :]
 
