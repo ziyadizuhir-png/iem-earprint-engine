@@ -1,6 +1,6 @@
 /* ============================================================
    MOONDROP PUDDING PEQ ENGINE
-   v2026-09-22.5
+   v2026-09-22.5.1
 
    Squiglink-style AutoEQ PK-only optimizer for MOONDROP Link.
 
@@ -27,7 +27,7 @@
   'use strict';
 
   const CFG = Object.freeze({
-    version: '2026-09-22.5',
+    version: '2026-09-22.5.1',
     bands: 10,
     minFreq: 20,
     maxFreq: 12000,
@@ -349,9 +349,9 @@
 
     while(allFilters.length<CFG.bands)allFilters.push({freq:0,gain:0,q:1});
 
-    const eq=applyFilters(rawA,allFilters,freqs);
+    const corrected=applyFilters(rawA,allFilters,freqs);
     const before=rawA.map((v,i)=>Math.abs(v-target[i]));
-    const after=rawA.map((v,i)=>Math.abs(v+eq[i]-target[i]));
+    const after=corrected.map((v,i)=>Math.abs(v-target[i]));
     const active=allFilters.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain);
 
     return {bands:allFilters,metrics:{
@@ -363,7 +363,7 @@
       maxCut:Math.min(...allFilters.map(b=>b.gain)),
       maxQ:Math.max(...allFilters.map(b=>b.q)),
       levelOffsetDb:aligned.offset,coverage:[lo,hi],
-      objective:distance(freqs,rawA.map((v,i)=>v+eq[i]),target)
+      objective:distance(freqs,corrected,target)
     }};
   }
 
@@ -502,12 +502,12 @@
 
   function downloadTxt(){
     if(!last){status('Generate the PEQ first.','warn');return;}
-    download(formatPEQ(last),'Pudding_'+stem(lastMeta?.target||'RobustTarget')+'_AutoEqInspired_PEQ.txt');
+    download(formatPEQ(last),'Pudding_'+stem(lastMeta?.target||'RobustTarget')+'_SquiglinkStyle_PEQ.txt');
   }
 
   function downloadJson(){
     if(!last){status('Generate the PEQ first.','warn');return;}
-    download(jsonPEQ(last,lastMeta),'Pudding_'+stem(lastMeta?.target||'RobustTarget')+'_AutoEqInspired_PEQ.json','application/json;charset=utf-8');
+    download(jsonPEQ(last,lastMeta),'Pudding_'+stem(lastMeta?.target||'RobustTarget')+'_SquiglinkStyle_PEQ.json','application/json;charset=utf-8');
   }
 
   function ensureUi(){
@@ -515,7 +515,7 @@
     const anchor=$('infoPanel')||$('modal');
     const html=`<div class="card section" id="puddingEngine">
       <div class="visualizer-head"><div><h2 style="margin:0">MOONDROP PUDDING PEQ Engine</h2>
-      <div class="visualizer-subtitle">AutoEq-inspired residual-peeling optimizer → 10-band MOONDROP Link PEQ</div></div>
+      <div class="visualizer-subtitle">Squiglink-style AutoEQ optimizer → 10-band MOONDROP Link PEQ</div></div>
       <div class="viz-actions"><button type="button" id="puddingRefreshSources">Refresh sources</button></div></div>
       <div class="formrow">
         <div class="field"><label for="puddingRawSelect">Raw Pudding</label><select id="puddingRawSelect"></select><input id="puddingRawFile" type="file" accept=".txt,text/plain" style="margin-top:6px"></div>
