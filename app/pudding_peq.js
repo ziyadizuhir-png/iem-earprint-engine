@@ -27,7 +27,7 @@
   'use strict';
 
   const CFG = Object.freeze({
-    version: '2026-09-22.5.4',
+    version: '2026-09-22.5.5',
     bands: 10,
     minFreq: 20,
     maxFreq: 12000,
@@ -398,6 +398,57 @@
     return work;
   }
 
+  // Ceiling-Aware v1: transactional re-optimization for filters pinned at
+  // the MOONDROP Link gain ceiling. Changes are accepted only if the FINAL
+  // solution improves globally and does not materially regress P95 or max error.
+  function ceilingAwareReoptimize(freqs,base,target,filters){
+    let work=filters.map(b=>({...b}));
+    const metric=(bands)=>{
+      const curve=applyFilters(base,bands,freqs);
+      const e=curve.map((v,i)=>Math.abs(v-target[i]));
+      return {rmse:rmse(e),p95:percentile(e,.95),max:Math.max(...e)};
+    };
+    const guard=(oldM,newM)=>
+      newM.rmse<=oldM.rmse-0.002 &&
+      newM.p95<=oldM.p95+0.05 &&
+      newM.max<=oldM.max+0.05;
+
+    const baseline=metric(work);
+    let bestWork=work.map(b=>({...b}));
+    let bestM=baseline;
+
+    // Search all ceiling-pinned filters from the same baseline, then commit
+    // the whole candidate only if the final global guard passes.
+    for(let pass=0;pass<2;pass++){
+      for(let i=0;i<work.length;i++){
+        if(Math.abs(work[i].gain-CFG.maxGain)>1e-9)continue;
+        let local=work[i], localM=metric(work);
+        const f0=work[i].freq;
+        const fGrid=logspace(
+          Math.max(CFG.minFreq,Math.max(7000,f0*0.82)),
+          Math.min(CFG.maxFreq,f0*1.18),25
+        );
+        for(const f of fGrid){
+          for(let q=CFG.minQ;q<=CFG.maxQ+1e-9;q+=0.1){
+            const trial=work.map(b=>({...b}));
+            trial[i]={freq:f,q,gain:CFG.maxGain};
+            const m=metric(trial);
+            if(m.rmse<localM.rmse-1e-10){
+              local=trial[i];localM=m;
+            }
+          }
+        }
+        work[i]=local;
+      }
+    }
+
+    const finalM=metric(work);
+    if(guard(baseline,finalM)){
+      return work;
+    }
+    return bestWork;
+  }
+
   function optimize(rawCurve,targetCurve){
     const lo=Math.max(CFG.minFreq,rawCurve[0][0],targetCurve[0][0]);
     const hi=Math.min(CFG.maxFreq,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
@@ -430,6 +481,8 @@
     for(let i=0;i<OPT_DELTAS.length;i++)allFilters=optimizePass(freqs,rawA,target,allFilters,i,false);
     allFilters=strip(allFilters);
     allFilters=mergeOverlappingFilters(freqs,rawA,target,allFilters);
+    allFilters=strip(allFilters);
+    allFilters=ceilingAwareReoptimize(freqs,rawA,target,allFilters);
     allFilters=strip(allFilters);
 
     while(allFilters.length<CFG.bands)allFilters.push({freq:0,gain:0,q:1});
@@ -590,12 +643,12 @@
 
   function downloadTxt(){
     if(!last){status('Generate the PEQ first.','warn');return;}
-    download(formatPEQ(last),'Pudding_'+stem(lastMeta?.target||'RobustTarget')+'_SquiglinkStyle_PEQ.txt');
+    download(formatPEQ(last),'Pudding_'+stem(lastMeta?.target||'RobustTarget')+'_SquiglinkStyle_CeilingAwareV1_PEQ.txt');
   }
 
   function downloadJson(){
     if(!last){status('Generate the PEQ first.','warn');return;}
-    download(jsonPEQ(last,lastMeta),'Pudding_'+stem(lastMeta?.target||'RobustTarget')+'_SquiglinkStyle_PEQ.json','application/json;charset=utf-8');
+    download(jsonPEQ(last,lastMeta),'Pudding_'+stem(lastMeta?.target||'RobustTarget')+'_SquiglinkStyle_CeilingAwareV1_PEQ.json','application/json;charset=utf-8');
   }
 
   function ensureUi(){
