@@ -27,7 +27,9 @@
   'use strict';
 
   const CFG = Object.freeze({
-    version: '2026-09-22.5.5',
+    version: '2026-09-22.6',
+    shapeGuard: true,
+    shapeGuardToleranceDb: 0.01,
     bands: 10,
     minFreq: 20,
     maxFreq: 12000,
@@ -449,6 +451,38 @@
     return bestWork;
   }
 
+  function shapeMetrics(freqs,curve,pure){
+    if(!pure||pure.length<2) return null;
+    const p1=interp(pure,1000);
+    const c1=gridInterp(freqs,curve,1000);
+    let s=0,n=0,ds=0,prevD=null,prevX=null;
+    for(let i=0;i<freqs.length;i++){
+      const f=freqs[i];
+      if(f<1000||f>12000) continue;
+      const x=Math.log(f);
+      const pv=interp(pure,f);
+      const d=(curve[i]-c1)-(pv-p1);
+      s+=d*d;n++;
+      if(prevD!==null){const dx=x-prevX;ds+=((d-prevD)/(dx||1))**2;}
+      prevD=d;prevX=x;
+    }
+    return {rms:n?Math.sqrt(s/n):0,derivative:n>1?Math.sqrt(ds/(n-1)):0};
+  }
+
+  function earprintShapeGuard(freqs,base,target,preFilters,finalFilters,pure){
+    if(!CFG.shapeGuard||!pure)return {filters:finalFilters,accepted:true,reason:'disabled_or_missing_reference'};
+    const preCurve=applyFilters(base,preFilters,freqs);
+    const finalCurve=applyFilters(base,finalFilters,freqs);
+    const pre=shapeMetrics(freqs,preCurve,pure);
+    const fin=shapeMetrics(freqs,finalCurve,pure);
+    if(!pre||!fin)return {filters:finalFilters,accepted:true,reason:'reference_unavailable'};
+    const delta=fin.rms-pre.rms;
+    if(delta<=CFG.shapeGuardToleranceDb+1e-12){
+      return {filters:finalFilters,accepted:true,reason:'shape_guard_pass',pre,fin,delta};
+    }
+    return {filters:preFilters.map(b=>({...b})),accepted:false,reason:'shape_guard_rollback',pre,fin,delta};
+  }
+
   function optimize(rawCurve,targetCurve){
     const lo=Math.max(CFG.minFreq,rawCurve[0][0],targetCurve[0][0]);
     const hi=Math.min(CFG.maxFreq,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
@@ -482,8 +516,17 @@
     allFilters=strip(allFilters);
     allFilters=mergeOverlappingFilters(freqs,rawA,target,allFilters);
     allFilters=strip(allFilters);
+    const preCeilingFilters=allFilters.map(b=>({...b}));
     allFilters=ceilingAwareReoptimize(freqs,rawA,target,allFilters);
     allFilters=strip(allFilters);
+
+    // EarPrint Shape Guard: Pure EarPrint is the personal authority.
+    // It is used only as a secondary transactional guard; the target remains
+    // the optimizer's numerical authority. A regression >0.01 dB RMS in the
+    // strict 1–12 kHz personal shape rolls back the preceding transformation.
+    const pureForGuard = window.__EARPRINT_PURE_CURVE__ || null;
+    const sg=earprintShapeGuard(freqs,rawA,target,preCeilingFilters,allFilters,pureForGuard);
+    allFilters=sg.filters;
 
     while(allFilters.length<CFG.bands)allFilters.push({freq:0,gain:0,q:1});
 
@@ -501,7 +544,14 @@
       maxCut:Math.min(...allFilters.map(b=>b.gain)),
       maxQ:Math.max(...allFilters.map(b=>b.q)),
       levelOffsetDb:aligned.offset,coverage:[lo,hi],
-      objective:distance(freqs,corrected,target)
+      objective:distance(freqs,corrected,target),
+      shapeGuardEnabled:CFG.shapeGuard,
+      shapeGuardToleranceDb:CFG.shapeGuardToleranceDb,
+      shapeGuardAccepted:sg.accepted,
+      shapeGuardReason:sg.reason,
+      shapeGuardDeltaDb:sg.delta===undefined?null:sg.delta,
+      shapeGuardPreRmsDb:sg.pre?sg.pre.rms:null,
+      shapeGuardFinalRmsDb:sg.fin?sg.fin.rms:null
     }};
   }
 
@@ -528,7 +578,7 @@
                  loss:'mean absolute error with errors below 0.1 dB ignored',
                  batches:'first batch <=7 kHz, second residual batch, then full two-direction optimization; response-aware overlap merge after final pass'},
       constraints:{bands:CFG.bands,frequency_hz:[CFG.minFreq,CFG.maxFreq],gain_db:[CFG.minGain,CFG.maxGain],q:[CFG.minQ,CFG.maxQ]},
-      source:meta,metrics:result.metrics,peq:result.bands
+      source:meta,metrics:result.metrics,earprint_shape_guard:{enabled:CFG.shapeGuard,tolerance_db:CFG.shapeGuardToleranceDb,reference:'output/pure_earprint_dynamic.txt',domain_hz:[1000,12000],transactional:true},peq:result.bands
     },null,2)+'\n';
   }
 
@@ -611,7 +661,12 @@
       const raw=await selected('puddingRawFile','puddingRawSelect',n=>'input/original_711/'+encodeURIComponent(n));
       const robust=$('puddingRobustTarget')?.checked!==false;
       const target=await selected('puddingTargetFile','puddingTargetSelect',n=>targetPath(n,robust));
-      status('Squiglink-style candidate search + two-batch optimization + filter cleanup…');
+      let pure=null;
+      if(CFG.shapeGuard){
+        try{ pure=parseCurveText(await readRepo('output/pure_earprint_dynamic.txt')); window.__EARPRINT_PURE_CURVE__=pure; }
+        catch(_){ window.__EARPRINT_PURE_CURVE__=null; }
+      }
+      status('Squiglink-style optimization + Ceiling-Aware v1 + EarPrint Shape Guard…');
       const result=optimize(raw.curve,target.curve);
       last=result;lastMeta={raw:raw.source,target:target.source,target_mode:robust?'Robust Target':'Original Target'};
       render(result,lastMeta);
@@ -633,12 +688,14 @@
       ['Active bands',result.metrics.activeBands+' / '+CFG.bands],
       ['Gain range',result.metrics.maxCut.toFixed(2)+' to '+(result.metrics.maxBoost>=0?'+':'')+result.metrics.maxBoost.toFixed(2)+' dB'],
       ['Max Q',result.metrics.maxQ.toFixed(2)],
-      ['Level alignment',(result.metrics.levelOffsetDb>=0?'+':'')+result.metrics.levelOffsetDb.toFixed(2)+' dB removed']
+      ['Level alignment',(result.metrics.levelOffsetDb>=0?'+':'')+result.metrics.levelOffsetDb.toFixed(2)+' dB removed'],
+      ['EarPrint Guard',result.metrics.shapeGuardEnabled?(result.metrics.shapeGuardAccepted?'PASS':'ROLLBACK'):'OFF'],
+      ['Shape Δ',result.metrics.shapeGuardDeltaDb===null?'—':(result.metrics.shapeGuardDeltaDb>=0?'+':'')+result.metrics.shapeGuardDeltaDb.toFixed(4)+' dB']
     ].map(x=>`<div class="summary"><span class="k">${esc(x[0])}</span><span class="v">${esc(x[1])}</span></div>`).join('');
 
     table.innerHTML='<div class="pudding-peq-head"><span>Band</span><span>Type</span><span>Freq</span><span>Gain</span><span>Q</span></div>'+
       result.bands.map((b,i)=>`<div class="pudding-peq-row"><span>${i+1}</span><span>PK</span><span>${fmt(b.freq)} Hz</span><span>${b.gain>=0?'+':''}${b.gain.toFixed(2)} dB</span><span>${b.q.toFixed(2)}</span></div>`).join('')+
-      '<div class="pudding-note">Squiglink-style PK only · 20 Hz–12 kHz · -12 to +3 dB · Q 0.50–2.00 · first batch ≤7 kHz · level-align 100 Hz–10 kHz · RBJ @ 48 kHz provisional.</div>';
+      '<div class="pudding-note">Squiglink-style PK only · 20 Hz–12 kHz · -12 to +3 dB · Q 0.50–2.00 · first batch ≤7 kHz · level-align 100 Hz–10 kHz · RBJ @ 48 kHz provisional · EarPrint Shape Guard 0.01 dB transactional rollback.</div>';
   }
 
   function downloadTxt(){
@@ -656,13 +713,13 @@
     const anchor=$('infoPanel')||$('modal');
     const html=`<div class="card section" id="puddingEngine">
       <div class="visualizer-head"><div><h2 style="margin:0">MOONDROP PUDDING PEQ Engine</h2>
-      <div class="visualizer-subtitle">Squiglink-style AutoEQ optimizer → 10-band MOONDROP Link PEQ</div></div>
+      <div class="visualizer-subtitle">Squiglink-style AutoEQ → Ceiling-Aware v1 → EarPrint Shape Guard → 10-band MOONDROP Link PEQ</div></div>
       <div class="viz-actions"><button type="button" id="puddingRefreshSources">Refresh sources</button></div></div>
       <div class="formrow">
         <div class="field"><label for="puddingRawSelect">Raw Pudding 711</label><select id="puddingRawSelect"></select><input id="puddingRawFile" type="file" accept=".txt,text/plain" style="margin-top:6px"></div>
         <div class="field"><label for="puddingTargetSelect">Target</label><select id="puddingTargetSelect"></select><input id="puddingTargetFile" type="file" accept=".txt,text/plain" style="margin-top:6px"></div>
       </div>
-      <div class="inline" style="margin-top:8px"><label class="toggle"><input id="puddingRobustTarget" type="checkbox" checked> Use Robust Target</label>
+      <div class="inline" style="margin-top:8px"><label class="toggle"><input id="puddingRobustTarget" type="checkbox" checked> Use Robust Target</label><span class="status small">EarPrint Shape Guard: ON · tolerance 0.01 dB · Pure EarPrint 1–12 kHz</span>
       <button type="button" class="primary" id="generatePuddingPEQ">Generate Pudding PEQ</button>
       <button type="button" id="downloadPuddingPEQ">Download TXT</button><button type="button" id="downloadPuddingJSON">Download JSON</button></div>
       <div id="puddingStatus" class="status small" style="margin-top:8px"></div>
