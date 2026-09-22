@@ -27,7 +27,7 @@
   'use strict';
 
   const CFG = Object.freeze({
-    version: '2026-09-22.5.2',
+    version: '2026-09-22.5.4',
     bands: 10,
     minFreq: 20,
     maxFreq: 12000,
@@ -156,15 +156,6 @@
     const i=Math.max(1,lo);
     const t=(Math.log(f)-Math.log(freqs[i-1]))/(Math.log(freqs[i])-Math.log(freqs[i-1]));
     return vals[i-1]+(vals[i]-vals[i-1])*t;
-  }
-
-  function alignLevel(freqs,raw,target){
-    let s=0,n=0;
-    for(let i=0;i<freqs.length;i++){
-      if(freqs[i]>=CFG.alignLo&&freqs[i]<=CFG.alignHi){s+=raw[i]-target[i];n++;}
-    }
-    const offset=n?s/n:0;
-    return {offset,curve:raw.map(v=>v-offset)};
   }
 
   function alignLevel(freqs,raw,target){
@@ -315,6 +306,98 @@
     return filters;
   }
 
+  function responseRmse(freqs,curve,target){
+    if(!curve.length)return 0;
+    let s=0;
+    for(let i=0;i<curve.length;i++){const e=curve[i]-target[i];s+=e*e;}
+    return Math.sqrt(s/curve.length);
+  }
+
+  /* Response-aware cleanup:
+     Squiglink's stock merge condition also requires nearly identical Q.
+     For Pudding, two nearby same-sign PK filters can still be functionally
+     redundant when their combined transfer function is well represented by
+     one bounded PK filter. Test the actual response instead of comparing Q only. */
+  function fitMergedFilter(freqs,pair){
+    const [a,b]=pair;
+    const lo=Math.max(CFG.minFreq,Math.min(a.freq,b.freq)/1.7);
+    const hi=Math.min(CFG.maxFreq,Math.max(a.freq,b.freq)*1.7);
+    const idx=[];
+    for(let i=0;i<freqs.length;i++)if(freqs[i]>=lo&&freqs[i]<=hi)idx.push(i);
+    if(idx.length<12)return null;
+
+    const ra=rbj(freqs,a), rb=rbj(freqs,b);
+    const combined=idx.map(i=>ra[i]+rb[i]);
+    const fcLo=Math.max(CFG.minFreq,Math.min(a.freq,b.freq)*0.9);
+    const fcHi=Math.min(CFG.maxFreq,Math.max(a.freq,b.freq)*1.1);
+    const fGrid=logspace(fcLo,fcHi,18);
+    let best=null;
+    for(const fc of fGrid){
+      for(let q=CFG.minQ;q<=CFG.maxQ+1e-9;q+=0.1){
+        for(let gain=CFG.minGain;gain<=CFG.maxGain+1e-9;gain+=0.2){
+          const rr=rbj(freqs,{freq:fc,q,gain});
+          let se=0,mx=0;
+          for(let j=0;j<idx.length;j++){
+            const d=Math.abs(rr[idx[j]]-combined[j]);
+            se+=d*d; if(d>mx)mx=d;
+          }
+          const rms=Math.sqrt(se/idx.length);
+          if(!best||rms<best.rms)best={freq:fc,q,gain,rms,max:mx};
+        }
+      }
+    }
+    if(!best||best.rms>0.12||best.max>0.25)return null;
+    return best;
+  }
+
+  function refineMergedGlobal(freqs,base,target,others,seed){
+    let best=seed;
+    let bestScore=responseRmse(freqs,applyFilters(base,others.concat([seed]),freqs),target);
+    const fGrid=logspace(Math.max(CFG.minFreq,seed.freq*0.95),Math.min(CFG.maxFreq,seed.freq*1.05),15);
+    const qLo=Math.max(CFG.minQ,seed.q-0.3), qHi=Math.min(CFG.maxQ,seed.q+0.3);
+    const gLo=Math.max(CFG.minGain,seed.gain-0.8), gHi=Math.min(CFG.maxGain,seed.gain+0.8);
+    for(const freq of fGrid){
+      for(let q=qLo;q<=qHi+1e-9;q+=0.1){
+        for(let gain=gLo;gain<=gHi+1e-9;gain+=0.1){
+          const cand={freq,q,gain};
+          const score=responseRmse(freqs,applyFilters(base,others.concat([cand]),freqs),target);
+          if(score<bestScore){best=cand;bestScore=score;}
+        }
+      }
+    }
+    return {filter:best,score:bestScore};
+  }
+
+  function mergeOverlappingFilters(freqs,base,target,filters){
+    let work=filters.slice().sort((a,b)=>a.freq-b.freq);
+    let changed=true;
+    while(changed){
+      changed=false;
+      for(let i=0;i<work.length-1;i++){
+        const a=work[i],b=work[i+1];
+        if(Math.sign(a.gain)!==Math.sign(b.gain))continue;
+        if(Math.max(a.freq,b.freq)/Math.min(a.freq,b.freq)>1.35)continue;
+
+        const seed=fitMergedFilter(freqs,[a,b]);
+        if(!seed)continue;
+
+        const others=work.filter((_,j)=>j!==i&&j!==i+1);
+        const oldScore=responseRmse(freqs,applyFilters(base,work,freqs),target);
+        const refined=refineMergedGlobal(freqs,base,target,others,seed);
+        const candidate=others.concat([refined.filter]).sort((x,y)=>x.freq-y.freq);
+
+        // Only accept a merge when the actual global response is no worse
+        // than the pre-merge response within a very small tolerance.
+        if(refined.score<=oldScore+0.003){
+          work=candidate;
+          changed=true;
+          break;
+        }
+      }
+    }
+    return work;
+  }
+
   function optimize(rawCurve,targetCurve){
     const lo=Math.max(CFG.minFreq,rawCurve[0][0],targetCurve[0][0]);
     const hi=Math.min(CFG.maxFreq,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
@@ -345,6 +428,8 @@
 
     let allFilters=firstFilters.concat(secondFilters);
     for(let i=0;i<OPT_DELTAS.length;i++)allFilters=optimizePass(freqs,rawA,target,allFilters,i,false);
+    allFilters=strip(allFilters);
+    allFilters=mergeOverlappingFilters(freqs,rawA,target,allFilters);
     allFilters=strip(allFilters);
 
     while(allFilters.length<CFG.bands)allFilters.push({freq:0,gain:0,q:1});
@@ -381,13 +466,14 @@
       device:'MOONDROP PUDDING',
       engine:'Squiglink-style AutoEQ PK-only optimizer',
       version:CFG.version,
+      cleanup:{method:'response-aware same-sign adjacent-filter merge',local_rms_limit_db:0.12,local_max_limit_db:0.25,global_rmse_tolerance_db:0.003},
       filter_type:'PK',
       implementation:'MOONDROP Link-compatible constraint set',
       dsp_model:{type:'RBJ peaking biquad',sample_rate_hz:CFG.sampleRate,status:'PROVISIONAL'},
       level_alignment:{method:'mean raw-target error over 100 Hz–10 kHz',removed_offset_db:result.metrics.levelOffsetDb},
       optimizer:{initialization:'Squiglink candidate segmentation + geometric-centre Fc + bandwidth-derived Q',
                  loss:'mean absolute error with errors below 0.1 dB ignored',
-                 batches:'first batch <=7 kHz, second residual batch, then full two-direction optimization'},
+                 batches:'first batch <=7 kHz, second residual batch, then full two-direction optimization; response-aware overlap merge after final pass'},
       constraints:{bands:CFG.bands,frequency_hz:[CFG.minFreq,CFG.maxFreq],gain_db:[CFG.minGain,CFG.maxGain],q:[CFG.minQ,CFG.maxQ]},
       source:meta,metrics:result.metrics,peq:result.bands
     },null,2)+'\n';
