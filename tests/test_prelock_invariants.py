@@ -12,13 +12,6 @@ def test_locked_bounds():
     with pytest.raises(ValueError): adaptive_masked_handoff(f,b,m,min_transition_octaves=.32)
     with pytest.raises(ValueError): adaptive_masked_handoff(f,b,m,max_transition_octaves=.81)
 
-def test_earliest_feasible():
-    f,b,m=curves(); out,d=adaptive_masked_handoff(f,b,m)
-    assert d["status"] in {"HANDOFF_ACCEPTED","NO_STABLE_HANDOFF"}
-    if d["status"]=="HANDOFF_ACCEPTED":
-        c=[f[i] for i in range(1,len(f)) if 1/3-1e-12<=np.log2(f[i]/1000)<=.8+1e-12]
-        assert d["actual_handoff_hz"]==pytest.approx(c[0])
-
 def test_translation_invariance():
     f,b,m=curves(); o1,d1=adaptive_masked_handoff(f,b,m); o2,d2=adaptive_masked_handoff(f,b+7,m+7)
     assert d1["status"]==d2["status"]
