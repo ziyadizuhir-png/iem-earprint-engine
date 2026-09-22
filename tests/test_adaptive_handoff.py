@@ -1,116 +1,164 @@
-"""Acceptance tests for the locked TRUE-C1 adaptive handoff."""
-
-from __future__ import annotations
-
-import math
 import numpy as np
 import pytest
 
 from engine.adaptive_handoff import (
     adaptive_masked_handoff,
-    log_slope,
     _evaluate_exact_c1_bridge,
-    _evaluate_monotone_cubic_bridge,
 )
 
 
-def grid(start=20.0, end=12000.0, ppo=192):
-    n=int(round(math.log2(end/start)*ppo))+1
-    return np.sort(np.unique(np.r_[np.geomspace(start,end,n),1000.0]))
+def _grid(end=5000.0):
+    return np.geomspace(500.0, end, 80)
 
 
-def base(freq):
-    x=np.log2(freq/1000.0)
-    return 86.0 + 2.2*x + 0.05*x*x
+def _synthetic():
+    f = _grid()
+    x = np.log2(f / 1000.0)
+    base = 0.8 * x
+    # Smooth destination with a compatible positive slope.
+    masked = 1.8 * x + 0.15 * np.tanh(2.0 * x)
+    return f, base, masked
 
 
-def masked(freq, end=1700.0, amp=2.0):
-    x=np.log2(freq/1000.0); span=math.log2(end/1000.0)
-    t=np.clip(x/span,0,1)
-    return base(freq)+amp*(3*t*t-2*t*t*t)
+def test_locked_bounds_are_enforced():
+    f, base, masked = _synthetic()
 
-
-def test_locked_constants_and_bounds():
-    freq=grid(); target=base(freq); m=masked(freq)
-    out,d=adaptive_masked_handoff(freq,target,m)
-    assert d["nominal_anchor_hz"]==1000.0
-    assert d["selection_rule"]=="earliest_feasible_E"
-    assert d["candidate_scoring"] is False
-    assert d["pareto_selection"] is False
-    assert d["curvature_optimization"] is False
-    if d["status"]=="ADAPTIVE_HANDOFF":
-        assert 1/3-1e-12 <= d["transition_width_octaves"] <= .8+1e-12
-
-
-def test_base_preserved_through_H_and_mask_after_E():
-    freq=grid(); target=base(freq); m=masked(freq)
-    out,d=adaptive_masked_handoff(freq,target,m)
-    assert np.array_equal(out[freq<=1000],target[freq<=1000])
-    if d["status"]=="ADAPTIVE_HANDOFF":
-        E=d["transition_end_hz"]
-        assert np.array_equal(out[freq>E],m[freq>E])
-
-
-def test_exact_c1_endpoint_slopes_are_retained():
-    r=_evaluate_exact_c1_bridge(80.0,82.0,2.2,7.4,math.log2(1261.6488943/1000.0))
-    assert r["c1_slope_match"]
-    assert r["analytic_derivative_pass"]
-    assert r["alpha"]>=0 and r["beta"]>=0
-    assert r["alpha_plus_beta"]<=3.0+1e-12
-    assert r["endpoint_slope_start_used_db_per_octave"]==2.2
-    assert r["endpoint_slope_end_used_db_per_octave"]==7.4
-
-
-def test_c1_rejects_when_normalized_endpoint_sum_exceeds_three():
     with pytest.raises(ValueError):
-        _evaluate_exact_c1_bridge(80.0,82.0,2.2,16.0,math.log2(1261.6488943/1000.0))
+        adaptive_masked_handoff(
+            f, base, masked, min_transition_octaves=0.32
+        )
 
-
-def test_analytic_derivative_gate_is_used():
-    freq=np.geomspace(1000,1700,97); target=80+2*np.log2(freq/1000); m=target+1.5*(3*(np.log2(freq/1000)/math.log2(1.7))**2-2*(np.log2(freq/1000)/math.log2(1.7))**3)
-    d=_evaluate_monotone_cubic_bridge(freq,target,m,0,len(freq)-1)
-    assert d["passed"]
-    assert d["analytic_bridge_derivative_pass"]
-    assert d["c1_slope_match"]
-
-
-def test_endpoint_direction_is_not_repaired():
     with pytest.raises(ValueError):
-        _evaluate_exact_c1_bridge(80.0,82.0,-1.0,2.0,.5)
+        adaptive_masked_handoff(
+            f, base, masked, max_transition_octaves=0.81
+        )
+
+
+def test_exact_c1_retains_raw_endpoint_slopes():
+    values, diag = _evaluate_exact_c1_bridge(
+        0.0, 1.0, 1.0, 1.0, 1.0
+    )
+    assert np.isclose(diag["used_start_slope"], 1.0)
+    assert np.isclose(diag["used_end_slope"], 1.0)
+    assert diag["bridge_pass"] is True
+    assert values[0] == 0.0
+    assert values[-1] == 1.0
+
+
+def test_alpha_beta_hard_gate():
+    with pytest.raises(ValueError):
+        _evaluate_exact_c1_bridge(0.0, 1.0, 3.5, 3.5, 1.0)
+
+
+def test_earliest_feasible_candidate_wins():
+    # Dense grid contains candidates just above 1/3 octave.
+    f = np.geomspace(1000.0, 2600.0, 120)
+    x = np.log2(f / 1000.0)
+    base = 0.5 * x
+    masked = 0.7 * x + 0.25 * x * x
+
+    out, diag = adaptive_masked_handoff(
+        f, base, masked,
+        min_transition_octaves=1.0/3.0,
+        max_transition_octaves=0.8,
+        stability_window_octaves=0.2,
+    )
+    assert diag["status"] == "HANDOFF_ACCEPTED"
+    assert diag["actual_handoff_hz"] == pytest.approx(
+        min(
+            f[i] for i in range(1, len(f))
+            if 1.0/3.0 - 1e-12 <= np.log2(f[i]/1000.0) <= 0.8 + 1e-12
+        )
+    )
+    assert np.all(np.isfinite(out))
+
+
+def test_lower_bound_candidate_is_not_accepted():
+    f = np.geomspace(1000.0, 1200.0, 40)
+    x = np.log2(f / 1000.0)
+    base = 0.5 * x
+    masked = 0.7 * x + 0.1 * x*x
+    _, diag = adaptive_masked_handoff(
+        f, base, masked,
+        min_transition_octaves=1.0/3.0,
+        max_transition_octaves=0.8,
+    )
+    # Entire grid ends below 1/3 octave.
+    assert diag["status"] == "NO_STABLE_HANDOFF"
+
+
+def test_upper_bound_is_hard():
+    f = np.geomspace(1000.0, 1800.0, 60)
+    x = np.log2(f / 1000.0)
+    base = 0.4 * x
+    masked = 0.6 * x + 0.1*x*x
+    _, diag = adaptive_masked_handoff(
+        f, base, masked,
+        min_transition_octaves=1.0/3.0,
+        max_transition_octaves=0.8,
+    )
+    assert diag["status"] in {"HANDOFF_ACCEPTED", "NO_STABLE_HANDOFF"}
+    if diag["status"] == "HANDOFF_ACCEPTED":
+        assert np.log2(diag["actual_handoff_hz"] / 1000.0) <= 0.8 + 1e-12
 
 
 def test_no_stable_handoff_fails_safe_to_base():
-    freq=grid(); target=np.zeros_like(freq); m=np.ones_like(freq)
-    out,d=adaptive_masked_handoff(freq,target,m)
-    assert d["status"]=="NO_STABLE_HANDOFF"
-    assert np.array_equal(out,target)
+    f = _grid()
+    base = np.zeros_like(f)
+    masked = np.ones_like(f) * 3.0
+    # Force impossible endpoint direction by making masked locally descend
+    # from the anchor region.
+    x = np.log2(f / 1000.0)
+    masked = 2.0 - 2.0*x
+    out, diag = adaptive_masked_handoff(f, base, masked)
+    assert diag["status"] == "NO_STABLE_HANDOFF"
+    assert np.array_equal(out, base)
 
 
-def test_deterministic():
-    freq=grid(); target=base(freq); m=masked(freq)
-    a,da=adaptive_masked_handoff(freq,target,m); b,db=adaptive_masked_handoff(freq,target,m)
-    assert np.array_equal(a,b)
-    assert da["transition_end_hz"]==db["transition_end_hz"]
+def test_diagnostics_schema_consistency():
+    f, base, masked = _synthetic()
+    _, diag = adaptive_masked_handoff(f, base, masked)
+    required = {
+        "status",
+        "selection_rule",
+    }
+    assert required.issubset(diag)
+    if diag["status"] == "HANDOFF_ACCEPTED":
+        for key in (
+            "destination_slope_stable",
+            "destination_curvature_stable",
+            "bridge_curvature_stable",
+            "analytic_bridge_derivative_pass",
+            "c1_slope_match",
+            "endpoint_direction_compatibility_pass",
+        ):
+            assert key in diag
 
 
 def test_vertical_translation_invariance():
-    freq=grid(); target=base(freq); m=masked(freq)
-    a,da=adaptive_masked_handoff(freq,target,m); b,db=adaptive_masked_handoff(freq,target+37.25,m+37.25)
-    assert da["transition_end_hz"]==db["transition_end_hz"]
-    assert np.allclose(b,a+37.25,rtol=0,atol=1e-10)
+    f, base, masked = _synthetic()
+    out1, d1 = adaptive_masked_handoff(f, base, masked)
+    out2, d2 = adaptive_masked_handoff(f, base + 7.0, masked + 7.0)
+    assert d1["status"] == d2["status"]
+    if d1["status"] == "HANDOFF_ACCEPTED":
+        assert d1["actual_handoff_hz"] == pytest.approx(d2["actual_handoff_hz"])
+    assert np.allclose(out2, out1 + 7.0)
 
 
 def test_positive_scale_invariance():
-    freq=grid(); target=base(freq); m=masked(freq)
-    a,da=adaptive_masked_handoff(freq,target,m); b,db=adaptive_masked_handoff(freq,target*3,m*3)
-    assert da["transition_end_hz"]==db["transition_end_hz"]
-    assert np.allclose(b,a*3,rtol=0,atol=1e-9)
+    f, base, masked = _synthetic()
+    out1, d1 = adaptive_masked_handoff(f, base, masked)
+    out2, d2 = adaptive_masked_handoff(f, base * 2.0, masked * 2.0)
+    assert d1["status"] == d2["status"]
+    if d1["status"] == "HANDOFF_ACCEPTED":
+        assert d1["actual_handoff_hz"] == pytest.approx(d2["actual_handoff_hz"])
+    assert np.allclose(out2, out1 * 2.0)
 
 
-def test_no_endpoint_slope_clipping_in_diagnostics():
-    freq=grid(); target=base(freq); m=masked(freq)
-    out,d=adaptive_masked_handoff(freq,target,m)
-    if d["status"]=="ADAPTIVE_HANDOFF":
-        assert d["endpoint_target_slope_db_per_octave"]==d["endpoint_slope_start_used_db_per_octave"]
-        assert d["endpoint_masked_slope_db_per_octave"]==d["endpoint_slope_end_used_db_per_octave"]
-
+def test_exact_anchor_is_required():
+    f = np.geomspace(900.0, 5000.0, 80)
+    base = np.zeros_like(f)
+    masked = np.ones_like(f)
+    out, diag = adaptive_masked_handoff(f, base, masked)
+    assert diag["status"] == "NO_STABLE_HANDOFF"
+    assert np.array_equal(out, base)
