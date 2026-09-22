@@ -27,7 +27,7 @@
   'use strict';
 
   const CFG = Object.freeze({
-    version: '2026-09-22.5.1',
+    version: '2026-09-22.5.2',
     bands: 10,
     minFreq: 20,
     maxFreq: 12000,
@@ -432,10 +432,12 @@
 
   async function populate(){
     try{
-      const d=await ghList('input/preferred');
-      const names=Array.isArray(d)?d.filter(x=>x.name&&/\.txt$/i.test(x.name)).map(x=>x.name):[];
-      fill($('puddingRawSelect'),names,names.find(x=>/^Pudding\.txt$/i.test(x))||names[0]||'');
-      status(names.length?'Raw IEM sources loaded.':'No raw IEM sources found.');
+      const d=await ghList('input/original_711');
+      const all=Array.isArray(d)?d.filter(x=>x.name&&/\.txt$/i.test(x.name)).map(x=>x.name):[];
+      const names=all.filter(x=>/pudding/i.test(x));
+      const preferred=names.find(x=>/^moondrop pudding fr\.txt$/i.test(x))||names[0]||'';
+      fill($('puddingRawSelect'),names,preferred);
+      status(names.length?'Raw 711 Pudding source loaded from input/original_711/.':'No Pudding 711 source found in input/original_711.');
     }catch(e){status(e.message,'warn');}
     try{
       const d=await ghList('input/targets');
@@ -467,7 +469,7 @@
     if(button){button.disabled=true;button.textContent='Optimizing…';}
     status('Preparing raw Pudding + target…');
     try{
-      const raw=await selected('puddingRawFile','puddingRawSelect',n=>'input/preferred/'+encodeURIComponent(n));
+      const raw=await selected('puddingRawFile','puddingRawSelect',n=>'input/original_711/'+encodeURIComponent(n));
       const robust=$('puddingRobustTarget')?.checked!==false;
       const target=await selected('puddingTargetFile','puddingTargetSelect',n=>targetPath(n,robust));
       status('Squiglink-style candidate search + two-batch optimization + filter cleanup…');
@@ -518,7 +520,7 @@
       <div class="visualizer-subtitle">Squiglink-style AutoEQ optimizer → 10-band MOONDROP Link PEQ</div></div>
       <div class="viz-actions"><button type="button" id="puddingRefreshSources">Refresh sources</button></div></div>
       <div class="formrow">
-        <div class="field"><label for="puddingRawSelect">Raw Pudding</label><select id="puddingRawSelect"></select><input id="puddingRawFile" type="file" accept=".txt,text/plain" style="margin-top:6px"></div>
+        <div class="field"><label for="puddingRawSelect">Raw Pudding 711</label><select id="puddingRawSelect"></select><input id="puddingRawFile" type="file" accept=".txt,text/plain" style="margin-top:6px"></div>
         <div class="field"><label for="puddingTargetSelect">Target</label><select id="puddingTargetSelect"></select><input id="puddingTargetFile" type="file" accept=".txt,text/plain" style="margin-top:6px"></div>
       </div>
       <div class="inline" style="margin-top:8px"><label class="toggle"><input id="puddingRobustTarget" type="checkbox" checked> Use Robust Target</label>
