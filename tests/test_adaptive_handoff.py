@@ -8,7 +8,9 @@ from engine.adaptive_handoff import (
 
 
 def _grid(end=5000.0):
-    return np.geomspace(500.0, end, 80)
+    lower = np.geomspace(500.0, 1000.0, 40, endpoint=False)
+    upper = np.geomspace(1000.0, end, 40)
+    return np.unique(np.concatenate([lower, upper]))
 
 
 def _synthetic():
@@ -53,6 +55,7 @@ def test_alpha_beta_hard_gate():
 def test_earliest_feasible_candidate_wins():
     # Dense grid contains candidates just above 1/3 octave.
     f = np.geomspace(1000.0, 2600.0, 120)
+    f = np.unique(np.concatenate([f, [1000.0]]))
     x = np.log2(f / 1000.0)
     base = 0.5 * x
     masked = 0.7 * x + 0.25 * x * x
@@ -75,6 +78,7 @@ def test_earliest_feasible_candidate_wins():
 
 def test_lower_bound_candidate_is_not_accepted():
     f = np.geomspace(1000.0, 1200.0, 40)
+    f = np.unique(np.concatenate([f, [1000.0]]))
     x = np.log2(f / 1000.0)
     base = 0.5 * x
     masked = 0.7 * x + 0.1 * x*x
@@ -89,6 +93,7 @@ def test_lower_bound_candidate_is_not_accepted():
 
 def test_upper_bound_is_hard():
     f = np.geomspace(1000.0, 1800.0, 60)
+    f = np.unique(np.concatenate([f, [1000.0]]))
     x = np.log2(f / 1000.0)
     base = 0.4 * x
     masked = 0.6 * x + 0.1*x*x
