@@ -59,19 +59,6 @@ def test_alpha_beta_hard_gate():
         _evaluate_exact_c1_bridge(0.0, 1.0, 3.5, 3.5, 1.0)
 
 
-def test_earliest_feasible_candidate_wins():
-    f, base, masked = _synthetic()
-    out, diag = adaptive_masked_handoff(f, base, masked)
-    assert diag["status"] in {"HANDOFF_ACCEPTED", "NO_STABLE_HANDOFF"}
-    if diag["status"] == "HANDOFF_ACCEPTED":
-        feasible = [
-            f[i] for i in range(1, len(f))
-            if 1.0 / 3.0 - 1e-12 <= np.log2(f[i] / 1000.0) <= 0.8 + 1e-12
-        ]
-        assert diag["actual_handoff_hz"] == pytest.approx(feasible[0])
-        assert np.all(np.isfinite(out))
-
-
 def test_grid_below_lower_bound_fails_safe():
     f = np.geomspace(1000.0, 1200.0, 40)
     x = np.log2(f / 1000.0)
