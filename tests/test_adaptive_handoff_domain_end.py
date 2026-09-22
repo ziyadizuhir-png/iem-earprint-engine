@@ -96,6 +96,7 @@ def test_diagnostics_schema_consistency():
     f, base, masked = _synthetic()
     _, diag = adaptive_masked_handoff(f, base, masked)
     assert {"status", "selection_rule", "domain_end_hz"}.issubset(diag)
+    assert diag["domain_end_hz"] is None
     if diag["status"] == "HANDOFF_ACCEPTED":
         for key in (
             "destination_slope_stable",
