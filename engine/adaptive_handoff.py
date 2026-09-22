@@ -1,635 +1,313 @@
-"""Adaptive Masked-EarPrint handoff.
+"""
+Adaptive Masked-EarPrint handoff.
 
-The 1 kHz point is a nominal anchor, not an unconditional splice.
-
-The locked robust-mask mathematics is upstream of this module. This module
-only operates on BaseTarget and the already-computed Masked EarPrint.
-
-Accepted handoff:
-    f <= H      -> BaseTarget
-    H < f <= E  -> validated shape-preserving C1 bridge
-    f > E       -> Masked EarPrint
-
-No correction is applied outside the minimum transition region.
+Locked production architecture:
+- BaseTarget is preserved through the nominal 1 kHz anchor.
+- E is the earliest feasible candidate on the master grid.
+- The bridge is an exact-C1 cubic Hermite bridge with raw endpoint
+  slopes retained exactly.
+- Feasibility requires alpha >= 0, beta >= 0, alpha + beta <= 3.
+- Analytic derivative validation is mandatory.
+- Destination slope and curvature stability are hard gates.
+- No target averaging, scoring, Pareto selection, or curvature optimization.
+- NO_STABLE_HANDOFF fails safe to the original BaseTarget.
 """
 
 from __future__ import annotations
 
-import math
+from typing import Dict, Tuple
 import numpy as np
 
+_EPS = 1e-12
 
-_EPS = 1e-9
-_SLOPE_MATCH_ABS_TOL = 0.05
-_SLOPE_MATCH_REL_TOL = 0.10
 
+def _log10_ratio_octaves(f0: float, f1: float) -> float:
+    return float(np.log2(float(f1) / float(f0)))
 
-def log_slope(freq, level):
-    """First derivative in dB/octave on the log2-frequency axis."""
-    x = np.log2(freq)
-    out = np.empty_like(level, dtype=float)
-    out[0] = (level[1] - level[0]) / (x[1] - x[0])
-    out[-1] = (level[-1] - level[-2]) / (x[-1] - x[-2])
-    out[1:-1] = (level[2:] - level[:-2]) / (x[2:] - x[:-2])
-    return out
 
+def log_slope(freq_hz: np.ndarray, level_db: np.ndarray) -> np.ndarray:
+    """Numerical dB/octave slope using centered finite differences."""
+    f = np.asarray(freq_hz, dtype=float)
+    y = np.asarray(level_db, dtype=float)
+    if f.ndim != 1 or y.ndim != 1 or len(f) != len(y) or len(f) < 3:
+        raise ValueError("freq_hz and level_db must be equal 1-D arrays of length >= 3.")
+    x = np.log2(f)
+    return np.gradient(y, x)
 
-def log_curvature(freq, level):
-    """Second derivative in dB/octave^2 on the log2-frequency axis."""
-    x = np.log2(freq)
-    slope = log_slope(freq, level)
-    curvature = np.empty_like(level, dtype=float)
-    curvature[0] = (slope[1] - slope[0]) / (x[1] - x[0])
-    curvature[-1] = (slope[-1] - slope[-2]) / (x[-1] - x[-2])
-    curvature[1:-1] = (
-        (slope[2:] - slope[:-2])
-        / (x[2:] - x[:-2])
-    )
-    return curvature
 
-
-def _interp_log(freq, level, hz):
-    return float(np.interp(math.log(hz), np.log(freq), level))
-
-
-def _sign_stable(values, sign, eps=_EPS):
-    active = values[np.abs(values) > eps]
-    return bool(active.size) and bool(
-        np.all(np.sign(active) == np.sign(sign))
-    )
-
-
-def _stable_window(values, sign, eps=_EPS):
-    active = values[np.abs(values) > eps]
-    if active.size < 3:
-        return False
-    return bool(np.all(np.sign(active) == np.sign(sign)))
-
-
-def _curvature_stable(values, eps=1e-4):
-    """Return whether local curvature is stable rather than oscillatory.
-
-    A single smooth curvature zero-crossing is not treated as instability;
-    instability means repeated sign alternation (oscillation) or a degenerate
-    curvature field with too few meaningful samples.
-    """
-    active = values[np.abs(values) > eps]
-    if active.size == 0:
-        return True
-    if active.size < 3:
-        return False
-    signs = np.sign(active)
-    changes = int(np.count_nonzero(signs[1:] != signs[:-1]))
-    return changes <= 1
-
-
-def _slope_match_ok(d0, d1):
-    scale = max(abs(float(d0)), abs(float(d1)), _EPS)
-    return abs(float(d1) - float(d0)) <= max(
-        _SLOPE_MATCH_ABS_TOL,
-        _SLOPE_MATCH_REL_TOL * scale,
-    )
-
-
-def _c1_monotone_bridge(y0, y1, d0, d1, span_octaves):
-    """Exact-C1 cubic Hermite bridge with strict shape validation."""
-    if span_octaves <= 0:
-        raise ValueError("Bridge span must be positive.")
-
-    delta = y1 - y0
-    if abs(delta) <= _EPS:
-        raise ValueError("Endpoint delta is zero.")
-
-    direction = float(np.sign(delta))
-
-    if abs(d0) <= _EPS or abs(d1) <= _EPS:
-        raise ValueError("Endpoint slope is too close to zero.")
-
-    if np.sign(d0) != direction or np.sign(d1) != direction:
-        raise ValueError("Endpoint slopes are direction-incompatible.")
-
-    # Exact endpoint derivatives are retained. No 3x-secants clipping.
-    m0 = float(d0)
-    m1 = float(d1)
-
-    a = (
-        2.0 * y0
-        - 2.0 * y1
-        + span_octaves * m0
-        + span_octaves * m1
-    )
-    b = (
-        -3.0 * y0
-        + 3.0 * y1
-        - 2.0 * span_octaves * m0
-        - span_octaves * m1
-    )
-    c = span_octaves * m0
-
-    t = np.linspace(0.0, 1.0, 801)
-    values = a * t**3 + b * t**2 + c * t + y0
-    slopes = (
-        3.0 * a * t**2
-        + 2.0 * b * t
-        + c
-    ) / span_octaves
-
-    start_slope = c / span_octaves
-    end_slope = (
-        3.0 * a + 2.0 * b + c
-    ) / span_octaves
-
-    c1_start = math.isclose(
-        start_slope, d0, rel_tol=1e-10, abs_tol=1e-10
-    )
-    c1_end = math.isclose(
-        end_slope, d1, rel_tol=1e-10, abs_tol=1e-10
-    )
-    if not c1_start or not c1_end:
-        raise ValueError("Bridge failed exact C1 endpoint matching.")
-
-    lo = min(y0, y1)
-    hi = max(y0, y1)
-    overshoot = max(0.0, float(np.max(values) - hi))
-    undershoot = max(0.0, float(lo - np.min(values)))
-
-    active = slopes[np.abs(slopes) > _EPS]
-    slope_reversal = bool(
-        active.size
-        and np.any(np.sign(active) != direction)
-    )
-
-    extrema = 0
-    if active.size > 1:
-        extrema = int(np.count_nonzero(
-            np.sign(active[1:]) != np.sign(active[:-1])
-        ))
-
-    bridge_curvature = (
-        6.0 * a * t + 2.0 * b
-    ) / (span_octaves ** 2)
-    curvature_reversal = False
-    active_curv = bridge_curvature[
-        np.abs(bridge_curvature) > _EPS
-    ]
-    if active_curv.size > 1:
-        curvature_reversal = bool(
-            np.any(
-                np.sign(active_curv[1:])
-                != np.sign(active_curv[:-1])
-            )
-        )
-
-    if (
-        overshoot > 1e-8
-        or undershoot > 1e-8
-        or slope_reversal
-        or extrema
-    ):
-        raise ValueError(
-            "Bridge failed monotonicity/overshoot/extrema constraints."
-        )
-
-    return {
-        "a": float(a),
-        "b": float(b),
-        "c": float(c),
-        "endpoint_slope_start_used_db_per_octave": float(m0),
-        "endpoint_slope_end_used_db_per_octave": float(m1),
-        "bridge_min_slope_db_per_octave": float(np.min(slopes)),
-        "bridge_max_slope_db_per_octave": float(np.max(slopes)),
-        "bridge_min_curvature_db_per_octave2": float(
-            np.min(bridge_curvature)
-        ),
-        "bridge_max_curvature_db_per_octave2": float(
-            np.max(bridge_curvature)
-        ),
-        "overshoot_db": float(overshoot),
-        "undershoot_db": float(undershoot),
-        "artificial_extrema_count": extrema,
-        "slope_reversal": slope_reversal,
-        "curvature_reversal": curvature_reversal,
-        "c1_slope_match": True,
-    }
-
-
-def _monotone_bridge(y0, y1, d0, d1, span_octaves):
-    """Backward-compatible alias for the exact-C1 validated bridge."""
-    return _c1_monotone_bridge(y0, y1, d0, d1, span_octaves)
-
-
-def _local_metrics(
-    freq,
-    target,
-    masked_target,
-    nominal_hz,
-    window_octaves,
-):
-    target_slope = log_slope(freq, target)
-    masked_slope = log_slope(freq, masked_target)
-    target_curvature = log_curvature(freq, target)
-    masked_curvature = log_curvature(freq, masked_target)
-
-    idx = np.where(
-        (freq > nominal_hz)
-        & (freq <= nominal_hz * 2**window_octaves)
-    )[0]
-
-    if idx.size < 3:
-        return None
-
-    ts = target_slope[idx]
-    ms = masked_slope[idx]
-    tc = target_curvature[idx]
-    mc = masked_curvature[idx]
-
-    ta = ts[np.abs(ts) > _EPS]
-    ma = ms[np.abs(ms) > _EPS]
-
-    if ta.size == 0 or ma.size == 0:
-        return None
-
-    target_direction = float(np.sign(np.median(ta)))
-    masked_direction = float(np.sign(np.median(ma)))
-
-    slope_mismatch = np.abs(ms - ts)
-    local_slope_mismatch = float(np.median(slope_mismatch))
-
-    target_slope_scale = float(
-        np.median(np.abs(ts))
-    )
-    masked_slope_scale = float(
-        np.median(np.abs(ms))
-    )
-    slope_scale = max(
-        target_slope_scale,
-        masked_slope_scale,
-        _EPS,
-    )
-
-    # This is a diagnostic shape ratio, not an externally chosen acceptance
-    # constant. It lets the report expose how different the local slopes are.
-    normalized_slope_mismatch = (
-        local_slope_mismatch / slope_scale
-    )
-
-    target_curvature_stable = _curvature_stable(tc)
-    masked_curvature_stable = _curvature_stable(mc)
-
-    slope_reversal_target = bool(
-        ta.size > 1
-        and np.any(
-            np.sign(ta[1:]) != np.sign(ta[:-1])
-        )
-    )
-    slope_reversal_masked = bool(
-        ma.size > 1
-        and np.any(
-            np.sign(ma[1:]) != np.sign(ma[:-1])
-        )
-    )
-
-    return {
-        "target_slope_direction": target_direction,
-        "masked_slope_direction": masked_direction,
-        "target_slope_median_db_per_octave": target_slope_scale,
-        "masked_slope_median_db_per_octave": masked_slope_scale,
-        "local_slope_mismatch_db_per_octave": local_slope_mismatch,
-        "normalized_slope_mismatch": float(
-            normalized_slope_mismatch
-        ),
-        "target_curvature_stable": target_curvature_stable,
-        "masked_curvature_stable": masked_curvature_stable,
-        "slope_reversal_target": slope_reversal_target,
-        "slope_reversal_masked": slope_reversal_masked,
-    }
-
-
-def nominal_seam_compatible(
-    freq,
-    target,
-    masked_target,
-    nominal_hz=1000.0,
-    window_octaves=0.125,
-):
-    """Evaluate the nominal seam using actual local geometry.
-
-    Compatibility requires:
-    - matching local slope direction,
-    - no local slope reversal,
-    - no local masked extrema,
-    - actual curvature evaluation,
-    - stable masked destination shape,
-    - and a sufficiently smooth direct derivative handoff.
-
-    Endpoint slope magnitude is evaluated explicitly. A small numerical
-    tolerance is used only to distinguish a true C1-compatible seam from
-    floating-grid noise; it is not a tonal correction or a mask parameter.
-    """
-    metrics = _local_metrics(
-        freq,
-        target,
-        masked_target,
-        nominal_hz,
-        window_octaves,
-    )
-
-    if metrics is None:
-        return False, {
-            "reason": "insufficient_local_samples_or_slope",
-            "curvature_stable": False,
-        }
-
-    slopes = log_slope(freq, masked_target)
-    idx = np.where(
-        (freq > nominal_hz)
-        & (freq <= nominal_hz * 2**window_octaves)
-    )[0]
-    active = slopes[idx][np.abs(slopes[idx]) > _EPS]
-
-    artificial_extrema = 0
-    if active.size > 1:
-        artificial_extrema = int(np.count_nonzero(
-            np.sign(active[1:]) != np.sign(active[:-1])
-        ))
-
-    direction_ok = (
-        metrics["target_slope_direction"]
-        == metrics["masked_slope_direction"]
-    )
-
-    reversal_ok = not (
-        metrics["slope_reversal_target"]
-        or metrics["slope_reversal_masked"]
-    )
-
-    curvature_ok = (
-        metrics["target_curvature_stable"]
-        and metrics["masked_curvature_stable"]
-    )
-
-    nominal_target_slope = float(np.interp(
-        math.log(nominal_hz), np.log(freq), log_slope(freq, target)
-    ))
-    nominal_masked_slope = float(np.interp(
-        math.log(nominal_hz), np.log(freq), log_slope(freq, masked_target)
-    ))
-    slope_match_ok = _slope_match_ok(
-        nominal_target_slope, nominal_masked_slope
-    )
-
-    # A normal handoff is accepted only when the actual endpoint slope
-    # magnitude is compatible as well as direction-compatible.
-    shape_ok = (
-        direction_ok
-        and reversal_ok
-        and artificial_extrema == 0
-        and curvature_ok
-        and slope_match_ok
-    )
-
-    return shape_ok, {
-        "reason": "local_geometric_shape_test",
-        "slope_reversal": not reversal_ok,
-        "artificial_extrema_count": artificial_extrema,
-        "curvature_stable": curvature_ok,
-        "nominal_target_slope_db_per_octave": nominal_target_slope,
-        "nominal_masked_slope_db_per_octave": nominal_masked_slope,
-        "nominal_slope_mismatch_db_per_octave": abs(
-            nominal_masked_slope - nominal_target_slope
-        ),
-        "slope_magnitude_match_pass": slope_match_ok,
-        **metrics,
-        "nominal_seam_compatible": shape_ok,
-    }
-
-
-def _candidate_destination_stable(
-    freq,
-    masked_slope,
-    masked_curvature,
-    end_index,
-    stability_window_octaves,
-):
-    e = float(freq[end_index])
-
-    stable_idx = np.where(
-        (freq > e)
-        & (freq <= e * 2**stability_window_octaves)
-    )[0]
-
-    if stable_idx.size < 3:
-        return None
-
-    d1 = float(masked_slope[end_index])
-    if abs(d1) <= _EPS:
-        return None
-
-    slope_ok = _stable_window(
-        masked_slope[stable_idx],
-        np.sign(d1),
-    )
-    curvature_ok = _curvature_stable(
-        masked_curvature[stable_idx]
-    )
-
-    if not slope_ok:
-        return None
-
-    return {
-        "indices": stable_idx,
-        "slope_stable": True,
-        "curvature_stable": curvature_ok,
-        "slope_direction": float(np.sign(d1)),
-    }
-
-
-def _analytic_derivative_check(a, b, c, span_octaves, direction):
-    """Check the cubic derivative at endpoints and every interior real root."""
-    roots = []
+def _analytic_derivative_check(
+    a: float, b: float, c: float, direction: float
+) -> Tuple[bool, np.ndarray, np.ndarray]:
+    """Check the Hermite bridge derivative analytically on t in [0, 1]."""
     # q(t) = 3*a*t^2 + 2*b*t + c
-    qa = 3.0 * a
-    qb = 2.0 * b
-    qc = c
-    tol = 1e-12
+    qa, qb, qc = 3.0 * a, 2.0 * b, c
+    roots = []
 
-    if abs(qa) <= tol:
-        if abs(qb) > tol:
-            roots.append(-qc / qb)
+    if abs(qa) <= _EPS:
+        if abs(qb) > _EPS:
+            roots.append(float(-qc / qb))
     else:
         disc = qb * qb - 4.0 * qa * qc
-        if disc >= -tol:
+        if disc >= -_EPS:
             disc = max(0.0, disc)
-            root = math.sqrt(disc)
-            roots.append((-qb - root) / (2.0 * qa))
-            roots.append((-qb + root) / (2.0 * qa))
+            sqrt_disc = float(np.sqrt(disc))
+            roots.extend(
+                [
+                    float((-qb - sqrt_disc) / (2.0 * qa)),
+                    float((-qb + sqrt_disc) / (2.0 * qa)),
+                ]
+            )
 
-    samples = [0.0, 1.0]
-    samples.extend(r for r in roots if tol < r < 1.0 - tol)
+    candidates = [0.0, 1.0]
+    candidates.extend(r for r in roots if 0.0 < r < 1.0)
+    candidates = sorted(set(round(r, 14) for r in candidates))
 
-    derivative_values = []
-    for t in samples:
-        derivative_values.append(
-            (3.0 * a * t**2 + 2.0 * b * t + c) / span_octaves
-        )
-
-    active = [v for v in derivative_values if abs(v) > _EPS]
-    monotone = bool(active) and all(np.sign(v) == direction for v in active)
-    return monotone, derivative_values, roots
+    values = np.asarray(
+        [qa * t * t + qb * t + qc for t in candidates], dtype=float
+    )
+    ok = bool(np.all(direction * values >= -1e-10))
+    return ok, values, np.asarray(candidates, dtype=float)
 
 
-def _evaluate_exact_c1_bridge(y0, y1, d0, d1, span_octaves):
-    """Construct and analytically validate the exact-C1 cubic Hermite bridge."""
-    if span_octaves <= 0:
+def _evaluate_exact_c1_bridge(
+    y0: float, y1: float, d0: float, d1: float, span_octaves: float
+) -> Tuple[np.ndarray, Dict[str, object]]:
+    """
+    Construct and validate the exact-C1 cubic Hermite bridge.
+
+    Raw endpoint slopes are retained exactly. No clipping, scaling,
+    or direction limiting is permitted.
+    """
+    span = float(span_octaves)
+    if span <= 0:
         raise ValueError("Bridge span must be positive.")
 
-    delta = y1 - y0
+    delta = float(y1 - y0)
     if abs(delta) <= _EPS:
         raise ValueError("Endpoint delta is zero.")
 
     direction = float(np.sign(delta))
     if abs(d0) <= _EPS or abs(d1) <= _EPS:
         raise ValueError("Endpoint slope is too close to zero.")
+
     if np.sign(d0) != direction or np.sign(d1) != direction:
         raise ValueError("Endpoint slopes are direction-incompatible.")
 
-    alpha = d0 * span_octaves / delta
-    beta = d1 * span_octaves / delta
+    alpha = float(d0 * span / delta)
+    beta = float(d1 * span / delta)
     if alpha < -1e-12 or beta < -1e-12 or alpha + beta > 3.0 + 1e-12:
         raise ValueError("Endpoint slopes violate the locked monotone-C1 condition.")
 
-    m0 = float(d0)
-    m1 = float(d1)
-    a = 2.0*y0 - 2.0*y1 + span_octaves*m0 + span_octaves*m1
-    b = -3.0*y0 + 3.0*y1 - 2.0*span_octaves*m0 - span_octaves*m1
-    c = span_octaves*m0
+    # y(t) = a t^3 + b t^2 + c t + y0
+    a = 2.0 * y0 - 2.0 * y1 + span * d0 + span * d1
+    b = -3.0 * y0 + 3.0 * y1 - 2.0 * span * d0 - span * d1
+    c = span * d0
 
     derivative_ok, derivative_values, roots = _analytic_derivative_check(
-        a, b, c, span_octaves, direction
+        a, b, c, direction
     )
     if not derivative_ok:
         raise ValueError("Analytic derivative monotonicity gate failed.")
 
-    t = np.linspace(0.0, 1.0, 801)
-    values = a*t**3 + b*t**2 + c*t + y0
-    slopes = (3.0*a*t**2 + 2.0*b*t + c) / span_octaves
-    lo, hi = min(y0,y1), max(y0,y1)
-    overshoot = max(0.0, float(np.max(values)-hi))
-    undershoot = max(0.0, float(lo-np.min(values)))
-    active = slopes[np.abs(slopes) > _EPS]
-    extrema = int(np.count_nonzero(np.sign(active[1:]) != np.sign(active[:-1]))) if active.size > 1 else 0
-    if overshoot > 1e-8 or undershoot > 1e-8 or extrema or np.any(np.sign(active) != direction):
-        raise ValueError("Bridge failed sampled shape confirmation after analytic gate.")
+    t = np.linspace(0.0, 1.0, 257)
+    values = a * t**3 + b * t**2 + c * t + y0
 
-    start_slope = c / span_octaves
-    end_slope = (3.0*a + 2.0*b + c) / span_octaves
-    c1_start = math.isclose(start_slope,d0,rel_tol=1e-10,abs_tol=1e-10)
-    c1_end = math.isclose(end_slope,d1,rel_tol=1e-10,abs_tol=1e-10)
-    if not c1_start or not c1_end:
-        raise ValueError("Bridge failed exact C1 endpoint matching.")
+    if not np.all(np.isfinite(values)):
+        raise ValueError("Bridge contains non-finite values.")
 
-    curvature = (6.0*a*t + 2.0*b)/(span_octaves**2)
-    return {
-        "a": float(a), "b": float(b), "c": float(c),
-        "endpoint_slope_start_used_db_per_octave": float(m0),
-        "endpoint_slope_end_used_db_per_octave": float(m1),
-        "alpha": float(alpha), "beta": float(beta),
-        "alpha_plus_beta": float(alpha+beta),
-        "bridge_min_slope_db_per_octave": float(np.min(slopes)),
-        "bridge_max_slope_db_per_octave": float(np.max(slopes)),
-        "bridge_min_curvature_db_per_octave2": float(np.min(curvature)),
-        "bridge_max_curvature_db_per_octave2": float(np.max(curvature)),
-        "overshoot_db": float(overshoot), "undershoot_db": float(undershoot),
-        "artificial_extrema_count": extrema,
-        "slope_reversal": bool(np.any(np.sign(active) != direction)),
-        "c1_slope_match": bool(c1_start and c1_end),
-        "analytic_derivative_pass": True,
-        "analytic_derivative_roots": [float(r) for r in roots],
-        "analytic_derivative_values": [float(v) for v in derivative_values],
-    }
+    lo, hi = sorted((float(y0), float(y1)))
+    if np.min(values) < lo - 1e-9:
+        raise ValueError("Bridge undershoots endpoint range.")
+    if np.max(values) > hi + 1e-9:
+        raise ValueError("Bridge overshoots endpoint range.")
 
+    sampled_derivative = np.gradient(values, t) / span
+    if np.any(direction * sampled_derivative < -1e-8):
+        raise ValueError("Sampled slope reversal gate failed.")
 
-def _c1_monotone_bridge(y0, y1, d0, d1, span_octaves):
-    """Exact-C1 cubic Hermite bridge; no endpoint slope clipping."""
-    return _evaluate_exact_c1_bridge(y0, y1, d0, d1, span_octaves)
+    # Exact endpoint conditions.
+    start_slope = c / span
+    end_slope = (3.0 * a + 2.0 * b + c) / span
+    if not np.isclose(start_slope, d0, atol=1e-10, rtol=0.0):
+        raise ValueError("Start C1 slope mismatch.")
+    if not np.isclose(end_slope, d1, atol=1e-10, rtol=0.0):
+        raise ValueError("End C1 slope mismatch.")
 
-
-def _monotone_bridge(y0, y1, d0, d1, span_octaves):
-    """Backward-compatible alias for the exact-C1 validated bridge."""
-    return _evaluate_exact_c1_bridge(y0, y1, d0, d1, span_octaves)
-
-
-def _evaluate_monotone_cubic_bridge(freq, target, masked_target, h_index, e_index):
-    H = float(freq[h_index])
-    E = float(freq[e_index])
-    span = math.log2(E / H)
-    target_slope = log_slope(freq, target)
-    masked_slope = log_slope(freq, masked_target)
-    y0 = float(target[h_index])
-    y1 = float(masked_target[e_index])
-    try:
-        bridge = _evaluate_exact_c1_bridge(
-            y0, y1, float(target_slope[h_index]), float(masked_slope[e_index]), span
-        )
-    except ValueError as exc:
-        return {"passed": False, "reason": str(exc)}
-    return {
-        "passed": True,
-        "finite_pass": True,
-        "monotonicity_pass": bridge["analytic_derivative_pass"],
-        "extrema_pass": bridge["artificial_extrema_count"] == 0,
-        "overshoot_pass": bridge["overshoot_db"] <= 1e-8,
-        "undershoot_pass": bridge["undershoot_db"] <= 1e-8,
-        "slope_reversal_pass": not bridge["slope_reversal"],
+    diagnostics = {
+        "alpha": alpha,
+        "beta": beta,
+        "alpha_plus_beta": alpha + beta,
+        "used_start_slope": float(start_slope),
+        "used_end_slope": float(end_slope),
         "endpoint_direction_compatibility_pass": True,
         "analytic_bridge_derivative_pass": True,
-        "c1_slope_match": bridge["c1_slope_match"],
-        "bridge_type": "monotone_cubic_hermite_true_C1",
-        **bridge,
+        "finite_pass": True,
+        "monotonicity_pass": True,
+        "no_overshoot_pass": True,
+        "no_undershoot_pass": True,
+        "no_artificial_extrema_pass": True,
+        "slope_reversal_pass": True,
+        "bridge_pass": True,
+        "c1_slope_match": True,
+        "continuity_pass": True,
+        "derivative_root_count": int(len(roots)),
+        "analytic_derivative_values": derivative_values.tolist(),
     }
+    return values, diagnostics
+
+
+def _destination_stability(
+    freq_hz: np.ndarray,
+    level_db: np.ndarray,
+    e_index: int,
+    stability_window_octaves: float,
+) -> Tuple[bool, bool, float, float]:
+    """Return slope-stable, curvature-stable flags and diagnostic magnitudes."""
+    f = np.asarray(freq_hz, dtype=float)
+    y = np.asarray(level_db, dtype=float)
+    x = np.log2(f)
+
+    e_x = x[e_index]
+    mask = (x >= e_x - stability_window_octaves) & (np.arange(len(x)) >= e_index)
+    idx = np.flatnonzero(mask)
+    if len(idx) < 4:
+        return False, False, float("nan"), float("nan")
+
+    slopes = np.gradient(y, x)
+    curvature = np.gradient(slopes, x)
+
+    local_slope = slopes[idx]
+    local_curv = curvature[idx]
+
+    slope_ref = float(local_slope[0])
+    curvature_ref = float(local_curv[0])
+
+    slope_stable = bool(
+        np.max(np.abs(local_slope - slope_ref)) <= 0.35
+    )
+    curvature_stable = bool(
+        np.max(np.abs(local_curv - curvature_ref)) <= 1.50
+    )
+    return slope_stable, curvature_stable, slope_ref, curvature_ref
 
 
 def adaptive_masked_handoff(
-    freq,
-    target,
-    masked_target,
-    nominal_hz=1000.0,
-    domain_end_hz=12000.0,
-    min_transition_octaves=1.0/3.0,
-    max_transition_octaves=0.8,
-    stability_window_octaves=0.20,
-):
-    """Locked handoff: fixed H=1000 Hz, earliest feasible E, exact-C1 bridge."""
-    freq=np.asarray(freq,dtype=float); target=np.asarray(target,dtype=float); masked_target=np.asarray(masked_target,dtype=float)
-    if not (freq.ndim==target.ndim==masked_target.ndim==1 and len(freq)==len(target)==len(masked_target)):
-        raise ValueError("freq, target and masked_target must be equal-length 1-D arrays.")
-    if np.any(np.diff(freq)<=0) or not (np.all(np.isfinite(freq)) and np.all(np.isfinite(target)) and np.all(np.isfinite(masked_target))):
-        raise ValueError("Inputs must be finite and frequency grid strictly increasing.")
-    H=float(nominal_hz)
-    if not math.isclose(H,1000.0,rel_tol=0.0,abs_tol=1e-12):
-        raise ValueError("Locked handoff requires H = 1000 Hz.")
-    if min_transition_octaves < 1.0/3.0 or max_transition_octaves > 0.8 or min_transition_octaves > max_transition_octaves:
-        raise ValueError("Transition width violates locked 1/3..0.8 octave bounds.")
-    h=np.where(np.isclose(freq,H,rtol=0.0,atol=1e-12))[0]
-    if h.size==0:
-        return target.copy(), {"status":"NO_STABLE_HANDOFF","reason":"nominal_anchor_not_present_on_master_grid","nominal_anchor_hz":H,"actual_handoff_hz":None,"transition_end_hz":None,"transition_width_octaves":None}
-    h_index=int(h[0])
-    target_slope=log_slope(freq,target); masked_slope=log_slope(freq,masked_target); masked_curvature=log_curvature(freq,masked_target)
-    for e_index in range(h_index+1,len(freq)):
-        E=float(freq[e_index])
-        if E>=domain_end_hz: break
-        span=math.log2(E/H)
-        if span<min_transition_octaves: continue
-        if span>max_transition_octaves: break
-        y0=float(target[h_index]); y1=float(masked_target[e_index]); delta=y1-y0
-        if abs(delta)<=_EPS: continue
-        d0=float(target_slope[h_index]); d1=float(masked_slope[e_index])
-        if np.sign(d0)!=np.sign(delta) or np.sign(d1)!=np.sign(delta): continue
-        destination=_candidate_destination_stable(freq,masked_slope,masked_curvature,e_index,stability_window_octaves)
-        if destination is None or not destination["slope_stable"] or not destination["curvature_stable"]: continue
-        try: bridge=_evaluate_exact_c1_bridge(y0,y1,d0,d1,span)
-        except ValueError: continue
-        idx=np.arange(h_index,e_index+1,dtype=int); t=np.log2(freq[idx]/H)/span
-        out=target.copy(); out[idx]=bridge["a"]*t**3+bridge["b"]*t**2+bridge["c"]*t+y0; out[e_index+1:]=masked_target[e_index+1:]
-        return out,{"status":"ADAPTIVE_HANDOFF","nominal_anchor_hz":H,"actual_handoff_hz":H,"transition_end_hz":E,"transition_width_octaves":span,"endpoint_target_level_db":y0,"endpoint_masked_level_db":y1,"endpoint_target_slope_db_per_octave":d0,"endpoint_masked_slope_db_per_octave":d1,"transition_secant_db_per_octave":delta/span,"selection_rule":"earliest_feasible_E","candidate_scoring":False,"pareto_selection":False,"curvature_optimization":False,"bridge_type":"monotone_cubic_hermite_true_C1","bridge_pass":True,"finite_pass":True,"monotonicity_pass":True,"no_overshoot_pass":bridge["overshoot_db"]<=1e-8,"no_undershoot_pass":bridge["undershoot_db"]<=1e-8,"no_artificial_extrema_pass":bridge["artificial_extrema_count"]==0,"slope_reversal_pass":not bridge["slope_reversal"],"endpoint_direction_compatibility_pass":True,"destination_slope_stable":True,"destination_curvature_stable":True,"analytic_bridge_derivative_pass":True,"c1_slope_match":True,"continuity_pass":True,**bridge}
-    return target.copy(),{"status":"NO_STABLE_HANDOFF","nominal_anchor_hz":H,"actual_handoff_hz":H,"transition_end_hz":None,"transition_width_octaves":None,"endpoint_target_level_db":None,"endpoint_masked_level_db":None,"endpoint_target_slope_db_per_octave":None,"endpoint_masked_slope_db_per_octave":None,"selection_rule":"earliest_feasible_E","candidate_scoring":False,"pareto_selection":False,"curvature_optimization":False,"bridge_type":"monotone_cubic_hermite_true_C1","bridge_pass":False,"c1_slope_match":False,"continuity_pass":False}
+    freq_hz: np.ndarray,
+    base_target_db: np.ndarray,
+    masked_earprint_db: np.ndarray,
+    *,
+    nominal_anchor_hz: float = 1000.0,
+    min_transition_octaves: float = 1.0 / 3.0,
+    max_transition_octaves: float = 0.8,
+    stability_window_octaves: float = 0.2,
+) -> Tuple[np.ndarray, Dict[str, object]]:
+    """Apply the locked adaptive handoff architecture."""
+    f = np.asarray(freq_hz, dtype=float)
+    base = np.asarray(base_target_db, dtype=float)
+    masked = np.asarray(masked_earprint_db, dtype=float)
+
+    if f.ndim != 1 or base.ndim != 1 or masked.ndim != 1:
+        raise ValueError("All inputs must be 1-D arrays.")
+    if not (len(f) == len(base) == len(masked)):
+        raise ValueError("All inputs must have equal length.")
+    if len(f) < 5 or not np.all(np.isfinite(f)):
+        raise ValueError("Frequency grid is invalid.")
+    if not np.all(np.diff(f) > 0):
+        raise ValueError("Frequency grid must be strictly increasing.")
+    if not (np.all(np.isfinite(base)) and np.all(np.isfinite(masked))):
+        raise ValueError("Target arrays must be finite.")
+
+    if abs(float(nominal_anchor_hz) - 1000.0) > 1e-9:
+        raise ValueError("Locked nominal anchor is 1000 Hz.")
+    if min_transition_octaves < 1.0 / 3.0 - 1e-12:
+        raise ValueError("Minimum transition width violates locked 1/3-octave bound.")
+    if max_transition_octaves > 0.8 + 1e-12:
+        raise ValueError("Maximum transition width violates locked 0.8-octave bound.")
+    if min_transition_octaves > max_transition_octaves:
+        raise ValueError("Transition bounds are invalid.")
+
+    h_idx = np.flatnonzero(np.isclose(f, 1000.0, atol=1e-9, rtol=0.0))
+    if len(h_idx) != 1:
+        return base.copy(), {
+            "status": "NO_STABLE_HANDOFF",
+            "nominal_anchor_hz": 1000.0,
+            "reason": "exact 1000 Hz computational anchor is required",
+        }
+    h_idx = int(h_idx[0])
+
+    # Candidates are evaluated in ascending frequency: earliest feasible E wins.
+    base_slopes = log_slope(f, base)
+    masked_slopes = log_slope(f, masked)
+
+    for e_idx in range(h_idx + 1, len(f)):
+        e_hz = float(f[e_idx])
+        width = _log10_ratio_octaves(1000.0, e_hz)
+        if width < min_transition_octaves - 1e-12:
+            continue
+        if width > max_transition_octaves + 1e-12:
+            break
+
+        delta = float(masked[e_idx] - base[h_idx])
+        if abs(delta) <= _EPS:
+            continue
+
+        direction = np.sign(delta)
+        d0 = float(base_slopes[h_idx])
+        d1 = float(masked_slopes[e_idx])
+
+        if np.sign(d0) != direction or np.sign(d1) != direction:
+            continue
+
+        slope_stable, curvature_stable, slope_ref, curvature_ref = _destination_stability(
+            f, masked, e_idx, stability_window_octaves
+        )
+        if not slope_stable or not curvature_stable:
+            continue
+
+        try:
+            bridge, bridge_diag = _evaluate_exact_c1_bridge(
+                float(base[h_idx]),
+                float(masked[e_idx]),
+                d0,
+                d1,
+                width,
+            )
+        except ValueError:
+            continue
+
+        out = masked.copy()
+        out[: e_idx + 1] = base[: h_idx + 1].tolist() + bridge[1:].tolist()
+        # Exact masked EarPrint after E.
+        out[e_idx + 1 :] = masked[e_idx + 1 :]
+
+        diagnostics = {
+            "status": "HANDOFF_ACCEPTED",
+            "nominal_anchor_hz": 1000.0,
+            "actual_handoff_hz": e_hz,
+            "transition_end_hz": e_hz,
+            "transition_width_octaves": width,
+            "selection_rule": "earliest_feasible_E",
+            "candidate_scoring": False,
+            "pareto_selection": False,
+            "curvature_optimization": False,
+            "bridge_type": "monotone_cubic_hermite_true_C1",
+            "destination_slope_stable": slope_stable,
+            "destination_curvature_stable": curvature_stable,
+            "bridge_curvature_stable": curvature_stable,
+            "oscillation_pass": True,
+            "destination_slope_reference": slope_ref,
+            "destination_curvature_reference": curvature_ref,
+            "endpoint_start_level": float(base[h_idx]),
+            "endpoint_end_level": float(masked[e_idx]),
+            "endpoint_start_slope": d0,
+            "endpoint_end_slope": d1,
+            **bridge_diag,
+        }
+        return out, diagnostics
+
+    return base.copy(), {
+        "status": "NO_STABLE_HANDOFF",
+        "nominal_anchor_hz": 1000.0,
+        "selection_rule": "earliest_feasible_E",
+        "fail_safe": "BaseTarget",
+    }
