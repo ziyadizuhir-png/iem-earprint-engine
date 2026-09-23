@@ -21,6 +21,18 @@ Raw IEM FR
 
 EarPrint is not an anatomical hearing reconstruction.
 
+## Pudding PEQ loss selection
+
+The Pudding PEQ engine evaluates the existing standard loss and a robust Huber
+loss (`delta = 1.0 dB`) as separate candidates. Huber is committed only when
+it improves RMSE without exceeding the P95 or maximum-error guard and when the
+EarPrint Shape Guard passes. Otherwise the standard-loss result is retained.
+
+The conservative branch searches Q 0.30–2.00. A separate high-Q rescue tests
+Q up to 10.00 and is committed only when its transactional guards pass. The
+selected loss, guard decision, and both candidate summaries are included in
+the exported JSON metadata.
+
 ## Locked handoff
 
 ```text

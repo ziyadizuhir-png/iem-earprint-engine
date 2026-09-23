@@ -27,7 +27,7 @@
   'use strict';
 
   const CFG = {
-    version: '2026-09-22.9-DualQ',
+    version: '2026-09-23.0-HuberGated',
     shapeGuard: true,
     shapeGuardToleranceDb: 0.01,
     bands: 10,
@@ -47,8 +47,17 @@
     minSeedSeparationOct: 0.18,
     minActiveGain: 0.05,
     trebleStart: 7000,
-    maxPasses: 3
+    maxPasses: 3,
+    huberEnabled: true,
+    huberDeltaDb: 1.0,
+    huberMinImprovementDb: 0.002,
+    huberP95ToleranceDb: 0.15,
+    huberMaxToleranceDb: 0.05
   };
+
+  // The standard objective remains the reference branch. Huber is evaluated
+  // as a robust candidate and can only be committed after the guards pass.
+  let LOSS_MODE = 'standard';
 
   const $ = id => document.getElementById(id);
   const clamp = (x,a,b) => Math.max(a,Math.min(b,x));
@@ -193,6 +202,14 @@
   }
 
   function distance(freqs,curve,target){
+    if(LOSS_MODE==='huber'){
+      let s=0; const d=CFG.huberDeltaDb;
+      for(let i=0;i<freqs.length;i++){
+        const e=Math.abs(curve[i]-target[i]);
+        s += e<=d ? 0.5*e*e : d*(e-0.5*d);
+      }
+      return Math.sqrt(2*s/freqs.length);
+    }
     let d=0;
     for(let i=0;i<freqs.length;i++){
       const e=Math.abs(curve[i]-target[i]);
@@ -328,6 +345,14 @@
 
   function responseRmse(freqs,curve,target){
     if(!curve.length)return 0;
+    if(LOSS_MODE==='huber'){
+      let s=0; const d=CFG.huberDeltaDb;
+      for(let i=0;i<curve.length;i++){
+        const e=Math.abs(curve[i]-target[i]);
+        s += e<=d ? 0.5*e*e : d*(e-0.5*d);
+      }
+      return Math.sqrt(2*s/curve.length);
+    }
     let s=0;
     for(let i=0;i<curve.length;i++){const e=curve[i]-target[i];s+=e*e;}
     return Math.sqrt(s/curve.length);
@@ -668,27 +693,58 @@
     }};
   }
 
-  function optimize(rawCurve,targetCurve){
+  function optimizeBranch(rawCurve,targetCurve,lossMode){
+    const previousLoss=LOSS_MODE;
+    LOSS_MODE=lossMode;
     const savedMinQ=CFG.minQ, savedMaxQ=CFG.maxQ;
-    CFG.minQ=0.30; CFG.maxQ=2.00;
-    const q2=optimizeSingle(rawCurve,targetCurve);
-    const q10=extendHighQFromQ2(rawCurve,targetCurve,q2);
-    const q10PassGlobal =
-      q10.metrics.rmseAfter <= q2.metrics.rmseAfter - 0.002 &&
-      q10.metrics.p95After <= q2.metrics.p95After + 0.05 &&
-      q10.metrics.maxAfter <= q2.metrics.maxAfter + 0.05;
-    const branchShapeDelta = (q10.metrics.shapeGuardFinalRmsDb!=null && q2.metrics.shapeGuardFinalRmsDb!=null)
-      ? q10.metrics.shapeGuardFinalRmsDb-q2.metrics.shapeGuardFinalRmsDb : null;
-    const q10PassShape = q10.metrics.shapeGuardAccepted !== false &&
-      (branchShapeDelta==null || branchShapeDelta<=CFG.shapeGuardToleranceDb+1e-12);
-    const useExtended=q10PassGlobal&&q10PassShape;
-    CFG.minQ=savedMinQ; CFG.maxQ=savedMaxQ;
-    const chosen=useExtended?q10:q2;
-    chosen.metrics.qAllowed=[0.30,10.00];
-    chosen.metrics.qRangeSelected=useExtended?'0.30–10.00':'0.30–2.00';
-    chosen.metrics.q2Candidate={rmse:q2.metrics.rmseAfter,p95:q2.metrics.p95After,max:q2.metrics.maxAfter,maxQ:q2.metrics.maxQ,shapeGuardAccepted:q2.metrics.shapeGuardAccepted,shapeGuardDeltaDb:q2.metrics.shapeGuardDeltaDb};
-    chosen.metrics.q10Candidate={rmse:q10.metrics.rmseAfter,p95:q10.metrics.p95After,max:q10.metrics.maxAfter,maxQ:q10.metrics.maxQ,shapeGuardAccepted:q10.metrics.shapeGuardAccepted,shapeGuardDeltaDb:q10.metrics.shapeGuardDeltaDb};
-    chosen.metrics.q10GlobalGuard=q10PassGlobal;chosen.metrics.q10ShapeGuard=q10PassShape;chosen.metrics.q10BranchShapeDeltaDb=branchShapeDelta;chosen.metrics.q10Committed=useExtended;
+    try{
+      CFG.minQ=0.30; CFG.maxQ=2.00;
+      const q2=optimizeSingle(rawCurve,targetCurve);
+      const q10=extendHighQFromQ2(rawCurve,targetCurve,q2);
+      const q10PassGlobal =
+        q10.metrics.rmseAfter <= q2.metrics.rmseAfter - 0.002 &&
+        q10.metrics.p95After <= q2.metrics.p95After + 0.05 &&
+        q10.metrics.maxAfter <= q2.metrics.maxAfter + 0.05;
+      const branchShapeDelta = (q10.metrics.shapeGuardFinalRmsDb!=null && q2.metrics.shapeGuardFinalRmsDb!=null)
+        ? q10.metrics.shapeGuardFinalRmsDb-q2.metrics.shapeGuardFinalRmsDb : null;
+      const q10PassShape = q10.metrics.shapeGuardAccepted !== false &&
+        (branchShapeDelta==null || branchShapeDelta<=CFG.shapeGuardToleranceDb+1e-12);
+      const useExtended=q10PassGlobal&&q10PassShape;
+      const chosen=useExtended?q10:q2;
+      chosen.metrics.lossMode=lossMode;
+      chosen.metrics.qAllowed=[0.30,10.00];
+      chosen.metrics.qRangeSelected=useExtended?'0.30–10.00':'0.30–2.00';
+      chosen.metrics.q2Candidate={rmse:q2.metrics.rmseAfter,p95:q2.metrics.p95After,max:q2.metrics.maxAfter,maxQ:q2.metrics.maxQ,shapeGuardAccepted:q2.metrics.shapeGuardAccepted,shapeGuardDeltaDb:q2.metrics.shapeGuardDeltaDb};
+      chosen.metrics.q10Candidate={rmse:q10.metrics.rmseAfter,p95:q10.metrics.p95After,max:q10.metrics.maxAfter,maxQ:q10.metrics.maxQ,shapeGuardAccepted:q10.metrics.shapeGuardAccepted,shapeGuardDeltaDb:q10.metrics.shapeGuardDeltaDb};
+      chosen.metrics.q10GlobalGuard=q10PassGlobal;chosen.metrics.q10ShapeGuard=q10PassShape;chosen.metrics.q10BranchShapeDeltaDb=branchShapeDelta;chosen.metrics.q10Committed=useExtended;
+      return chosen;
+    }finally{
+      CFG.minQ=savedMinQ; CFG.maxQ=savedMaxQ; LOSS_MODE=previousLoss;
+    }
+  }
+
+  function optimize(rawCurve,targetCurve){
+    const standard=optimizeBranch(rawCurve,targetCurve,'standard');
+    if(!CFG.huberEnabled){
+      standard.metrics.huberCommitted=false;
+      return standard;
+    }
+    const huber=optimizeBranch(rawCurve,targetCurve,'huber');
+    const huberPass = huber.metrics.shapeGuardAccepted !== false &&
+      huber.metrics.rmseAfter <= standard.metrics.rmseAfter-CFG.huberMinImprovementDb &&
+      huber.metrics.p95After <= standard.metrics.p95After+CFG.huberP95ToleranceDb &&
+      huber.metrics.maxAfter <= standard.metrics.maxAfter+CFG.huberMaxToleranceDb;
+    const chosen=huberPass?huber:standard;
+    chosen.metrics.huberCommitted=huberPass;
+    chosen.metrics.huberGuard={
+      rmseImprovementDb:standard.metrics.rmseAfter-huber.metrics.rmseAfter,
+      p95DeltaDb:huber.metrics.p95After-standard.metrics.p95After,
+      maxDeltaDb:huber.metrics.maxAfter-standard.metrics.maxAfter,
+      accepted:huberPass,
+      fallback:huberPass?'none':'standard_loss'
+    };
+    chosen.metrics.standardCandidate={rmse:standard.metrics.rmseAfter,p95:standard.metrics.p95After,max:standard.metrics.maxAfter,maxQ:standard.metrics.maxQ,qRangeSelected:standard.metrics.qRangeSelected};
+    chosen.metrics.huberCandidate={rmse:huber.metrics.rmseAfter,p95:huber.metrics.p95After,max:huber.metrics.maxAfter,maxQ:huber.metrics.maxQ,qRangeSelected:huber.metrics.qRangeSelected};
     return chosen;
   }
   const fmt=v=>Math.abs(v-Math.round(v))<1e-9?String(Math.round(v)):v.toFixed(1);
@@ -711,7 +767,8 @@
       dsp_model:{type:'RBJ peaking biquad',sample_rate_hz:CFG.sampleRate,status:'PROVISIONAL'},
       level_alignment:{method:'mean raw-target error over 100 Hz–10 kHz',removed_offset_db:result.metrics.levelOffsetDb},
       optimizer:{initialization:'Squiglink candidate segmentation + geometric-centre Fc + bandwidth-derived Q',
-                 loss:'mean absolute error with errors below 0.1 dB ignored',
+                 loss:'standard mean absolute error with errors below 0.1 dB ignored; guarded Huber branch for outlier robustness',
+                 robust_loss:{name:'Huber',delta_db:CFG.huberDeltaDb,enabled:CFG.huberEnabled,selection:'guarded comparison against standard-loss branch'},
                  batches:'first batch <=7 kHz, second residual batch, then full two-direction optimization; response-aware overlap merge after final pass'},
       constraints:{bands:CFG.bands,frequency_hz:[CFG.minFreq,CFG.maxFreq],gain_db:[CFG.minGain,CFG.maxGain],q:[0.30,10.00],q_range_selected:result.metrics.qRangeSelected},
       source:meta,metrics:result.metrics,earprint_shape_guard:{enabled:CFG.shapeGuard,tolerance_db:CFG.shapeGuardToleranceDb,reference:'output/pure_earprint_dynamic.txt',domain_hz:[1000,12000],transactional:true},peq:result.bands
@@ -824,6 +881,8 @@
       ['Active bands',result.metrics.activeBands+' / '+CFG.bands],
       ['Gain range',result.metrics.maxCut.toFixed(2)+' to '+(result.metrics.maxBoost>=0?'+':'')+result.metrics.maxBoost.toFixed(2)+' dB'],
       ['Max Q',result.metrics.maxQ.toFixed(2)],
+      ['Loss',result.metrics.lossMode||'standard'],
+      ['Huber guard',result.metrics.huberCommitted===true?'PASS':(result.metrics.huberCommitted===false?'fallback':'—')],
       ['Level alignment',(result.metrics.levelOffsetDb>=0?'+':'')+result.metrics.levelOffsetDb.toFixed(2)+' dB removed'],
       ['EarPrint Guard',result.metrics.shapeGuardEnabled?(result.metrics.shapeGuardAccepted?'PASS':'ROLLBACK'):'OFF'],
       ['Shape Δ',result.metrics.shapeGuardDeltaDb===null?'—':(result.metrics.shapeGuardDeltaDb>=0?'+':'')+result.metrics.shapeGuardDeltaDb.toFixed(4)+' dB']
@@ -831,7 +890,7 @@
 
     table.innerHTML='<div class="pudding-peq-head"><span>Band</span><span>Type</span><span>Freq</span><span>Gain</span><span>Q</span></div>'+
       result.bands.map((b,i)=>`<div class="pudding-peq-row"><span>${i+1}</span><span>PK</span><span>${fmt(b.freq)} Hz</span><span>${b.gain>=0?'+':''}${b.gain.toFixed(2)} dB</span><span>${b.q.toFixed(2)}</span></div>`).join('')+
-      '<div class="pudding-note">Squiglink-style PK only · 20 Hz–12 kHz · -12 to +3 dB · Q allowed 0.30–10.00 · dual-range search 0.30–2.00 + extended 0.30–10.00 · first batch ≤7 kHz · level-align 100 Hz–10 kHz · RBJ @ 48 kHz provisional · EarPrint Shape Guard 0.01 dB transactional rollback.</div>';
+      '<div class="pudding-note">Squiglink-style PK only · 20 Hz–12 kHz · -12 to +3 dB · Q allowed 0.30–10.00 · standard-loss fallback + guarded Huber loss (δ 1.0 dB) · dual-range search 0.30–2.00 + extended 0.30–10.00 · first batch ≤7 kHz · level-align 100 Hz–10 kHz · RBJ @ 48 kHz provisional · EarPrint Shape Guard 0.01 dB transactional rollback.</div>';
   }
 
   function downloadTxt(){
