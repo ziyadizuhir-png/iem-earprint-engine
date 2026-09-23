@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-09-23T08:32:53.998160+00:00",
+  "generated_utc": "2026-09-23T08:40:04.606477+00:00",
   "engine": "IEM EarPrint Engine 3.4.0",
   "specification": "General_Prompt_EarPrint_8_MATH_LOCKED.txt",
   "specification_addendum": "General_Prompt_EarPrint_8_MATH_LOCKED_boundary_addendum.txt",
@@ -127,6 +127,6 @@
     "Listener_Type_3.3_JM-1_B_4.8dB_T_-4.4dB_Harman_2013_OE_Filters_Target__robust_target.txt": "eece2ea3890a475fe4c7556fbb31552379d3de8aff21b3048e5fb46faba7735d",
     "SoundGuys__mask.txt": "19b77c21c45a9d17d59cecaaccdddee151d3d44b504e40dccdeaa361d8c8ea1a",
     "SoundGuys__robust_target.txt": "ddc68d1e31de44b450e65fae8bd637c97d80588155f5e2d8d634e53a59c2416e",
-    "pure_earprint_dynamic.txt": "9b1de9955b799b4cd3359976dd3b2a388f1e75387c82d9e592665b9a4211f931"
+    "pure_earprint_dynamic.txt": "28a07306662e486b8ba66e718cd55f9e35be9884f76fdb81ad1a4ace454db073"
   }
 }
