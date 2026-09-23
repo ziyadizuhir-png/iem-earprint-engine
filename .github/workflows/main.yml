@@ -55,15 +55,21 @@ jobs:
       - name: Run math-locked EarPrint engine
         run: |
           set -e
+          SECONDS=0
           if python engine/earprint_engine.py; then
+            echo "EarPrint engine runtime: ${SECONDS}s"
             exit 0
           fi
 
+          echo "EarPrint engine runtime before failure: ${SECONDS}s"
           echo "Engine failed; restoring the previous generated results."
           rm -rf output reports
           cp -a .generated-backup/output output
           cp -a .generated-backup/reports reports
           exit 1
+
+      - name: Run generated-output regression checks
+        run: python -m pytest -q tests/test_regression_outputs.py
 
       - name: Remove generated-results snapshot
         if: always()
