@@ -16,6 +16,7 @@ import pytest
 import yaml
 
 from engine.input_hash import calculate_hash, source_files
+from engine.earprint_engine import safe_stem
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -126,15 +127,15 @@ def test_generated_outputs_cover_every_discovered_target():
     assert (OUTPUT / "pure_earprint_dynamic.txt").is_file()
 
     expected_robust = sorted(
-        f"{Path(name).stem}__robust_target.txt"
+        f"{safe_stem(name)}__robust_target.txt"
         for name in targets
     )
     expected_masks = sorted(
-        f"{Path(name).stem}__mask.txt"
+        f"{safe_stem(name)}__mask.txt"
         for name in targets
     )
     expected_handoffs = sorted(
-        f"{Path(name).stem}__adaptive_handoff.txt"
+        f"{safe_stem(name)}__adaptive_handoff.txt"
         for name in targets
     )
 
