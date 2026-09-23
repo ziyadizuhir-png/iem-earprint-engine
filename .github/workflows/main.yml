@@ -42,10 +42,27 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
 
+      - name: Check generated-result cache
+        shell: bash
+        run: |
+          CURRENT_HASH="$(python engine/input_hash.py)"
+          STORED_HASH="$(cat reports/build_input_hash.txt 2>/dev/null || true)"
+          if [ "$CURRENT_HASH" = "$STORED_HASH" ] \
+            && test -f output/pure_earprint_dynamic.txt \
+            && test -f reports/manifest.json \
+            && test -f reports/validation.txt; then
+            echo "EARPRINT_CACHE_HIT=true" >> "$GITHUB_ENV"
+            echo "EarPrint cache hit: $CURRENT_HASH"
+          else
+            echo "EARPRINT_CACHE_HIT=false" >> "$GITHUB_ENV"
+            echo "EarPrint cache miss: $CURRENT_HASH"
+          fi
+
       - name: Run deterministic unit tests
         run: python -m pytest -q
 
       - name: Snapshot generated results
+        if: env.EARPRINT_CACHE_HIT != 'true'
         run: |
           rm -rf .generated-backup
           mkdir -p .generated-backup
@@ -53,6 +70,7 @@ jobs:
           cp -a reports .generated-backup/reports
 
       - name: Run math-locked EarPrint engine
+        if: env.EARPRINT_CACHE_HIT != 'true'
         run: |
           set -e
           SECONDS=0
@@ -70,6 +88,10 @@ jobs:
 
       - name: Run generated-output regression checks
         run: python -m pytest -q tests/test_regression_outputs.py
+
+      - name: Record generated-result cache hash
+        if: env.EARPRINT_CACHE_HIT != 'true'
+        run: python engine/input_hash.py > reports/build_input_hash.txt
 
       - name: Remove generated-results snapshot
         if: always()

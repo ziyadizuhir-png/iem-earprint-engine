@@ -9,6 +9,8 @@ from pathlib import Path
 
 import yaml
 
+from engine.input_hash import calculate_hash, source_files
+
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "output"
@@ -54,3 +56,11 @@ def test_validation_report_is_pass():
     validation = (REPORTS / "validation.txt").read_text(encoding="utf-8")
     assert "Status: PASS" in validation
     assert "NO_STABLE_HANDOFF" not in validation
+
+
+def test_build_input_hash_is_deterministic_and_nonempty():
+    first = calculate_hash()
+    second = calculate_hash()
+    assert len(source_files()) > 0
+    assert len(first) == 64
+    assert first == second

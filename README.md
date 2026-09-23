@@ -64,3 +64,8 @@ The engine validates every discovered preferred and target curve before touching
 existing generated results. GitHub Actions snapshots `output/` and `reports/`
 and restores them if generation fails. A separate web-app workflow checks
 `app/pudding_peq.js` syntax whenever the app changes.
+
+Builds also store a deterministic source hash in
+`reports/build_input_hash.txt`. When inputs, configuration, engine code, or
+locked specifications are unchanged and required artifacts still exist, the
+workflow reuses the generated results instead of recalculating them.
