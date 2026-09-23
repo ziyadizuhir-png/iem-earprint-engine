@@ -57,3 +57,10 @@ the exported JSON metadata.
 `E` is the earliest feasible candidate in the locked 1/3–0.8 octave range. If no candidate passes every mandatory gate, the engine returns `NO_STABLE_HANDOFF` and retains BaseTarget.
 
 See `ARCHITECTURE_LOCK.md` and the math-locked specification/addendum.
+
+## Build safety and CI
+
+The engine validates every discovered preferred and target curve before touching
+existing generated results. GitHub Actions snapshots `output/` and `reports/`
+and restores them if generation fails. A separate web-app workflow checks
+`app/pudding_peq.js` syntax whenever the app changes.

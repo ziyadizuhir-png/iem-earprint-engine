@@ -103,6 +103,23 @@ def parse_xy(path: Path) -> tuple[np.ndarray, np.ndarray]:
     return arr[:, 0], arr[:, 1]
 
 
+def validate_curve_coverage(
+    curves: dict[str, tuple[np.ndarray, np.ndarray]],
+    start_hz: float,
+    end_hz: float,
+    label: str,
+) -> None:
+    """Fail before output cleanup when an input cannot cover the locked domain."""
+    if not (math.isfinite(start_hz) and math.isfinite(end_hz) and start_hz < end_hz):
+        fail(f"Invalid {label} validation domain: {start_hz:g}-{end_hz:g} Hz")
+    for name, (freq, _level) in curves.items():
+        if freq[0] > start_hz or freq[-1] < end_hz:
+            fail(
+                f"{name}: {label} coverage {freq[0]:g}-{freq[-1]:g} Hz does not "
+                f"cover required {start_hz:g}-{end_hz:g} Hz"
+            )
+
+
 def interpolate_log_frequency(
     freq_src: np.ndarray,
     level_src: np.ndarray,
@@ -607,6 +624,21 @@ def main() -> None:
         p.name: parse_xy(p)
         for p in target_files
     }
+
+    # Validate every discovered curve before deleting any previous outputs.
+    # This turns malformed or under-covered input into a clean early failure.
+    validate_curve_coverage(
+        preferred,
+        personal_start,
+        personal_end,
+        "personal-domain",
+    )
+    validate_curve_coverage(
+        targets,
+        output_start,
+        output_end,
+        "output-domain",
+    )
 
     previous_pure = read_output_xy(
         OUT / "pure_earprint_dynamic.txt"

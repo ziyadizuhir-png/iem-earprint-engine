@@ -45,8 +45,29 @@ jobs:
       - name: Run deterministic unit tests
         run: python -m pytest -q
 
+      - name: Snapshot generated results
+        run: |
+          rm -rf .generated-backup
+          mkdir -p .generated-backup
+          cp -a output .generated-backup/output
+          cp -a reports .generated-backup/reports
+
       - name: Run math-locked EarPrint engine
-        run: python engine/earprint_engine.py
+        run: |
+          set -e
+          if python engine/earprint_engine.py; then
+            exit 0
+          fi
+
+          echo "Engine failed; restoring the previous generated results."
+          rm -rf output reports
+          cp -a .generated-backup/output output
+          cp -a .generated-backup/reports reports
+          exit 1
+
+      - name: Remove generated-results snapshot
+        if: always()
+        run: rm -rf .generated-backup
 
       # Never publish results calculated from an old input state.
       - name: Verify source revision is still current
