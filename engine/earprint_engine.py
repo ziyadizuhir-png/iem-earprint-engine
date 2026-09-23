@@ -285,6 +285,35 @@ def log_interp_scalar(
     )
 
 
+def extend_high_frequency_display(
+    freq: np.ndarray,
+    level: np.ndarray,
+    personal_end_hz: float,
+    slope_db_per_octave: float,
+) -> np.ndarray:
+    """Extend from an interpolated boundary anchor without a 12 kHz jump."""
+    f = np.asarray(freq, dtype=float)
+    y = np.asarray(level, dtype=float)
+    if f.ndim != 1 or y.ndim != 1 or len(f) != len(y) or len(f) < 2:
+        raise ValueError("Frequency and level arrays must be equal 1-D arrays.")
+    if not np.all(np.isfinite(f)) or not np.all(np.isfinite(y)):
+        raise ValueError("Frequency and level arrays must be finite.")
+    if not np.all(np.diff(f) > 0):
+        raise ValueError("Frequency grid must be strictly increasing.")
+    if not (np.isfinite(personal_end_hz) and personal_end_hz > 0):
+        raise ValueError("Personal-domain end must be finite and > 0 Hz.")
+    if personal_end_hz < f[0] or personal_end_hz > f[-1]:
+        raise ValueError("Personal-domain end must be covered by the frequency grid.")
+
+    out = y.copy()
+    anchor_level = log_interp_scalar(f, y, personal_end_hz)
+    high = f >= personal_end_hz
+    out[high] = anchor_level + slope_db_per_octave * np.log2(
+        f[high] / personal_end_hz
+    )
+    return out
+
+
 def build_hybrid_curve(
     freq: np.ndarray,
     lower_target: np.ndarray,
@@ -860,31 +889,15 @@ def main() -> None:
         shifted_personal[strict_personal]
     )
 
-    hf = master_freq >= personal_end
-
-    anchor_idx = np.where(
-        master_freq < personal_end
-    )[0][-1]
-
-    anchor_freq = float(
-        master_freq[anchor_idx]
-    )
-
-    anchor_level = float(
-        pure[anchor_idx]
-    )
-
-    pure[hf] = (
-        anchor_level
-        + float(
+    pure = extend_high_frequency_display(
+        master_freq,
+        pure,
+        personal_end,
+        float(
             cfg["high_frequency_extension"][
                 "slope_db_per_octave"
             ]
-        )
-        * np.log2(
-            master_freq[hf]
-            / anchor_freq
-        )
+        ),
     )
 
     out_mask = (

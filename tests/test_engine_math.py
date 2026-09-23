@@ -8,6 +8,7 @@ from engine.earprint_engine import (
     alignment_scenarios,
     build_hybrid_curve,
     discover_txt,
+    extend_high_frequency_display,
     gaussian_once_strict_domain,
     huber_consensus,
     sin2_boundary_taper,
@@ -15,6 +16,16 @@ from engine.earprint_engine import (
 
 
 class EarPrintMathTests(unittest.TestCase):
+    def test_high_frequency_extension_anchors_at_exact_boundary(self):
+        freq = np.array([1000.0, 9000.0, 15000.0], dtype=float)
+        level = np.array([0.0, 9.0, 15.0], dtype=float)
+        out = extend_high_frequency_display(freq, level, 12000.0, -6.0)
+
+        boundary = np.interp(np.log(12000.0), np.log(freq), level)
+        expected_15k = boundary - 6.0 * np.log2(15000.0 / 12000.0)
+        self.assertAlmostEqual(out[2], expected_15k, places=12)
+        self.assertAlmostEqual(out[1], level[1], places=12)
+
     def test_three_alignment_scenarios_use_inclusive_band_medians(self):
         f = np.array([200, 300, 500, 700, 1000, 2000], dtype=float)
         reference = np.zeros_like(f)
