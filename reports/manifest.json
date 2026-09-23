@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-09-23T07:34:57.760687+00:00",
+  "generated_utc": "2026-09-23T08:04:40.570491+00:00",
   "engine": "IEM EarPrint Engine 3.4.0",
   "specification": "General_Prompt_EarPrint_8_MATH_LOCKED.txt",
   "specification_addendum": "General_Prompt_EarPrint_8_MATH_LOCKED_boundary_addendum.txt",
@@ -117,16 +117,16 @@
   "output_sha256": {
     "5128_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "529775985de931815ff8bb52a1036f41eff53b37880cbfbff975506eeddd876b",
     "5128_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "54229133cde127b2a59b033bbb37abe5578d4e9d1336f3e00df60c77abf07696",
-    "Headphones.com_IEM_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "80235e0875ae74b1b498d70b985b957e718dca0f48c0ebba1d171e2f1632a27f",
+    "Headphones.com_IEM_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "8600e2bca6564799cf18557213a389782554df07371b2efc00ede4c20b0bedf5",
     "Headphones.com_IEM_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "8ce907c791138714c3746ad03d72880eca0b930938d70e983868fe8ca0bd784f",
     "IEF2025__mask.txt": "5158b5d31966905ed6333aad620ec1a142e67ca3585fc70640779f7cb9118e09",
     "IEF2025__robust_target.txt": "fc9241232e2516fb287611ef55ab71ea8dd71b5422f399918622906c085c0752",
     "JM-1_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "b65bf5c413fcc91572c20c8f13e5124554a8e5424446dbcd295a9cdc13d71688",
     "JM-1_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "d05b38ce45554063fc507b3b7819f0dee04091bb6f9456794b8653f7002aae94",
-    "Listener_Type_3.3_JM-1_B_4.8dB_T_-4.4dB_Harman_2013_OE_Filters_Target__mask.txt": "36a64921fed7110e0949944d6a89cccf68b71a7dcde0e37dee08613ad2447c06",
+    "Listener_Type_3.3_JM-1_B_4.8dB_T_-4.4dB_Harman_2013_OE_Filters_Target__mask.txt": "2794f5d3643184d03b679ce67c25ff00f7a82877c3bfa09e549c7bd0d34a5ef1",
     "Listener_Type_3.3_JM-1_B_4.8dB_T_-4.4dB_Harman_2013_OE_Filters_Target__robust_target.txt": "eece2ea3890a475fe4c7556fbb31552379d3de8aff21b3048e5fb46faba7735d",
     "SoundGuys__mask.txt": "19b77c21c45a9d17d59cecaaccdddee151d3d44b504e40dccdeaa361d8c8ea1a",
     "SoundGuys__robust_target.txt": "ddc68d1e31de44b450e65fae8bd637c97d80588155f5e2d8d634e53a59c2416e",
-    "pure_earprint_dynamic.txt": "0a0b4daa934b501f271179763925ea2a4a01e81ca5e269aef3d4edd7af7ed62b"
+    "pure_earprint_dynamic.txt": "9b1de9955b799b4cd3359976dd3b2a388f1e75387c82d9e592665b9a4211f931"
   }
 }

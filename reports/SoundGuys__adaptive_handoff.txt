@@ -12,18 +12,18 @@ destination_slope_stable: True
 destination_curvature_stable: True
 bridge_curvature_stable: True
 oscillation_pass: True
-destination_slope_reference: 5.3986853060699715
-destination_curvature_reference: -11.274601348059264
+destination_slope_reference: 5.398685306069979
+destination_curvature_reference: -11.274601348059775
 endpoint_start_level: 0.5414534891564107
 endpoint_end_level: 1.8098452310090485
 endpoint_start_slope: 2.162578279188466
-endpoint_end_slope: 5.3986853060699715
+endpoint_end_slope: 5.398685306069979
 domain_end_hz: 12000.0
 alpha: 0.5716965273297857
-beta: 1.4271897906903777
-alpha_plus_beta: 1.9988863180201633
+beta: 1.4271897906903797
+alpha_plus_beta: 1.9988863180201655
 used_start_slope: 2.162578279188466
-used_end_slope: 5.3986853060699715
+used_end_slope: 5.398685306069979
 endpoint_direction_compatibility_pass: True
 analytic_bridge_derivative_pass: True
 finite_pass: True
@@ -36,4 +36,4 @@ bridge_pass: True
 c1_slope_match: True
 continuity_pass: True
 derivative_root_count: 2
-analytic_derivative_values: [0.725135154110931, 1.8102357445680697]
+analytic_derivative_values: [0.725135154110931, 1.8102357445680721]
