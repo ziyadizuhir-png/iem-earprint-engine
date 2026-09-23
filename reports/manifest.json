@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-09-23T12:52:09.231885+00:00",
+  "generated_utc": "2026-09-23T12:56:57.628728+00:00",
   "engine": "IEM EarPrint Engine 3.4.0",
   "specification": "General_Prompt_EarPrint_8_MATH_LOCKED.txt",
   "specification_addendum": "General_Prompt_EarPrint_8_MATH_LOCKED_boundary_addendum.txt",
@@ -13,9 +13,10 @@
     "Timeless.txt",
     "Uploaded FOCUS Vocal [1] EQ Target.txt",
     "Uploaded Tforce yuanli EQ Target.txt",
+    "Uploaded moondrop pudding fr EQ Target.txt",
     "WF1000XM4.txt"
   ],
-  "independent_vote_count": 7,
+  "independent_vote_count": 8,
   "targets_discovered": [
     "IEF2025.txt",
     "Listener_Type_3.3_JM-1_B_4.8dB_T_-4.4dB_Harman_2013_OE_Filters_Target.txt",
@@ -104,6 +105,7 @@
     "input/preferred/Timeless.txt": "ea37f7cd364d4e85c9fd6630f95192a4470f68e488415822fba5fe21e948b467",
     "input/preferred/Uploaded FOCUS Vocal [1] EQ Target.txt": "cf26a602a1cd131452bfe369b3fba318a1aa6ee9145c94ca83c43c0b409262b9",
     "input/preferred/Uploaded Tforce yuanli EQ Target.txt": "8d3f240cc61f2486f3791ccaae8895b760a59ae64734b5b39fb79c9190369484",
+    "input/preferred/Uploaded moondrop pudding fr EQ Target.txt": "ab00c16d1b0622f43504e3448db4a92272ffa5b889d142ba8143653da45cb9e8",
     "input/preferred/WF1000XM4.txt": "b427498d18eac84d61904fc007468107952debf2612306d6afb69206e18e6b69",
     "input/targets/IEF2025.txt": "399e5129d80087ff4330e1f75da505f9799fe0cddc28b3a34aaaf68eef5b87d8",
     "input/targets/Listener_Type_3.3_JM-1_B_4.8dB_T_-4.4dB_Harman_2013_OE_Filters_Target.txt": "e00f585759fbe49915b6293fa5a2f4cb577eb26fa15db3c2ae40f418d182fe6c",
@@ -113,18 +115,18 @@
     "input/targets/_JM-1_DF_Tilt__-1dB_Oct_B_4dB_Target.txt": "153a4cd5046eef6e75dad142899805cc77be4077faec770825d1cbc55afaa7df"
   },
   "output_sha256": {
-    "5128_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "02f03646a33644c4d4e17554e71a7ba3fbc3e678f82fcf9ec89f8dd50af40548",
-    "5128_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "015324d418957db0ab35a50d2769dd5f31800ea66858e198c81fd17f2f5bab97",
-    "Headphones.com_IEM_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "2b3b25c7cf9d9af09588681aaea197529175336169d9c4b930b31a609ab0346a",
-    "Headphones.com_IEM_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "c275ebaecde7c60515fc0730ee2b3a2411e2dcef60898d6335490242ca73af1a",
-    "IEF2025__mask.txt": "67a62c77b333a61a8d7338568a3708db2877db0f91ccd2da5384c073e5875705",
-    "IEF2025__robust_target.txt": "930d97085fe4a1622b987a2ad335317f9a52d21b4239550cbdb49cfccdf47f6f",
-    "JM-1_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "2c5c81f45bb883b818a0554380b902fec850ab950fb80171f4ffd791de5337b6",
-    "JM-1_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "6d99e4069e0eda6e0b47f19545f36d870e85dcd9c5ebd089001771e408d617fe",
-    "Listener_Type_3.3_JM-1_B_4.8dB_T_-4.4dB_Harman_2013_OE_Filters_Target__mask.txt": "1394968b27f40c67d8b298d59b3f67dfbc955649f6b6ef8e80a302df96675c84",
-    "Listener_Type_3.3_JM-1_B_4.8dB_T_-4.4dB_Harman_2013_OE_Filters_Target__robust_target.txt": "e178d10e38d2b6d5fd9c687e85f40ad78b9fa9f2ad1aa241debac3c406978bd9",
-    "SoundGuys__mask.txt": "3c271e3714b5b6a010206d367b3ec1a380f2e5d7daf43fb330aaff62927c7588",
-    "SoundGuys__robust_target.txt": "6160f3946183875480d7367f4e99e85dcf4022e2d4ef2585c0aa18719b011b3e",
-    "pure_earprint_dynamic.txt": "afe297e83d3112bdd2163056dd238f7fd94f2ba6fcf2642dcf4379ba9c1c29fb"
+    "5128_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "0e6f465ddacdc9ad1b5c2d9a79e1789c8b4e62fe86adee6ebdd61f823a050f7e",
+    "5128_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "83b04435aa663a45e23d24c52716e7054404976b5081983b8de010c6cf5b11f0",
+    "Headphones.com_IEM_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "7e139802720e7866a00a9d883fdf6660cc4a9d1f6703aa27c35aaa3c2f2c59a4",
+    "Headphones.com_IEM_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "d6f6c09dacd49abad9f48e98fd5e7b97caf2bf4818132281538f66843f974156",
+    "IEF2025__mask.txt": "3a9e90c86c879d6f8d659ab909d8a12142d7c639ea33bccc202bbf48576f1531",
+    "IEF2025__robust_target.txt": "481a9c0773aa90ddb90ffacccd47bc4676ca2e329c53c68db08ce1947f08529d",
+    "JM-1_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "f9adc5a0602903a263f367fa2515c706c9f39f3ac9b36aee5697d9d143f25da0",
+    "JM-1_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "b2068d1136e08a20ab2f531e420e6c51c212274a61b389ca6ca73406234e9f13",
+    "Listener_Type_3.3_JM-1_B_4.8dB_T_-4.4dB_Harman_2013_OE_Filters_Target__mask.txt": "d8fccd6cb9f5fa17d47508b04b5141b8328f042a6e70b4eaa2bb6900abc4adb9",
+    "Listener_Type_3.3_JM-1_B_4.8dB_T_-4.4dB_Harman_2013_OE_Filters_Target__robust_target.txt": "8aa787f59de3356a83cd6970f6c6d3aa930c58b1380ec618b08128d8f9c7d2cb",
+    "SoundGuys__mask.txt": "7ca7f2476010c0044a8b40c36ba2361aad99c436f8d9ecc3ed04cad4d85bf379",
+    "SoundGuys__robust_target.txt": "0009bc4a985c8e38978c700064711e621f716bff72fa77c2567bad23e105cfc2",
+    "pure_earprint_dynamic.txt": "b460de30d19982d879f885ccce8b5f6441496bf855a1f885c2daa77d5b298395"
   }
 }
