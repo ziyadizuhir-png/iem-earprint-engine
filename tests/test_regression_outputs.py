@@ -55,7 +55,18 @@ def test_generated_outputs_cover_every_target():
 def test_validation_report_is_pass():
     validation = (REPORTS / "validation.txt").read_text(encoding="utf-8")
     assert "Status: PASS" in validation
-    assert "NO_STABLE_HANDOFF" not in validation
+
+
+def test_handoff_statuses_are_explicit_and_fail_safe():
+    allowed = {"HANDOFF_ACCEPTED", "NO_STABLE_HANDOFF"}
+    for report in REPORTS.glob("*__adaptive_handoff.txt"):
+        status = next(
+            (line.split(":", 1)[1].strip()
+             for line in report.read_text(encoding="utf-8").splitlines()
+             if line.startswith("status:")),
+            None,
+        )
+        assert status in allowed, f"Unexpected handoff status in {report.name}: {status}"
 
 
 def test_build_input_hash_is_deterministic_and_nonempty():

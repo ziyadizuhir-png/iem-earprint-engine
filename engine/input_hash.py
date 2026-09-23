@@ -24,7 +24,12 @@ def source_files() -> list[Path]:
         if path.is_file():
             files.append(path)
         elif path.is_dir():
-            files.extend(p for p in path.rglob("*") if p.is_file())
+            files.extend(
+                p for p in path.rglob("*")
+                if p.is_file()
+                and "__pycache__" not in p.parts
+                and p.suffix != ".pyc"
+            )
     return sorted(files, key=lambda p: p.relative_to(ROOT).as_posix())
 
 
