@@ -24,9 +24,22 @@ EarPrint is not an anatomical hearing reconstruction.
 ## Pudding PEQ loss selection
 
 The Pudding PEQ engine evaluates the existing standard loss and a robust Huber
-loss (`delta = 1.0 dB`) as separate candidates. Huber is committed only when
-it improves RMSE without exceeding the P95 or maximum-error guard and when the
-EarPrint Shape Guard passes. Otherwise the standard-loss result is retained.
+loss (`delta = 1.0 dB`) as separate candidates. Production uses a balanced
+workflow: both losses are screened at conservative Q 0.30–2.00, then only the
+guarded winner receives the expensive high-Q rescue. Huber is committed only
+when it improves RMSE without exceeding the P95 or maximum-error guard and when
+the EarPrint Shape Guard passes. Otherwise the standard-loss result is retained.
+
+This avoids running the high-Q rescue twice while keeping the same transactional
+guards. The previous two-full-branch workflow remains available for audit by
+setting `window.MoondropPuddingPEQ.CFG.performanceMode = 'exhaustive'` before
+calling `optimize`.
+
+Balanced mode uses a smaller search grid for the experimental Huber screen and
+re-scores that candidate on the production grid before accepting it. Huber is
+also skipped when the standard Q≤2 result is already within the robust trigger
+(maximum error ≤ 3.0 dB and P95 ≤ 0.80 dB); this keeps ordinary runs responsive
+without weakening the final Q10 or Shape Guard checks.
 
 The conservative branch searches Q 0.30–2.00. A separate high-Q rescue tests
 Q up to 10.00 and is committed only when its transactional guards pass. The

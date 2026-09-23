@@ -27,7 +27,7 @@
   'use strict';
 
   const CFG = {
-    version: '2026-09-23.0-HuberGated',
+    version: '2026-09-23.1-Balanced',
     shapeGuard: true,
     shapeGuardToleranceDb: 0.01,
     bands: 10,
@@ -40,6 +40,11 @@
     maxQ: 10,
     sampleRate: 48000,
     points: 360,
+    balancedPoints: 180,
+    balancedHuberPoints: 120,
+    balancedPasses: 1,
+    balancedFreqRadius: 3,
+    balancedGainRadius: 2,
     alignLo: 100,
     alignHi: 10000,
     smoothSpan: 9,
@@ -52,7 +57,13 @@
     huberDeltaDb: 1.0,
     huberMinImprovementDb: 0.002,
     huberP95ToleranceDb: 0.15,
-    huberMaxToleranceDb: 0.05
+    huberMaxToleranceDb: 0.05,
+    huberTriggerMaxDb: 3.0,
+    huberTriggerP95Db: 0.80,
+    // Balanced is the production path: screen both losses at Q<=2, then
+    // run high-Q rescue only on the branch that has already passed guards.
+    // Set to "exhaustive" for the slower legacy two-branch audit path.
+    performanceMode: 'balanced'
   };
 
   // The standard objective remains the reference branch. Huber is evaluated
@@ -276,7 +287,8 @@
 
   function optimizePass(freqs,base,target,filters,iteration,dir){
     filters=strip(filters);
-    const [maxDF,maxDQ,maxDG,stepDF,stepDQ,stepDG]=OPT_DELTAS[iteration];
+    const passDeltas=CFG.performanceMode==='balanced'?OPT_DELTAS.slice(0,CFG.balancedPasses):OPT_DELTAS;
+    const [maxDF,maxDQ,maxDG,stepDF,stepDQ,stepDG]=passDeltas[iteration];
     const [minFreq,maxFreq]=[CFG.minFreq,CFG.maxFreq];
     const [minQ,maxQ]=[CFG.minQ,CFG.maxQ];
     const [minGain,maxGain]=[CFG.minGain,CFG.maxGain];
@@ -463,17 +475,20 @@
 
     // Search all ceiling-pinned filters from the same baseline, then commit
     // the whole candidate only if the final global guard passes.
-    for(let pass=0;pass<2;pass++){
+    const ceilingPasses=CFG.performanceMode==='balanced'?1:2;
+    const ceilingFreqPoints=CFG.performanceMode==='balanced'?15:25;
+    const ceilingQStep=CFG.performanceMode==='balanced'?0.2:0.1;
+    for(let pass=0;pass<ceilingPasses;pass++){
       for(let i=0;i<work.length;i++){
         if(Math.abs(work[i].gain-CFG.maxGain)>1e-9)continue;
         let local=work[i], localM=metric(work);
         const f0=work[i].freq;
         const fGrid=logspace(
           Math.max(CFG.minFreq,Math.max(7000,f0*0.82)),
-          Math.min(CFG.maxFreq,f0*1.18),25
+          Math.min(CFG.maxFreq,f0*1.18),ceilingFreqPoints
         );
         for(const f of fGrid){
-          for(let q=CFG.minQ;q<=CFG.maxQ+1e-9;q+=0.1){
+          for(let q=CFG.minQ;q<=CFG.maxQ+1e-9;q+=ceilingQStep){
             const trial=work.map(b=>({...b}));
             trial[i]={freq:f,q,gain:CFG.maxGain};
             const m=metric(trial);
@@ -529,7 +544,7 @@
     const hi=Math.min(CFG.maxFreq,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
     if(hi<=lo||hi<2000)throw Error('Raw Pudding and target curves have insufficient frequency overlap.');
 
-    const freqs=logspace(lo,hi,CFG.points);
+    const freqs=logspace(lo,hi,CFG.performanceMode==='balanced'?CFG.balancedPoints:CFG.points);
     const raw=resample(rawCurve,freqs),target=resample(targetCurve,freqs);
     const aligned=alignLevel(freqs,raw,target),rawA=aligned.curve;
 
@@ -541,7 +556,8 @@
       .sort((a,b)=>a.freq-b.freq);
 
     let firstFilters=firstCandidates;
-    for(let i=0;i<OPT_DELTAS.length;i++)firstFilters=optimizePass(freqs,rawA,target,firstFilters,i,false);
+    const passCount=CFG.performanceMode==='balanced'?CFG.balancedPasses:OPT_DELTAS.length;
+    for(let i=0;i<passCount;i++)firstFilters=optimizePass(freqs,rawA,target,firstFilters,i,false);
 
     const secondFR=applyFilters(rawA,firstFilters,freqs);
     const secondBatchSize=CFG.bands-firstFilters.length;
@@ -550,10 +566,10 @@
       .slice(0,secondBatchSize)
       .sort((a,b)=>a.freq-b.freq);
 
-    for(let i=0;i<OPT_DELTAS.length;i++)secondFilters=optimizePass(freqs,rawA,target,secondFilters,i,false);
+    for(let i=0;i<passCount;i++)secondFilters=optimizePass(freqs,rawA,target,secondFilters,i,false);
 
     let allFilters=firstFilters.concat(secondFilters);
-    for(let i=0;i<OPT_DELTAS.length;i++)allFilters=optimizePass(freqs,rawA,target,allFilters,i,false);
+    for(let i=0;i<passCount;i++)allFilters=optimizePass(freqs,rawA,target,allFilters,i,false);
     allFilters=strip(allFilters);
     allFilters=mergeOverlappingFilters(freqs,rawA,target,allFilters);
     allFilters=strip(allFilters);
@@ -605,12 +621,14 @@
     CFG.minQ=0.30; CFG.maxQ=10.00;
     const lo=Math.max(CFG.minFreq,rawCurve[0][0],targetCurve[0][0]);
     const hi=Math.min(CFG.maxFreq,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
-    const freqs=logspace(lo,hi,CFG.points);
+    const freqs=logspace(lo,hi,CFG.performanceMode==='balanced'?CFG.balancedPoints:CFG.points);
     const raw=resample(rawCurve,freqs),target=resample(targetCurve,freqs);
     const aligned=alignLevel(freqs,raw,target),rawA=aligned.curve;
     const active=q2.bands.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain).map(b=>({...b}));
     let work=active.slice();
-    const highQs=[2.0,2.5,3.0,3.5,4.0,5.0,6.0,7.5,10.0];
+    const highQs=CFG.performanceMode==='balanced'
+      ? [2.0,3.0,4.0,6.0,10.0]
+      : [2.0,2.5,3.0,3.5,4.0,5.0,6.0,7.5,10.0];
     // Local high-Q rescue around each existing band.
     // Evaluate candidates against a precomputed response with the current
     // band removed; this preserves the objective exactly while avoiding a
@@ -622,9 +640,11 @@
       let best={...work[i]};
       let bestM=responseRmse(freqs,applyFilters(baseWithout,[best],freqs),target);
       const fvals=[];
-      for(let k=-4;k<=4;k++)fvals.push(clamp(f0+k*fu,CFG.minFreq,CFG.maxFreq));
+      const fRadius=CFG.performanceMode==='balanced'?CFG.balancedFreqRadius:4;
+      for(let k=-fRadius;k<=fRadius;k++)fvals.push(clamp(f0+k*fu,CFG.minFreq,CFG.maxFreq));
       const gvals=[];
-      for(let k=-5;k<=5;k++)gvals.push(clamp(Math.round((g0+k*0.2)*10)/10,CFG.minGain,CFG.maxGain));
+      const gRadius=CFG.performanceMode==='balanced'?CFG.balancedGainRadius:5;
+      for(let k=-gRadius;k<=gRadius;k++)gvals.push(clamp(Math.round((g0+k*0.2)*10)/10,CFG.minGain,CFG.maxGain));
       for(const f of fvals){
         for(const q of highQs){
           for(const gain of gvals){
@@ -639,7 +659,8 @@
 
     // Residual-seed pass: try up to two new high-Q peaks where the current
     // response has the largest local absolute error.
-    for(let pass=0;pass<2 && work.length<CFG.bands;pass++){
+    const rescuePasses=CFG.performanceMode==='balanced'?1:2;
+    for(let pass=0;pass<rescuePasses && work.length<CFG.bands;pass++){
       const cur=applyFilters(rawA,work,freqs);
       const cand=[];
       for(let i=2;i<freqs.length-2;i++){
@@ -723,17 +744,134 @@
     }
   }
 
+  // Re-score a reduced-grid candidate on the production grid before any
+  // guard can accept it. This lets the balanced Huber screen be cheaper
+  // without allowing coarse-grid optimism into the final decision.
+  function rescoreCandidate(rawCurve,targetCurve,candidate){
+    const lo=Math.max(CFG.minFreq,rawCurve[0][0],targetCurve[0][0]);
+    const hi=Math.min(CFG.maxFreq,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
+    const freqs=logspace(lo,hi,CFG.balancedPoints||CFG.points);
+    const raw=resample(rawCurve,freqs),target=resample(targetCurve,freqs);
+    const aligned=alignLevel(freqs,raw,target),rawA=aligned.curve;
+    const corrected=applyFilters(rawA,candidate.bands,freqs);
+    const before=rawA.map((v,i)=>Math.abs(v-target[i])), after=corrected.map((v,i)=>Math.abs(v-target[i]));
+    const metrics={...candidate.metrics,
+      rmseBefore:rmse(before),rmseAfter:rmse(after),
+      p95Before:percentile(before,.95),p95After:percentile(after,.95),
+      maxBefore:Math.max(...before),maxAfter:Math.max(...after),
+      activeBands:candidate.bands.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain).length,
+      maxBoost:Math.max(...candidate.bands.map(b=>b.gain)),
+      maxCut:Math.min(...candidate.bands.map(b=>b.gain)),
+      maxQ:Math.max(...candidate.bands.map(b=>b.q)),
+      levelOffsetDb:aligned.offset,coverage:[lo,hi],
+      objective:distance(freqs,corrected,target)
+    };
+    return {bands:candidate.bands,metrics};
+  }
+
+  function huberGuardPass(candidate,reference){
+    return candidate.metrics.shapeGuardAccepted !== false &&
+      candidate.metrics.rmseAfter <= reference.metrics.rmseAfter-CFG.huberMinImprovementDb &&
+      candidate.metrics.p95After <= reference.metrics.p95After+CFG.huberP95ToleranceDb &&
+      candidate.metrics.maxAfter <= reference.metrics.maxAfter+CFG.huberMaxToleranceDb;
+  }
+
+  // Balanced branch: both objectives get the same conservative Q<=2 search,
+  // but only the guarded winner pays for the expensive high-Q rescue. The
+  // final Q10 candidate is still checked against its Q2 parent and Shape Guard.
+  function optimizeBalanced(rawCurve,targetCurve){
+    const previousLoss=LOSS_MODE;
+    const savedMinQ=CFG.minQ, savedMaxQ=CFG.maxQ;
+    let standardQ2, huberQ2;
+    try{
+      CFG.minQ=0.30; CFG.maxQ=2.00;
+      LOSS_MODE='standard';
+      standardQ2=optimizeSingle(rawCurve,targetCurve);
+      standardQ2.metrics.lossMode='standard';
+      standardQ2.metrics.qAllowed=[0.30,10.00];
+      standardQ2.metrics.qRangeSelected='0.30–2.00';
+      const robustNeeded=CFG.huberEnabled &&
+        (standardQ2.metrics.maxAfter>CFG.huberTriggerMaxDb || standardQ2.metrics.p95After>CFG.huberTriggerP95Db);
+      if(robustNeeded){
+        LOSS_MODE='huber';
+        const fullBalancedPoints=CFG.balancedPoints;
+        try{
+          CFG.balancedPoints=CFG.balancedHuberPoints;
+          huberQ2=optimizeSingle(rawCurve,targetCurve);
+        }finally{
+          CFG.balancedPoints=fullBalancedPoints;
+        }
+        huberQ2=rescoreCandidate(rawCurve,targetCurve,huberQ2);
+        huberQ2.metrics.lossMode='huber';
+        huberQ2.metrics.qAllowed=[0.30,10.00];
+        huberQ2.metrics.qRangeSelected='0.30–2.00';
+      }
+    }finally{
+      CFG.minQ=savedMinQ; CFG.maxQ=savedMaxQ; LOSS_MODE=previousLoss;
+    }
+
+    const huberPass=!!huberQ2 && huberGuardPass(huberQ2,standardQ2);
+    const selectedQ2=huberPass?huberQ2:standardQ2;
+    const selectedLoss=huberPass?'huber':'standard';
+    const chosen=optimizeBranchFromQ2(rawCurve,targetCurve,selectedQ2,selectedLoss);
+    chosen.metrics.performanceMode='balanced';
+    chosen.metrics.huberCommitted=huberPass;
+    chosen.metrics.huberGuard={
+      rmseImprovementDb:standardQ2.metrics.rmseAfter-(huberQ2?huberQ2.metrics.rmseAfter:standardQ2.metrics.rmseAfter),
+      p95DeltaDb:huberQ2?huberQ2.metrics.p95After-standardQ2.metrics.p95After:0,
+      maxDeltaDb:huberQ2?huberQ2.metrics.maxAfter-standardQ2.metrics.maxAfter:0,
+      accepted:huberPass,
+      comparisonStage:'q2_screen',
+      skipped:!huberQ2,
+      skipReason:!huberQ2?'standard_q2_within_robust_trigger':null,
+      fallback:huberPass?'none':'standard_loss'
+    };
+    chosen.metrics.standardCandidate={rmse:standardQ2.metrics.rmseAfter,p95:standardQ2.metrics.p95After,max:standardQ2.metrics.maxAfter,maxQ:standardQ2.metrics.maxQ,qRangeSelected:standardQ2.metrics.qRangeSelected};
+    chosen.metrics.huberCandidate=huberQ2?{rmse:huberQ2.metrics.rmseAfter,p95:huberQ2.metrics.p95After,max:huberQ2.metrics.maxAfter,maxQ:huberQ2.metrics.maxQ,qRangeSelected:huberQ2.metrics.qRangeSelected}:null;
+    return chosen;
+  }
+
+  // Shared high-Q completion used by the balanced path. Keeping this logic
+  // identical to the legacy branch preserves the existing transactional
+  // Q10 and EarPrint Shape Guard behavior.
+  function optimizeBranchFromQ2(rawCurve,targetCurve,q2,lossMode){
+    const previousLoss=LOSS_MODE;
+    const savedMinQ=CFG.minQ, savedMaxQ=CFG.maxQ;
+    LOSS_MODE=lossMode;
+    try{
+      CFG.minQ=0.30; CFG.maxQ=2.00;
+      const q10=extendHighQFromQ2(rawCurve,targetCurve,q2);
+      const q10PassGlobal =
+        q10.metrics.rmseAfter <= q2.metrics.rmseAfter - 0.002 &&
+        q10.metrics.p95After <= q2.metrics.p95After + 0.05 &&
+        q10.metrics.maxAfter <= q2.metrics.maxAfter + 0.05;
+      const branchShapeDelta = (q10.metrics.shapeGuardFinalRmsDb!=null && q2.metrics.shapeGuardFinalRmsDb!=null)
+        ? q10.metrics.shapeGuardFinalRmsDb-q2.metrics.shapeGuardFinalRmsDb : null;
+      const q10PassShape = q10.metrics.shapeGuardAccepted !== false &&
+        (branchShapeDelta==null || branchShapeDelta<=CFG.shapeGuardToleranceDb+1e-12);
+      const useExtended=q10PassGlobal&&q10PassShape;
+      const chosen=useExtended?q10:q2;
+      chosen.metrics.lossMode=lossMode;
+      chosen.metrics.qAllowed=[0.30,10.00];
+      chosen.metrics.qRangeSelected=useExtended?'0.30–10.00':'0.30–2.00';
+      chosen.metrics.q2Candidate={rmse:q2.metrics.rmseAfter,p95:q2.metrics.p95After,max:q2.metrics.maxAfter,maxQ:q2.metrics.maxQ,shapeGuardAccepted:q2.metrics.shapeGuardAccepted,shapeGuardDeltaDb:q2.metrics.shapeGuardDeltaDb};
+      chosen.metrics.q10Candidate={rmse:q10.metrics.rmseAfter,p95:q10.metrics.p95After,max:q10.metrics.maxAfter,maxQ:q10.metrics.maxQ,shapeGuardAccepted:q10.metrics.shapeGuardAccepted,shapeGuardDeltaDb:q10.metrics.shapeGuardDeltaDb};
+      chosen.metrics.q10GlobalGuard=q10PassGlobal;chosen.metrics.q10ShapeGuard=q10PassShape;chosen.metrics.q10BranchShapeDeltaDb=branchShapeDelta;chosen.metrics.q10Committed=useExtended;
+      return chosen;
+    }finally{
+      CFG.minQ=savedMinQ; CFG.maxQ=savedMaxQ; LOSS_MODE=previousLoss;
+    }
+  }
+
   function optimize(rawCurve,targetCurve){
+    if(CFG.performanceMode==='balanced')return optimizeBalanced(rawCurve,targetCurve);
     const standard=optimizeBranch(rawCurve,targetCurve,'standard');
     if(!CFG.huberEnabled){
       standard.metrics.huberCommitted=false;
       return standard;
     }
     const huber=optimizeBranch(rawCurve,targetCurve,'huber');
-    const huberPass = huber.metrics.shapeGuardAccepted !== false &&
-      huber.metrics.rmseAfter <= standard.metrics.rmseAfter-CFG.huberMinImprovementDb &&
-      huber.metrics.p95After <= standard.metrics.p95After+CFG.huberP95ToleranceDb &&
-      huber.metrics.maxAfter <= standard.metrics.maxAfter+CFG.huberMaxToleranceDb;
+    const huberPass = huberGuardPass(huber,standard);
     const chosen=huberPass?huber:standard;
     chosen.metrics.huberCommitted=huberPass;
     chosen.metrics.huberGuard={
@@ -741,8 +879,10 @@
       p95DeltaDb:huber.metrics.p95After-standard.metrics.p95After,
       maxDeltaDb:huber.metrics.maxAfter-standard.metrics.maxAfter,
       accepted:huberPass,
+      comparisonStage:'full_branch',
       fallback:huberPass?'none':'standard_loss'
     };
+    chosen.metrics.performanceMode='exhaustive';
     chosen.metrics.standardCandidate={rmse:standard.metrics.rmseAfter,p95:standard.metrics.p95After,max:standard.metrics.maxAfter,maxQ:standard.metrics.maxQ,qRangeSelected:standard.metrics.qRangeSelected};
     chosen.metrics.huberCandidate={rmse:huber.metrics.rmseAfter,p95:huber.metrics.p95After,max:huber.metrics.maxAfter,maxQ:huber.metrics.maxQ,qRangeSelected:huber.metrics.qRangeSelected};
     return chosen;
@@ -769,6 +909,7 @@
       optimizer:{initialization:'Squiglink candidate segmentation + geometric-centre Fc + bandwidth-derived Q',
                  loss:'standard mean absolute error with errors below 0.1 dB ignored; guarded Huber branch for outlier robustness',
                  robust_loss:{name:'Huber',delta_db:CFG.huberDeltaDb,enabled:CFG.huberEnabled,selection:'guarded comparison against standard-loss branch'},
+                 performance_mode:CFG.performanceMode,
                  batches:'first batch <=7 kHz, second residual batch, then full two-direction optimization; response-aware overlap merge after final pass'},
       constraints:{bands:CFG.bands,frequency_hz:[CFG.minFreq,CFG.maxFreq],gain_db:[CFG.minGain,CFG.maxGain],q:[0.30,10.00],q_range_selected:result.metrics.qRangeSelected},
       source:meta,metrics:result.metrics,earprint_shape_guard:{enabled:CFG.shapeGuard,tolerance_db:CFG.shapeGuardToleranceDb,reference:'output/pure_earprint_dynamic.txt',domain_hz:[1000,12000],transactional:true},peq:result.bands
@@ -882,6 +1023,7 @@
       ['Gain range',result.metrics.maxCut.toFixed(2)+' to '+(result.metrics.maxBoost>=0?'+':'')+result.metrics.maxBoost.toFixed(2)+' dB'],
       ['Max Q',result.metrics.maxQ.toFixed(2)],
       ['Loss',result.metrics.lossMode||'standard'],
+      ['Mode',result.metrics.performanceMode||CFG.performanceMode],
       ['Huber guard',result.metrics.huberCommitted===true?'PASS':(result.metrics.huberCommitted===false?'fallback':'—')],
       ['Level alignment',(result.metrics.levelOffsetDb>=0?'+':'')+result.metrics.levelOffsetDb.toFixed(2)+' dB removed'],
       ['EarPrint Guard',result.metrics.shapeGuardEnabled?(result.metrics.shapeGuardAccepted?'PASS':'ROLLBACK'):'OFF'],
@@ -890,7 +1032,7 @@
 
     table.innerHTML='<div class="pudding-peq-head"><span>Band</span><span>Type</span><span>Freq</span><span>Gain</span><span>Q</span></div>'+
       result.bands.map((b,i)=>`<div class="pudding-peq-row"><span>${i+1}</span><span>PK</span><span>${fmt(b.freq)} Hz</span><span>${b.gain>=0?'+':''}${b.gain.toFixed(2)} dB</span><span>${b.q.toFixed(2)}</span></div>`).join('')+
-      '<div class="pudding-note">Squiglink-style PK only · 20 Hz–12 kHz · -12 to +3 dB · Q allowed 0.30–10.00 · standard-loss fallback + guarded Huber loss (δ 1.0 dB) · dual-range search 0.30–2.00 + extended 0.30–10.00 · first batch ≤7 kHz · level-align 100 Hz–10 kHz · RBJ @ 48 kHz provisional · EarPrint Shape Guard 0.01 dB transactional rollback.</div>';
+      '<div class="pudding-note">Balanced mode: standard + Huber screen at Q 0.30–2.00, then one guarded high-Q rescue to Q10 · standard-loss fallback + guarded Huber loss (δ 1.0 dB) · first batch ≤7 kHz · level-align 100 Hz–10 kHz · RBJ @ 48 kHz provisional · EarPrint Shape Guard 0.01 dB transactional rollback.</div>';
   }
 
   function downloadTxt(){
