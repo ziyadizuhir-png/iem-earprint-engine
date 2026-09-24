@@ -475,6 +475,13 @@ select,input{
   padding:5px 6px 5px 9px;
 }
 
+.iem-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:5px 6px 5px 9px;
+}
+
 .target-pill-name{
   min-width:0;
   overflow-wrap:anywhere;
@@ -495,6 +502,17 @@ select,input{
   line-height:1;
   font-size:18px!important;
   cursor:pointer;
+}
+
+.iem-delete{
+  width:26px;
+  height:26px;
+  min-height:26px!important;
+  padding:0!important;
+  border-radius:50%;
+  border:1px solid rgba(255,120,120,.35);
+  background:rgba(130,35,45,.22);
+  color:#ffb8bf;
 }
 
 .target-delete:hover{
@@ -4167,15 +4185,23 @@ async function loadAll(){
         .map(
           item =>
 
-            `<span class="pill">` +
-
-            esc(
-              item.name.replace(
-                /\.txt$/i,
-                ''
-              )
-            ) +
-
+            `<span class="pill iem-pill">` +
+              `<span class="iem-pill-name">` +
+                esc(
+                  item.name.replace(
+                    /\.txt$/i,
+                    ''
+                  )
+                ) +
+              `</span>` +
+              `<button type="button"` +
+                ` class="iem-delete"` +
+                ` data-iem-name="` +
+                  esc(item.name) +
+                `"` +
+                ` title="Delete preferred IEM"` +
+                ` aria-label="Delete ${esc(item.name.replace(/\.txt$/i,''))}"` +
+              `>×</button>` +
             `</span>`
         )
         .join('');
@@ -4254,6 +4280,58 @@ async function loadAll(){
       error.message
     );
 
+  }
+
+}
+
+
+async function deleteIem(filename){
+
+  if(!filename)
+    return;
+
+  if(!githubToken){
+    showErr(
+      'GitHub token required. Open GitHub Access first.'
+    );
+    openSettings();
+    return;
+  }
+
+  // The engine requires at least one preferred curve. Keep the last vote safe.
+  const remaining = document.querySelectorAll('#iems .iem-delete').length;
+  if(remaining <= 1){
+    showErr('At least one preferred IEM must remain. Add another IEM before deleting this one.');
+    return;
+  }
+
+  const label = filename.replace(/\.txt$/i,'');
+  if(!window.confirm(
+    'Delete preferred IEM "' + label + '"?\n\n' +
+    'This removes the equal-vote curve from input/preferred/. ' +
+    'GitHub Actions will rebuild the EarPrint from the remaining IEMs.'
+  )) return;
+
+  try{
+    const inputPath = 'input/preferred/' + encodeURIComponent(filename);
+    const meta = await ghAuth(inputPath + '?ref=main');
+    if(!meta || !meta.sha)
+      throw Error('GitHub did not return a file SHA.');
+
+    await ghAuth(inputPath,{
+      method:'DELETE',
+      body:JSON.stringify({
+        message:'Delete preferred IEM ' + filename,
+        sha:meta.sha,
+        branch:'main'
+      })
+    });
+
+    document.getElementById('targetStatus').textContent =
+      'Deleted preferred IEM ' + label + '. GitHub Actions will rebuild the EarPrint.';
+    await loadAll();
+  }catch(error){
+    showErr('Could not delete preferred IEM: ' + error.message);
   }
 
 }
@@ -4664,6 +4742,20 @@ function bindUiEvents(){
   on('cancelAddButton','click',closeModal);
 
   const targetList=get('targets');
+
+  const iemList=get('iems');
+
+  if(iemList){
+    iemList.addEventListener(
+      'click',
+      function(event){
+        const button=event.target.closest('.iem-delete');
+        if(!button || !iemList.contains(button)) return;
+        const filename=button.getAttribute('data-iem-name');
+        if(filename) deleteIem(filename);
+      }
+    );
+  }
 
   if(targetList){
 
