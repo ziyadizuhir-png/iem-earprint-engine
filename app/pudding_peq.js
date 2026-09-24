@@ -27,7 +27,7 @@
   'use strict';
 
   const CFG = {
-    version: '2026-09-23.1-Balanced',
+    version: '2026-09-24.2-BranchBank',
     shapeGuard: true,
     shapeGuardToleranceDb: 0.01,
     bands: 10,
@@ -51,6 +51,12 @@
     minSeedGain: 0.20,
     minSeedSeparationOct: 0.18,
     minActiveGain: 0.05,
+    // Deterministic non-local seeds informed by the PUDDING black-box study.
+    // These are search candidates, not a claim about MOONDROP's grid.
+    farCandidateAnchors: [20,35,48,65,80,100,120,300,340,440,600,650,680,1000,2480,2500,2600,2700,3500,4500,5000,5500,6210,7099,8000],
+    farCandidateQ: [0.30,0.70,1.40,2.00],
+    farCandidateMinImprovementDb: 0.005,
+    allowDuplicateFc: true,
     trebleStart: 7000,
     maxPasses: 3,
     huberEnabled: true,
@@ -270,6 +276,41 @@
     return candidates;
   }
 
+  // Link black-box runs show that a local target feature can be fitted by
+  // filters far away from that feature. Add a small far-candidate bank, but
+  // retain only seeds that improve the current response on their own.
+  function augmentCandidates(freqs,base,target,seedCandidates){
+    const out=seedCandidates.slice();
+    const baseDistance=distance(freqs,base,target);
+    const seen=new Set(out.map(c=>`${Math.round(c.freq)}:${Math.round(c.q*10)}:${Math.round(c.gain*10)}`));
+    for(const anchor of CFG.farCandidateAnchors){
+      if(anchor<CFG.minFreq||anchor>CFG.maxFreq)continue;
+      const wanted=gridInterp(freqs,target,anchor)-gridInterp(freqs,base,anchor);
+      if(Math.abs(wanted)<CFG.minSeedGain)continue;
+      let best=null,bestScore=baseDistance;
+      const gain=clamp(Math.round(wanted*10)/10,CFG.minGain,CFG.maxGain);
+      if(Math.abs(gain)<CFG.minActiveGain)continue;
+      for(const q of CFG.farCandidateQ){
+        const candidate={freq:anchor,q,gain};
+        const score=distance(freqs,applyFilters(base,[candidate],freqs),target);
+        if(score<bestScore-CFG.farCandidateMinImprovementDb){
+          bestScore=score;best=candidate;
+        }
+      }
+      if(best){
+        const key=`${Math.round(best.freq)}:${Math.round(best.q*10)}:${Math.round(best.gain*10)}`;
+        if(!seen.has(key)){out.push(best);seen.add(key);}
+      }
+    }
+    return out;
+  }
+
+  function rankCandidates(freqs,base,target,candidates){
+    return candidates.map((candidate,index)=>({candidate,index,score:distance(freqs,applyFilters(base,[candidate],freqs),target)}))
+      .sort((a,b)=>a.score-b.score || a.index-b.index)
+      .map(x=>x.candidate);
+  }
+
   const OPT_DELTAS=[
     [10,10,10,5,0.1,0.5],
     [10,10,10,2,0.1,0.2],
@@ -433,6 +474,12 @@
         const a=work[i],b=work[i+1];
         if(Math.sign(a.gain)!==Math.sign(b.gain))continue;
         if(Math.max(a.freq,b.freq)/Math.min(a.freq,b.freq)>1.35)continue;
+        // Keep duplicate/near-duplicate Fc when the two filters have
+        // materially different Q. This permits paired-filter solutions while
+        // still allowing genuinely redundant filters to be merged.
+        if(CFG.allowDuplicateFc &&
+           Math.abs(a.freq-b.freq)<=freqUnit(Math.min(a.freq,b.freq)) &&
+           Math.abs(a.q-b.q)>0.25)continue;
 
         const seed=fitMergedFilter(freqs,[a,b]);
         if(!seed)continue;
@@ -549,9 +596,8 @@
     const aligned=alignLevel(freqs,raw,target),rawA=aligned.curve;
 
     const firstBatchSize=Math.max(Math.floor(CFG.bands/2)-1,1);
-    const firstCandidates=searchCandidates(freqs,rawA,target,1)
+    const firstCandidates=rankCandidates(freqs,rawA,target,augmentCandidates(freqs,rawA,target,searchCandidates(freqs,rawA,target,1)))
       .filter(c=>c.freq<=CFG.trebleStart)
-      .sort((a,b)=>a.q-b.q)
       .slice(0,firstBatchSize)
       .sort((a,b)=>a.freq-b.freq);
 
@@ -561,8 +607,7 @@
 
     const secondFR=applyFilters(rawA,firstFilters,freqs);
     const secondBatchSize=CFG.bands-firstFilters.length;
-    let secondFilters=searchCandidates(freqs,secondFR,target,0.5)
-      .sort((a,b)=>a.q-b.q)
+    let secondFilters=rankCandidates(freqs,secondFR,target,augmentCandidates(freqs,secondFR,target,searchCandidates(freqs,secondFR,target,0.5)))
       .slice(0,secondBatchSize)
       .sort((a,b)=>a.freq-b.freq);
 
@@ -906,7 +951,7 @@
       implementation:'MOONDROP Link-compatible constraint set',
       dsp_model:{type:'RBJ peaking biquad',sample_rate_hz:CFG.sampleRate,status:'PROVISIONAL'},
       level_alignment:{method:'mean raw-target error over 100 Hz–10 kHz',removed_offset_db:result.metrics.levelOffsetDb},
-      optimizer:{initialization:'Squiglink candidate segmentation + geometric-centre Fc + bandwidth-derived Q',
+      optimizer:{initialization:'Local residual candidates + deterministic non-local candidate bank + geometric-centre Fc + bandwidth-derived Q',
                  loss:'standard mean absolute error with errors below 0.1 dB ignored; guarded Huber branch for outlier robustness',
                  robust_loss:{name:'Huber',delta_db:CFG.huberDeltaDb,enabled:CFG.huberEnabled,selection:'guarded comparison against standard-loss branch'},
                  performance_mode:CFG.performanceMode,
@@ -1032,7 +1077,7 @@
 
     table.innerHTML='<div class="pudding-peq-head"><span>Band</span><span>Type</span><span>Freq</span><span>Gain</span><span>Q</span></div>'+
       result.bands.map((b,i)=>`<div class="pudding-peq-row"><span>${i+1}</span><span>PK</span><span>${fmt(b.freq)} Hz</span><span>${b.gain>=0?'+':''}${b.gain.toFixed(2)} dB</span><span>${b.q.toFixed(2)}</span></div>`).join('')+
-      '<div class="pudding-note">Balanced mode: standard + Huber screen at Q 0.30–2.00, then one guarded high-Q rescue to Q10 · standard-loss fallback + guarded Huber loss (δ 1.0 dB) · first batch ≤7 kHz · level-align 100 Hz–10 kHz · RBJ @ 48 kHz provisional · EarPrint Shape Guard 0.01 dB transactional rollback.</div>';
+      '<div class="pudding-note">BranchBank mode: local + non-local candidate seeds, standard + Huber screen at Q 0.30–2.00, guarded high-Q rescue to Q10, duplicate-Fc tolerance when Q differs · post-merge response checks · level-align 100 Hz–10 kHz · RBJ @ 48 kHz provisional · EarPrint Shape Guard 0.01 dB transactional rollback.</div>';
   }
 
   function downloadTxt(){
