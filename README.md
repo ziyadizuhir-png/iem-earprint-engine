@@ -41,6 +41,13 @@ also skipped when the standard Q≤2 result is already within the robust trigger
 (maximum error ≤ 3.0 dB and P95 ≤ 0.80 dB); this keeps ordinary runs responsive
 without weakening the final Q10 or Shape Guard checks.
 
+The unified adaptive stage keeps the existing coordinate solver and adds
+coarse (R2) → tonal (R1) → exact (R0) candidate evidence, feature width and
+support risk, complexity/sharpness costs, response-aware pruning, and a final
+quantization pass. Exported filters are simulated at their exact rounded
+values. The PEQ correction domain remains 20–12,000 Hz; 12–20 kHz is used only
+for exported-filter safety validation and never as a fabricated fitting target.
+
 The conservative branch searches Q 0.30–2.00. A separate high-Q rescue tests
 Q up to 10.00 and is committed only when its transactional guards pass. The
 selected loss, guard decision, and both candidate summaries are included in

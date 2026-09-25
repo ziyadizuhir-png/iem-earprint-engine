@@ -170,3 +170,23 @@ output:
   write_robust_targets: true
   write_pure_earprint: true
   write_hybrids: false
+
+# Pudding PEQ defaults are mirrored in app/pudding_peq.js so the web app can
+# run without changing the locked EarPrint generation path above.
+peq:
+  correction_domain_hz: [20, 12000]
+  validation_domain_hz: [20, 20000]
+  max_bands: 10
+  resolutions:
+    r0_points: 720
+    r1_points: 240
+    r2_points: 96
+    r1_octaves: 0.1666666667
+  huber:
+    epsilon_db: 0.10
+    delta_db: 1.0
+  quantization:
+    frequency_hz: 1
+    gain_db: 0.01
+    q: 0.01
+  execution_tier: balanced

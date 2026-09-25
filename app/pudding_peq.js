@@ -27,7 +27,7 @@
   'use strict';
 
   const CFG = {
-    version: '2026-09-24.2-BranchBank',
+    version: '2026-09-25.0-UnifiedAdaptive',
     shapeGuard: true,
     shapeGuardToleranceDb: 0.01,
     bands: 10,
@@ -70,7 +70,20 @@
     // run high-Q rescue only on the branch that has already passed guards.
     // Set to "exhaustive" for the slower legacy two-branch audit path.
     performanceMode: 'balanced'
+    ,resolution: { r0Points: 720, r1Points: 240, r2Points: 96, tonalOctaves: 1/6 }
+    ,huberEpsilonDb: 0.10
+    ,sharpnessPenaltyWeight: 0.002
+    ,complexityPenaltyWeight: 0.003
+    ,boostRiskWeight: 0.025
+    ,hfValidation: { startHz: 12000, endHz: 20000, maxDeviationDb: 6, maxSlopeDbPerOct: 18 }
+    ,quantization: { freqHz: 1, gainDb: 0.01, q: 0.01 }
+    ,feature: { prominenceDb: 0.15, minWidthOct: 0.05, supportOct: 0.12 }
   };
+
+  const DOMAIN_BANDS = Object.freeze([
+    [20,100],[100,300],[300,1000],[1000,3000],[3000,6000],
+    [6000,8000],[8000,10000],[10000,12000],[12000,20000]
+  ]);
 
   // The standard objective remains the reference branch. Huber is evaluated
   // as a robust candidate and can only be committed after the guards pass.
@@ -305,8 +318,101 @@
     return out;
   }
 
+  function responseDelta(freqs,oldFilter,newFilter){
+    const oldR=oldFilter?rbj(freqs,oldFilter):new Float64Array(freqs.length);
+    const newR=newFilter?rbj(freqs,newFilter):new Float64Array(freqs.length);
+    const d=new Float64Array(freqs.length);
+    for(let i=0;i<d.length;i++)d[i]=newR[i]-oldR[i];
+    return d;
+  }
+
+  // R0 is the numerical authority. R1/R2 are only search representations.
+  function resolutionGrids(lo,hi){
+    const r=CFG.resolution||{};
+    return {R0:logspace(lo,hi,r.r0Points||720),R1:logspace(lo,hi,r.r1Points||240),R2:logspace(lo,hi,r.r2Points||96)};
+  }
+
+  function deadZoneHuber(e,epsilon=CFG.huberEpsilonDb,delta=CFG.huberDeltaDb){
+    const a=Math.max(0,Math.abs(e)-epsilon);
+    return a<=delta ? 0.5*a*a : delta*(a-0.5*delta);
+  }
+
+  function featureAnalysis(freqs,residual){
+    const features=[];
+    const minProm=(CFG.feature||{}).prominenceDb||0.15;
+    for(let i=1;i<residual.length-1;i++){
+      const v=residual[i], av=Math.abs(v);
+      if(av<minProm || av<Math.abs(residual[i-1]) || av<Math.abs(residual[i+1]))continue;
+      const sign=Math.sign(v); let l=i,r=i;
+      while(l>0 && Math.sign(residual[l-1])===sign && Math.abs(residual[l-1])>=av*0.5)l--;
+      while(r<residual.length-1 && Math.sign(residual[r+1])===sign && Math.abs(residual[r+1])>=av*0.5)r++;
+      const width=Math.max(1e-9,Math.log2(freqs[r]/freqs[l]));
+      const slope=(residual[r]-residual[l])/Math.max(1e-9,Math.log2(freqs[r]/freqs[l]));
+      const curvature=(residual[i-1]-2*v+residual[i+1]);
+      const support=Math.min(1,width/((CFG.feature||{}).supportOct||0.12));
+      features.push({freq:freqs[i],gain:-v,widthOct:width,area:av*width,slope,curvature,support,isolated:support<0.5,continuation:1-support,density:1/Math.max(width,0.01)});
+    }
+    return features.sort((a,b)=>Math.abs(b.gain)-Math.abs(a.gain));
+  }
+
+  function boostRisk(feature){
+    if(!feature || feature.gain<=0)return 0;
+    const hf=clamp(Math.log2(Math.max(feature.freq,1000)/1000)/Math.log2(12),0,1);
+    return clamp((feature.widthOct<0.15?0.35:0.05)+hf*0.25+Math.min(1,feature.gain/3)*0.25+(1-feature.support)*0.15+(feature.isolated?0.1:0),0,1);
+  }
+
+  function objectiveComponents(freqs,curve,target,bands=[],validation=null){
+    const errors=curve.map((v,i)=>v-target[i]), abs=errors.map(Math.abs);
+    const h=errors.reduce((s,e)=>s+deadZoneHuber(e),0)/Math.max(1,errors.length);
+    const gainEnergy=bands.reduce((s,b)=>s+b.gain*b.gain,0);
+    const qComplexity=bands.reduce((s,b)=>s+Math.max(0,b.q-2)*Math.max(0,Math.abs(b.gain)),0);
+    const risk=bands.reduce((s,b)=>s+(b.gain>0?boostRisk({freq:b.freq,gain:b.gain,widthOct:1,support:1}):0),0);
+    const hf=validation||{maxDeviation:0,p95Deviation:0,maxSlope:0};
+    const sharpness=curve.length>2?curve.slice(1,-1).reduce((s,v,i)=>s+Math.abs(curve[i]-2*v+curve[i+2]),0)/curve.length:0;
+    const hfPenalty=hf.maxDeviation+0.5*hf.p95Deviation;
+    return {rmse:rmse(errors),mae:abs.reduce((s,v)=>s+v,0)/Math.max(1,abs.length),p95:percentile(abs,.95),max:Math.max(0,...abs),huberLoss:h,gainEnergy,qComplexity,bandCost:bands.length,boostRisk:risk,sharpnessPenalty:sharpness,hfPenalty,score:rmse(errors)+CFG.complexityPenaltyWeight*(gainEnergy+qComplexity+bands.length)+CFG.sharpnessPenaltyWeight*sharpness+CFG.boostRiskWeight*risk+CFG.complexityPenaltyWeight*hfPenalty};
+  }
+
+  function highFrequencyValidation(rawCurve,bands){
+    const lo=Math.max(12000,rawCurve[0][0]), hi=Math.min(20000,rawCurve.at(-1)[0]);
+    if(hi<=lo)return {status:'SKIP',maxDeviation:0,p95Deviation:0,maxSlope:0,points:0};
+    const f=logspace(lo,hi,96), base=resample(rawCurve,f), eq=totalEq(f,bands), d=eq.map(Math.abs);
+    let maxSlope=0; for(let i=1;i<eq.length;i++)maxSlope=Math.max(maxSlope,Math.abs((eq[i]-eq[i-1])/Math.log2(f[i]/f[i-1])));
+    const lim=CFG.hfValidation||{};
+    return {status:Math.max(...d)<=lim.maxDeviationDb&&maxSlope<=lim.maxSlopeDbPerOct?'PASS':'FAIL',maxDeviation:Math.max(...d),p95Deviation:percentile(d,.95),maxSlope,points:f.length};
+  }
+
+  function quantizeBands(bands){
+    const q=CFG.quantization||{};
+    return bands.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain).slice(0,CFG.bands).map(b=>({freq:clamp(Math.round(b.freq/(q.freqHz||1))*(q.freqHz||1),CFG.minFreq,CFG.maxFreq),gain:clamp(Math.round(b.gain/(q.gainDb||0.01))*(q.gainDb||0.01),CFG.minGain,CFG.maxGain),q:clamp(Math.round(b.q/(q.q||0.01))*(q.q||0.01),CFG.minQ,CFG.maxQ)}));
+  }
+
+  function responseAwarePrune(freqs,base,target,bands){
+    let work=bands.map(b=>({...b})), current=objectiveComponents(freqs,applyFilters(base,work,freqs),target,work).score;
+    for(let i=0;i<work.length;){
+      const trial=work.filter((_,j)=>j!==i), score=objectiveComponents(freqs,applyFilters(base,trial,freqs),target,trial).score;
+      if(score<=current+0.002){work=trial;current=score;}else i++;
+    }
+    return work;
+  }
+
+  function finalizeQuantized(rawCurve,targetCurve,bands){
+    const lo=Math.max(CFG.minFreq,rawCurve[0][0],targetCurve[0][0]), hi=Math.min(CFG.maxFreq,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
+    const freqs=logspace(lo,hi,(CFG.resolution||{}).r0Points||720), raw=resample(rawCurve,freqs), target=resample(targetCurve,freqs);
+    const aligned=alignLevel(freqs,raw,target), qbands=responseAwarePrune(freqs,aligned.curve,target,quantizeBands(bands));
+    const curve=applyFilters(aligned.curve,qbands,freqs), validation=highFrequencyValidation(rawCurve,qbands);
+    const pure=window.__EARPRINT_PURE_CURVE__||null;
+    const continuousCurve=applyFilters(aligned.curve,bands,freqs);
+    const shapeBefore=pure?shapeMetrics(freqs,continuousCurve,pure):null;
+    const shapeAfter=pure?shapeMetrics(freqs,curve,pure):null;
+    const shapeGuard=shapeBefore&&shapeAfter?{status:shapeAfter.rms-shapeBefore.rms<=CFG.shapeGuardToleranceDb+1e-12?'PASS':'FAIL',deltaDb:shapeAfter.rms-shapeBefore.rms}: {status:'SKIP',deltaDb:null};
+    const components=objectiveComponents(freqs,curve,target,qbands,validation);
+    const finite=qbands.length<=CFG.bands&&qbands.every(b=>Number.isFinite(b.freq)&&Number.isFinite(b.gain)&&Number.isFinite(b.q)&&b.freq>=20&&b.freq<=12000&&b.gain>=-12&&b.gain<=3&&b.q>=.3&&b.q<=10);
+    return {bands:qbands,components,validation,shapeGuard,finite,exactSimulation:{freqs,curve,target}};
+  }
+
   function rankCandidates(freqs,base,target,candidates){
-    return candidates.map((candidate,index)=>({candidate,index,score:distance(freqs,applyFilters(base,[candidate],freqs),target)}))
+    return candidates.map((candidate,index)=>({candidate,index,score:distance(freqs,applyFilters(base,[candidate],freqs),target)+CFG.boostRiskWeight*(candidate.risk||0)+CFG.complexityPenaltyWeight*Math.max(0,candidate.q-2)}))
       .sort((a,b)=>a.score-b.score || a.index-b.index)
       .map(x=>x.candidate);
   }
@@ -342,12 +448,15 @@
       const others=filters.filter((_,fi)=>fi!==i);
       const baseWithout=applyFilters(base,others,freqs);
       let bestFilter=f;
-      let bestDistance=distance(freqs,applyFilters(baseWithout,[f],freqs),target);
+      let bestCurve=applyFilters(baseWithout,[f],freqs);
+      let bestDistance=distance(freqs,bestCurve,target);
 
       const test=(nf)=>{
         if(nf.freq<minFreq||nf.freq>maxFreq||nf.q<minQ||nf.q>maxQ||nf.gain<minGain||nf.gain>maxGain)return;
-        const score=distance(freqs,applyFilters(baseWithout,[nf],freqs),target);
-        if(score<bestDistance-1e-12){bestFilter=nf;bestDistance=score;}
+        const delta=responseDelta(freqs,bestFilter,nf), trial=new Float64Array(bestCurve);
+        for(let k=0;k<trial.length;k++)trial[k]+=delta[k];
+        const score=distance(freqs,trial,target);
+        if(score<bestDistance-1e-12){bestFilter=nf;bestDistance=score;bestCurve=trial;}
       };
 
       const qvals=qSearchValues(f.q,iteration);
@@ -591,12 +700,23 @@
     const hi=Math.min(CFG.maxFreq,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
     if(hi<=lo||hi<2000)throw Error('Raw Pudding and target curves have insufficient frequency overlap.');
 
-    const freqs=logspace(lo,hi,CFG.performanceMode==='balanced'?CFG.balancedPoints:CFG.points);
+    const grids=resolutionGrids(lo,hi);
+    const freqs=grids.R0;
     const raw=resample(rawCurve,freqs),target=resample(targetCurve,freqs);
     const aligned=alignLevel(freqs,raw,target),rawA=aligned.curve;
 
+    // Discover features on the coarse and tonal views, then hand only their
+    // deterministic seeds to the existing candidate/ranking machinery.
+    const featureSeeds=[];
+    for(const view of [grids.R2,grids.R1]){
+      const vr=resample(rawCurve,view), vt=resample(targetCurve,view), va=alignLevel(view,vr,vt).curve;
+      for(const f of featureAnalysis(view,va.map((v,i)=>v-vt[i])).slice(0,24)){
+        featureSeeds.push({freq:f.freq,q:clamp(1/Math.max(f.widthOct*2,0.3),0.3,2),gain:clamp(f.gain,-12,3),risk:boostRisk(f)});
+      }
+    }
+
     const firstBatchSize=Math.max(Math.floor(CFG.bands/2)-1,1);
-    const firstCandidates=rankCandidates(freqs,rawA,target,augmentCandidates(freqs,rawA,target,searchCandidates(freqs,rawA,target,1)))
+    const firstCandidates=rankCandidates(freqs,rawA,target,augmentCandidates(freqs,rawA,target,searchCandidates(freqs,rawA,target,1).concat(featureSeeds)))
       .filter(c=>c.freq<=CFG.trebleStart)
       .slice(0,firstBatchSize)
       .sort((a,b)=>a.freq-b.freq);
@@ -607,7 +727,7 @@
 
     const secondFR=applyFilters(rawA,firstFilters,freqs);
     const secondBatchSize=CFG.bands-firstFilters.length;
-    let secondFilters=rankCandidates(freqs,secondFR,target,augmentCandidates(freqs,secondFR,target,searchCandidates(freqs,secondFR,target,0.5)))
+    let secondFilters=rankCandidates(freqs,secondFR,target,augmentCandidates(freqs,secondFR,target,searchCandidates(freqs,secondFR,target,0.5).concat(featureSeeds)))
       .slice(0,secondBatchSize)
       .sort((a,b)=>a.freq-b.freq);
 
@@ -630,8 +750,6 @@
     const sg=earprintShapeGuard(freqs,rawA,target,preCeilingFilters,allFilters,pureForGuard);
     allFilters=sg.filters;
 
-    while(allFilters.length<CFG.bands)allFilters.push({freq:0,gain:0,q:1});
-
     const corrected=applyFilters(rawA,allFilters,freqs);
     const before=rawA.map((v,i)=>Math.abs(v-target[i]));
     const after=corrected.map((v,i)=>Math.abs(v-target[i]));
@@ -642,9 +760,9 @@
       p95Before:percentile(before,.95),p95After:percentile(after,.95),
       maxBefore:Math.max(...before),maxAfter:Math.max(...after),
       activeBands:active.length,
-      maxBoost:Math.max(...allFilters.map(b=>b.gain)),
-      maxCut:Math.min(...allFilters.map(b=>b.gain)),
-      maxQ:Math.max(...allFilters.map(b=>b.q)),
+      maxBoost:Math.max(0,...allFilters.map(b=>b.gain)),
+      maxCut:Math.min(0,...allFilters.map(b=>b.gain)),
+      maxQ:Math.max(0,...allFilters.map(b=>b.q)),
       levelOffsetDb:aligned.offset,coverage:[lo,hi],
       objective:distance(freqs,corrected,target),
       shapeGuardEnabled:CFG.shapeGuard,
@@ -653,7 +771,10 @@
       shapeGuardReason:sg.reason,
       shapeGuardDeltaDb:sg.delta===undefined?null:sg.delta,
       shapeGuardPreRmsDb:sg.pre?sg.pre.rms:null,
-      shapeGuardFinalRmsDb:sg.fin?sg.fin.rms:null
+      shapeGuardFinalRmsDb:sg.fin?sg.fin.rms:null,
+      objectiveComponents:objectiveComponents(freqs,corrected,target,allFilters),
+      resolution:{R0:grids.R0.length,R1:grids.R1.length,R2:grids.R2.length},
+      featureCount:featureSeeds.length
     }};
   }
 
@@ -666,7 +787,7 @@
     CFG.minQ=0.30; CFG.maxQ=10.00;
     const lo=Math.max(CFG.minFreq,rawCurve[0][0],targetCurve[0][0]);
     const hi=Math.min(CFG.maxFreq,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
-    const freqs=logspace(lo,hi,CFG.performanceMode==='balanced'?CFG.balancedPoints:CFG.points);
+    const freqs=resolutionGrids(lo,hi).R0;
     const raw=resample(rawCurve,freqs),target=resample(targetCurve,freqs);
     const aligned=alignLevel(freqs,raw,target),rawA=aligned.curve;
     const active=q2.bands.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain).map(b=>({...b}));
@@ -747,15 +868,16 @@
     const sg=earprintShapeGuard(freqs,rawA,target,pre,work,pure);
     work=sg.filters;
     CFG.minQ=oldMinQ; CFG.maxQ=oldMaxQ;
-    while(work.length<CFG.bands)work.push({freq:0,gain:0,q:1});
     const corrected=applyFilters(rawA,work,freqs), before=rawA.map((v,i)=>Math.abs(v-target[i])), after=corrected.map((v,i)=>Math.abs(v-target[i]));
     return {bands:work,metrics:{
       rmseBefore:rmse(before),rmseAfter:rmse(after),p95Before:percentile(before,.95),p95After:percentile(after,.95),
       maxBefore:Math.max(...before),maxAfter:Math.max(...after),activeBands:work.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain).length,
-      maxBoost:Math.max(...work.map(b=>b.gain)),maxCut:Math.min(...work.map(b=>b.gain)),maxQ:Math.max(...work.map(b=>b.q)),
+      maxBoost:Math.max(0,...work.map(b=>b.gain)),maxCut:Math.min(0,...work.map(b=>b.gain)),maxQ:Math.max(0,...work.map(b=>b.q)),
       levelOffsetDb:aligned.offset,coverage:[lo,hi],objective:distance(freqs,corrected,target),shapeGuardEnabled:CFG.shapeGuard,
       shapeGuardToleranceDb:CFG.shapeGuardToleranceDb,shapeGuardAccepted:sg.accepted,shapeGuardReason:sg.reason,shapeGuardDeltaDb:sg.delta===undefined?null:sg.delta,
-      shapeGuardPreRmsDb:sg.pre?sg.pre.rms:null,shapeGuardFinalRmsDb:sg.fin?sg.fin.rms:null
+      shapeGuardPreRmsDb:sg.pre?sg.pre.rms:null,shapeGuardFinalRmsDb:sg.fin?sg.fin.rms:null,
+      objectiveComponents:objectiveComponents(freqs,corrected,target,work),
+      resolution:{R0:freqs.length,R1:(CFG.resolution||{}).r1Points||240,R2:(CFG.resolution||{}).r2Points||96}
     }};
   }
 
@@ -777,6 +899,21 @@
         (branchShapeDelta==null || branchShapeDelta<=CFG.shapeGuardToleranceDb+1e-12);
       const useExtended=q10PassGlobal&&q10PassShape;
       const chosen=useExtended?q10:q2;
+      const finalized=finalizeQuantized(rawCurve,targetCurve,chosen.bands);
+      if(!finalized.finite){
+        chosen.metrics.quantizationRescue='rejected';
+      }else{
+        chosen.bands=finalized.bands;
+        chosen.metrics.quantizationRescue=finalized.validation.status==='FAIL'||finalized.shapeGuard.status==='FAIL'?'rejected':'accepted';
+        chosen.metrics.quantizedObjective=finalized.components;
+        chosen.metrics.hfValidation=finalized.validation;
+        chosen.metrics.quantizedShapeGuard=finalized.shapeGuard;
+        chosen.metrics.exactExportSimulation=true;
+        chosen.metrics.activeBands=chosen.bands.length;
+        chosen.metrics.maxBoost=Math.max(0,...chosen.bands.map(b=>b.gain));
+        chosen.metrics.maxCut=Math.min(0,...chosen.bands.map(b=>b.gain));
+        chosen.metrics.maxQ=Math.max(0,...chosen.bands.map(b=>b.q));
+      }
       chosen.metrics.lossMode=lossMode;
       chosen.metrics.qAllowed=[0.30,10.00];
       chosen.metrics.qRangeSelected=useExtended?'0.30–10.00':'0.30–2.00';
@@ -896,6 +1033,19 @@
         (branchShapeDelta==null || branchShapeDelta<=CFG.shapeGuardToleranceDb+1e-12);
       const useExtended=q10PassGlobal&&q10PassShape;
       const chosen=useExtended?q10:q2;
+      const finalized=finalizeQuantized(rawCurve,targetCurve,chosen.bands);
+      chosen.metrics.quantizationRescue=finalized.finite&&finalized.validation.status!=='FAIL'&&finalized.shapeGuard.status!=='FAIL'?'accepted':'rejected';
+      if(finalized.finite){
+        chosen.bands=finalized.bands;
+        chosen.metrics.quantizedObjective=finalized.components;
+        chosen.metrics.hfValidation=finalized.validation;
+        chosen.metrics.quantizedShapeGuard=finalized.shapeGuard;
+        chosen.metrics.exactExportSimulation=true;
+        chosen.metrics.activeBands=chosen.bands.length;
+        chosen.metrics.maxBoost=Math.max(0,...chosen.bands.map(b=>b.gain));
+        chosen.metrics.maxCut=Math.min(0,...chosen.bands.map(b=>b.gain));
+        chosen.metrics.maxQ=Math.max(0,...chosen.bands.map(b=>b.q));
+      }
       chosen.metrics.lossMode=lossMode;
       chosen.metrics.qAllowed=[0.30,10.00];
       chosen.metrics.qRangeSelected=useExtended?'0.30–10.00':'0.30–2.00';
@@ -936,7 +1086,7 @@
   const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   function formatPEQ(result){
-    return result.bands.map((b,i)=>
+    return result.bands.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain).slice(0,CFG.bands).map((b,i)=>
       `Filter ${i+1}: PK ${fmt(b.freq)} Hz, ${b.gain>=0?'+':''}${b.gain.toFixed(2)} dB, Q ${b.q.toFixed(2)}`
     ).join('\n')+'\n';
   }
@@ -957,7 +1107,7 @@
                  performance_mode:CFG.performanceMode,
                  batches:'first batch <=7 kHz, second residual batch, then full two-direction optimization; response-aware overlap merge after final pass'},
       constraints:{bands:CFG.bands,frequency_hz:[CFG.minFreq,CFG.maxFreq],gain_db:[CFG.minGain,CFG.maxGain],q:[0.30,10.00],q_range_selected:result.metrics.qRangeSelected},
-      source:meta,metrics:result.metrics,earprint_shape_guard:{enabled:CFG.shapeGuard,tolerance_db:CFG.shapeGuardToleranceDb,reference:'output/pure_earprint_dynamic.txt',domain_hz:[1000,12000],transactional:true},peq:result.bands
+      source:meta,metrics:result.metrics,earprint_shape_guard:{enabled:CFG.shapeGuard,tolerance_db:CFG.shapeGuardToleranceDb,reference:'output/pure_earprint_dynamic.txt',domain_hz:[1000,12000],transactional:true},peq:result.bands.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain).slice(0,CFG.bands)
     },null,2)+'\n';
   }
 
@@ -1127,5 +1277,6 @@
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 
-  window.MoondropPuddingPEQ={CFG,optimize,formatPEQ};
+  window.MoondropPuddingPEQ={CFG,optimize,formatPEQ,
+    __test:{DOMAIN_BANDS,resolutionGrids,featureAnalysis,boostRisk,deadZoneHuber,objectiveComponents,highFrequencyValidation,quantizeBands,responseAwarePrune,finalizeQuantized,responseDelta,rbj,totalEq,applyFilters}};
 })();
