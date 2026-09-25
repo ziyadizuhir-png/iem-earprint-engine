@@ -552,21 +552,21 @@ select,input{
 }
 
 /* ============================================================
-   SQUIGLINK-STYLE GRAPH PRESENTATION ONLY
+   FREQUENCY RESPONSE GRAPH PRESENTATION
    Math / data / controls are unchanged.
    ============================================================ */
-.chart.squig-graph{
+.chart.fr-graph{
   background:#080f1b;
   border-color:#18243a;
   border-radius:8px;
 }
-.chart.squig-graph svg{
+.chart.fr-graph svg{
   display:block;
   width:100%;
   height:auto;
 }
 @media(max-width:600px){
-  .chart.squig-graph svg{min-width:0;}
+  .chart.fr-graph svg{min-width:0;}
 }
 
 
@@ -969,7 +969,7 @@ select,input{
 }
 
 /* Keep graph dimensions/visual exactly as approved. */
-.chart.squig-graph{
+.chart.fr-graph{
   border-radius:5px!important;
 }
 
@@ -2477,7 +2477,7 @@ function drawTargetMain(){
   const minHz=Math.max(requestedMin,Math.min(availableMin,requestedMax));
   const maxHz=Math.min(requestedMax,Math.max(availableMax,minHz*1.01));
 
-  /* Squiglink-like wide graph window. */
+  /* Wide frequency-response graph window. */
   const W=1200,H=500;
   const L=66,R=20,T=18,B=48;
   const PW=W-L-R,PH=H-T-B;
@@ -2505,7 +2505,7 @@ function drawTargetMain(){
   parts.push(`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Frequency response target comparison" style="touch-action:pan-y">`);
   parts.push(`<rect width="${W}" height="${H}" fill="#080f1b"/>`);
 
-  /* Clean FR-grid, inspired by Squiglink's graph window. */
+  /* Clean FR-grid, for frequency-response inspection. */
   const step=5;
   for(let y=Math.ceil(ymin/step)*step;y<=ymax+0.001;y+=step){
     const yy=py(y);
@@ -2543,7 +2543,7 @@ function drawTargetMain(){
   parts.push(`<rect class="viz-hit" x="${L}" y="${T}" width="${PW}" height="${PH}" fill="transparent" pointer-events="all"/>`);
   parts.push('</svg>');
 
-  container.classList.add('squig-graph');
+  container.classList.add('fr-graph');
   container.innerHTML=parts.join('');
 
   const svg=container.querySelector('svg');
@@ -2739,7 +2739,7 @@ function draw(points, containerId){
   }
 
   const d=pathForCurve(points,px,py,points[0][0],points[points.length-1][0]);
-  document.getElementById(containerId).classList.add('squig-graph');
+  document.getElementById(containerId).classList.add('fr-graph');
   document.getElementById(containerId).innerHTML=
     `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Generated hybrid frequency response">`+
       `<rect width="${W}" height="${H}" fill="#080f1b"/>`+
@@ -4798,7 +4798,7 @@ loadAll();
 
 <script nonce="9HKSOsB546xzOv-LNV9nGCiZix5pNLIC">
   const s = document.createElement('script');
-  s.src = './pudding_peq.js?v=' + Date.now();
+  s.src = './pudding_peq.js?v=2026-09-25.3-vNext3';
   s.nonce = '9HKSOsB546xzOv-LNV9nGCiZix5pNLIC';
   document.body.appendChild(s);
 </script>
