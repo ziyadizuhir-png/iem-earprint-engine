@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "app/**"
+      - "tests/test_peq_node.js"
       - ".github/workflows/app.yml"
   pull_request:
     paths:
@@ -26,3 +27,5 @@ jobs:
           node-version: "20"
       - name: Check Pudding PEQ JavaScript syntax
         run: node --check app/pudding_peq.js
+      - name: Run deterministic PEQ regression tests
+        run: node tests/test_peq_node.js
