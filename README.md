@@ -21,37 +21,45 @@ Raw IEM FR
 
 EarPrint is not an anatomical hearing reconstruction.
 
-## Pudding PEQ loss selection
+## Pudding PEQ solver
 
-The Pudding PEQ engine evaluates the existing standard loss and a robust Huber
-loss (`delta = 1.0 dB`) as separate candidates. Production uses a balanced
-workflow: both losses are screened at conservative Q 0.30–2.00, then only the
-guarded winner receives the expensive high-Q rescue. Huber is committed only
-when it improves RMSE without exceeding the P95 or maximum-error guard and when
-the EarPrint Shape Guard passes. Otherwise the standard-loss result is retained.
+The web PEQ engine consumes the selected **final Robust Target as its sole PEQ
+target**. Pure EarPrint remains upstream-only in Robust Target generation and is
+not read as a second target or hidden PEQ objective.
 
-This avoids running the high-Q rescue twice while keeping the same transactional
-guards. The previous two-full-branch workflow remains available for audit by
-setting `window.MoondropPuddingPEQ.CFG.performanceMode = 'exhaustive'` before
-calling `optimize`.
+The production solver is `vNext4-LM-IRLS`:
 
-Balanced mode uses a smaller search grid for the experimental Huber screen and
-re-scores that candidate on the production grid before accepting it. Huber is
-also skipped when the standard Q≤2 result is already within the robust trigger
-(maximum error ≤ 3.0 dB and P95 ≤ 0.80 dB); this keeps ordinary runs responsive
-without weakening the final Q10 or Shape Guard checks.
+```text
+Raw Pudding 711 + selected Robust Target
+→ level alignment
+→ residual / feature evidence
+→ bandwidth-derived candidate filters
+→ active band growth (3 → 5 → 7 → <=10)
+→ joint Levenberg-Marquardt refinement of log(Fc), Gain, log(Q)
+→ Huber IRLS robust refinement with guarded acceptance
+→ response-aware pruning / redundancy cleanup
+→ exact RBJ dense-grid validation
+→ export quantization + local quantization rescue
+→ 12–20 kHz safety guard
+→ perturbation stability check
+→ final PEQ export
+```
 
-The unified adaptive stage keeps the existing coordinate solver and adds
-coarse (R2) → tonal (R1) → exact (R0) candidate evidence, feature width and
-support risk, complexity/sharpness costs, response-aware pruning, and a final
-quantization pass. Exported filters are simulated at their exact rounded
-values. The PEQ correction domain remains 20–12,000 Hz; 12–20 kHz is used only
-for exported-filter safety validation and never as a fabricated fitting target.
+The 10-band hardware limit is part of the active-set solve; the engine does not
+generate an oversized bank and slice it afterward. All fitting and validation
+uses the exact RBJ peaking-biquad magnitude response at the provisional 48 kHz
+sample rate. The correction domain is 20–12,000 Hz. The 12–20 kHz region is
+validation-only and is never fabricated as personal EarPrint data.
 
-The conservative branch searches Q 0.30–2.00. A separate high-Q rescue tests
-Q up to 10.00 and is committed only when its transactional guards pass. The
-selected loss, guard decision, and both candidate summaries are included in
-the exported JSON metadata.
+Huber is implemented through iteratively reweighted least squares (IRLS). A
+Huber-refined state is accepted only when its robust fitting cost improves and
+RMSE/P95/maximum-error guards remain bounded. High-Q filters are penalized and
+1 kHz boundary high-Q corrections receive an additional internal penalty.
+
+Final Fc/Gain/Q values are quantized to the export grid and exactly re-simulated.
+A deterministic local rescue may adjust adjacent quantization steps. Final
+metadata records band-growth decisions, LM iteration counts, stability evidence,
+HF safety, modeled headroom and whether a numerical fallback was required.
 
 ## Locked handoff
 
