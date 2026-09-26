@@ -8,7 +8,7 @@
   'use strict';
 
   const CFG = {
-    version: '2026-09-25.5-vNext4-LM-IRLS',
+    version: '2026-09-26-v4.2.1-Moondrop-Loudness-UI',
     topologyToleranceDb: 0.15,
     bands: 10,
     minFreq: 20,
@@ -1485,7 +1485,7 @@
       shapeGuardPreRmsDb:ctop,shapeGuardFinalRmsDb:qtop,quantizationRescue:'accepted',quantizedObjective:qcomp,hfValidation:hf,quantizedShapeGuard:shapeGuard,exactExportSimulation:true,
       qAllowed:[0.30,10.00],qRangeSelected:qbands.some(b=>b.q>2)?'0.30–10.00':'0.30–2.00',q10Committed:qbands.some(b=>b.q>2),lossMode:CFG.huberEnabled?'LM + Huber IRLS':'LM least-squares',performanceMode:'lm-irls',huberCommitted:CFG.huberEnabled,
       solver:{name:'Levenberg-Marquardt + Huber IRLS',jointParameters:['log(Fc)','Gain','log(Q)'],iterations:totalIterations,acceptedSteps:totalAccepted,rejectedSteps:totalRejected,bandGrowthTrace:trace,elapsedMs:elapsed,continuousRmse:continuous.comp.rmse,quantizedRmse:qcomp.rmse,responseCache:true},
-      stabilityPerturbation:stability,hfSafetyRescue:{applied:hfRescue.rescued,scale:hfRescue.scale,rmseDeltaDb:hfRescue.rmseDeltaDb||0},modeledHeadroom:headroom,resolution:{R0:f.length,R1:grids.R1.length,R2:grids.R2.length}
+      stabilityPerturbation:stability,hfSafetyRescue:{applied:hfRescue.rescued,scale:hfRescue.scale,rmseDeltaDb:hfRescue.rmseDeltaDb||0},modeledHeadroom:headroom,resolution:{R0:f.length,R1:grids.R1.length,R2:grids.R2.length},loudnessCompensation:loudness
     }};
   }
 
@@ -1527,9 +1527,19 @@
   const fmt=v=>Math.abs(v-Math.round(v))<1e-9?String(Math.round(v)):v.toFixed(1);
   const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+
+  // v4.2.1 Moondrop Loudness Layer: post-solver level preservation + optional ISO226 approximation hook
+  function loudnessCompensation(rawCurve, correctedCurve, freqs){
+    const band=freqs.map((f,i)=>f>=100&&f<=10000?i:null).filter(i=>i!==null);
+    if(!band.length)return {gainDb:0,iso226Applied:false};
+    const avg=a=>band.reduce((x,i)=>x+a[i],0)/band.length;
+    const loss=avg(rawCurve)-avg(correctedCurve);
+    return {gainDb:Math.max(0,Math.min(4,loss)),iso226Applied:false,reference:'100Hz-10kHz mean level match'};
+  }
+
   function formatPEQ(result){
     return result.bands.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain).map((b,i)=>
-      `Filter ${i+1}: PK ${fmt(b.freq)} Hz, ${b.gain>=0?'+':''}${b.gain.toFixed(2)} dB, Q ${b.q.toFixed(2)}`
+      `${i===0&&result.metrics?.loudnessCompensation?.gainDb?('Preamp: +'+result.metrics.loudnessCompensation.gainDb.toFixed(2)+' dB\n'):''}Filter ${i+1}: PK ${fmt(b.freq)} Hz, ${b.gain>=0?'+':''}${b.gain.toFixed(2)} dB, Q ${b.q.toFixed(2)}`
     ).join('\n')+'\n';
   }
 
@@ -1615,7 +1625,9 @@
       const target={curve:parseCurveText(await readRepo(reg.robustTargetPath)),source:reg.displayName,path:reg.robustTargetPath};
       status('IEM EarPrint constrained optimization…');
       const result=optimize(raw.curve,target.curve);
-      last=result;lastMeta={raw:raw.source,target:target.source,target_mode:'Robust Target',robust_target_path:target.path};
+      const loudOn=$('loudnessMode')?.checked!==false;
+      if(result.metrics?.loudnessCompensation){ result.metrics.loudnessCompensation.enabled=loudOn; if(!loudOn) result.metrics.loudnessCompensation.gainDb=0; }
+      last=result;lastMeta={raw:raw.source,target:target.source,target_mode:'Robust Target',robust_target_path:target.path,loudness_mode:loudOn?'Moondrop Safe':'Off'};
       render(result,lastMeta);
       status('Done · '+result.metrics.activeBands+' active bands · RMSE '+result.metrics.rmseBefore.toFixed(2)+' → '+result.metrics.rmseAfter.toFixed(2)+' dB','ok');
     }catch(e){last=null;lastMeta=null;render(null,null);status(e.message,'warn');}
@@ -1634,6 +1646,7 @@
       ['Coverage',fmt(result.metrics.coverage[0])+'–'+fmt(result.metrics.coverage[1])+' Hz'],
       ['Active bands',result.metrics.activeBands+' / '+CFG.bands],
       ['Gain range',result.metrics.maxCut.toFixed(2)+' to '+(result.metrics.maxBoost>=0?'+':'')+result.metrics.maxBoost.toFixed(2)+' dB'],
+      ['Loudness Match',result.metrics.loudnessCompensation?.enabled?'ON · +'+result.metrics.loudnessCompensation.gainDb.toFixed(2)+' dB':'OFF'],
       ['Max Q',result.metrics.maxQ.toFixed(2)],
       ['ERB error',(result.metrics.erbError??0).toFixed(3)+' dB'],
       ['Narrow error',(result.metrics.narrowError??0).toFixed(3)],
@@ -1666,11 +1679,11 @@
     const html=`<div class="card section" id="puddingEngine"><div class="visualizer-head"><div><h2 style="margin:0">IEM EarPrint PEQ Engine</h2><div class="visualizer-subtitle">Moondrop Pudding · Original 711 · Robust Target only</div></div><button type="button" id="puddingRefreshSources">Refresh targets</button></div>
     <div class="peq-source"><b>Device</b><span>Moondrop Pudding</span><b>Measurement</b><span>Original 711</span><b>Source</b><code>input/original_711/moondrop pudding fr.txt</code></div>
     <div class="field" style="margin-top:10px"><label for="puddingTargetSelect">Robust Target — PEQ Reference</label><select id="puddingTargetSelect"></select></div>
-    <div class="inline" style="margin-top:10px"><button type="button" class="primary" id="generatePuddingPEQ">Generate PEQ</button><button type="button" id="downloadPuddingPEQ">Download TXT</button><button type="button" id="downloadPuddingJSON">Download JSON</button></div>
+    <div class="inline" style="margin-top:10px"><div class="field"><label><input id="loudnessMode" type="checkbox" checked> Loudness level match (Moondrop Safe)</label><div class="pudding-note">Keeps perceived volume closer after PEQ. Max compensation +4 dB. ISO226 remains optional.</div></div><button type="button" class="primary" id="generatePuddingPEQ">Generate PEQ</button><button type="button" id="downloadPuddingPEQ">Download TXT</button><button type="button" id="downloadPuddingJSON">Download JSON</button></div>
     <div id="puddingStatus" class="status small" style="margin-top:8px"></div><div id="puddingResult" hidden style="margin-top:10px"><div id="puddingStats" class="summary-grid"></div><div id="puddingTable" class="pudding-table" style="margin-top:10px"></div></div>
     <details style="margin-top:12px"><summary>Import PEQ preset</summary><div class="field"><label>PK text preset (local only)</label><input id="importPeqFile" type="file" accept=".txt,text/plain"></div><div class="inline"><button id="validateImportedPeq" type="button">Validate</button><button id="downloadImportedPeq" type="button" disabled>Download unchanged</button></div><pre id="importPeqStatus" class="status small"></pre></details></div>`;
     if(anchor)anchor.insertAdjacentHTML('beforebegin',html);else document.body.insertAdjacentHTML('beforeend',html);
-    const style=document.createElement('style');style.textContent=`#puddingEngine{margin-top:12px}.peq-source{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12px}.peq-source code{overflow-wrap:anywhere}.pudding-table{border:1px solid var(--line);border-radius:6px;overflow:hidden}.pudding-peq-head,.pudding-peq-row{display:grid;grid-template-columns:.5fr .6fr 1.3fr 1.2fr 1fr;gap:8px;padding:7px 9px;align-items:center;font-size:12px;font-variant-numeric:tabular-nums}.pudding-peq-head{background:#0d141c;color:#7f8b99;border-bottom:1px solid var(--line);font-size:10px;text-transform:uppercase}.pudding-peq-row{border-bottom:1px solid #1b2530}.pudding-note{padding:8px 9px;color:#7f8b99;font-size:10px}`;document.head.appendChild(style);
+    const style=document.createElement('style');style.textContent=`#puddingEngine{margin-top:12px;box-shadow:0 10px 30px rgba(0,0,0,.15)}.peq-source{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12px}.peq-source code{overflow-wrap:anywhere}.pudding-table{border:1px solid var(--line);border-radius:6px;overflow:hidden}.pudding-peq-head,.pudding-peq-row{display:grid;grid-template-columns:.5fr .6fr 1.3fr 1.2fr 1fr;gap:8px;padding:7px 9px;align-items:center;font-size:12px;font-variant-numeric:tabular-nums}.pudding-peq-head{background:#0d141c;color:#7f8b99;border-bottom:1px solid var(--line);font-size:10px;text-transform:uppercase}.pudding-peq-row{border-bottom:1px solid #1b2530}.pudding-note{padding:8px 9px;color:#7f8b99;font-size:10px}`;document.head.appendChild(style);
   }
   let importedPeqText=null;
   function parseImportedPeq(text){const rows=[];for(const line of String(text).split(/\r?\n/)){const m=line.match(/PK\s+([\d.]+)\s*Hz\s*,?\s*([+-]?[\d.]+)\s*dB\s*,?\s*Q\s*([\d.]+)/i);if(m)rows.push({freq:+m[1],gain:+m[2],q:+m[3]});}if(!rows.length)throw Error('No valid PK filters found.');if(rows.length>10)throw Error('Imported preset has more than 10 filters.');rows.forEach((b,i)=>{if(b.freq<20||b.freq>12000||b.gain<-12||b.gain>3||b.q<.3||b.q>10||!biquadSafety(b).stable)throw Error('Filter '+(i+1)+' is outside device/stability limits.');});return rows;}
