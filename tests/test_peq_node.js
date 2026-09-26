@@ -31,6 +31,8 @@ assert.deepEqual(t.resolutionGrids(20, 20000).R0.length, api.CFG.resolution.r0Po
 
 assert.equal(t.deadZoneHuber(0.05), 0);
 assert(t.deadZoneHuber(3) > t.deadZoneHuber(1));
+assert(t.huberWeight(3) < 1 && t.huberWeight(0.2) === 1);
+assert.deepEqual(Array.from(t.solveLinearSystem([[2,0],[0,4]],[4,8])), [2,2]);
 const fs1 = t.featureAnalysis([100, 200, 400, 800, 1600], [0, 1, 3, 1, 0]);
 assert(fs1.length >= 1 && fs1[0].freq === 400);
 assert(t.boostRisk({ freq: 10000, gain: 2, widthOct: .05, support: .1, isolated: true }) > 0.5);
@@ -50,4 +52,8 @@ assert(!/PK 0 Hz/.test(api.formatPEQ(result)));
 const hf = t.highFrequencyValidation(raw, result.bands);
 assert(['PASS', 'FAIL', 'SKIP'].includes(hf.status));
 assert(result.metrics.quantizationRescue === 'accepted' || result.metrics.quantizationRescue === 'rejected');
+assert.equal(result.metrics.performanceMode, 'lm-irls');
+assert(!result.metrics.solverFallback);
+assert(result.metrics.solver && /Levenberg-Marquardt/.test(result.metrics.solver.name));
+assert(result.metrics.stabilityPerturbation && ['PASS','WARN'].includes(result.metrics.stabilityPerturbation.status));
 console.log('PEQ regression PASS', JSON.stringify({ bands: result.bands.length, rmse: result.metrics.rmseAfter, hf: result.metrics.hfValidation }));

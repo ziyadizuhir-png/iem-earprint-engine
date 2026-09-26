@@ -1379,97 +1379,6 @@ select,input{
 
   </div>
 
-  <!-- ========================================================
-       HYBRID BUILDER
-       ========================================================= -->
-
-  <div class="card section">
-
-    <h2>
-      Hybrid Builder
-    </h2>
-
-
-    <div class="muted small">
-      Target at/below join · Pure EarPrint above join · one constant shift
-    </div>
-
-
-    <div class="formrow">
-
-
-      <div class="field">
-
-        <label>
-          Lower-end target
-        </label>
-
-        <select
-          id="hybridTarget">
-        </select>
-
-      </div>
-
-
-      <div class="field">
-
-        <label>
-          Join frequency (Hz)
-        </label>
-
-        <input
-          id="joinHz"
-          type="number"
-          min="20"
-          step="1"
-          value="1000">
-
-      </div>
-
-
-    </div>
-
-
-    <div class="inline">
-
-
-      <button
-        type="button"
-        class="primary"
-        id="generateHybridButton">
-
-        Generate Hybrid
-
-      </button>
-
-
-      <button
-        type="button"
-        id="downloadHybridButton">
-
-        Download Hybrid
-
-      </button>
-
-
-      <span
-        id="hybridStatus"
-        class="status">
-      </span>
-
-
-    </div>
-
-
-    <div
-      id="hybridChart"
-      class="chart">
-    </div>
-
-
-  </div>
-
-
   <div id="infoPanel" hidden aria-hidden="true"></div>
 
 
@@ -4348,7 +4257,6 @@ function populateTargetSelects(){
 
     'targetSelect',
 
-    'hybridTarget'
 
   ];
 
@@ -4732,8 +4640,6 @@ function bindUiEvents(){
   on('resetVizViewButton','click',resetVizView);
   on('downloadRobustButton','click',downloadRobustTarget);
 
-  on('generateHybridButton','click',generateHybrid);
-  on('downloadHybridButton','click',downloadHybrid);
 
   on('closeModalButton','click',closeModal);
   on('useTokenButton','click',saveToken);
@@ -4798,7 +4704,7 @@ loadAll();
 
 <script nonce="9HKSOsB546xzOv-LNV9nGCiZix5pNLIC">
   const s = document.createElement('script');
-  s.src = './pudding_peq.js?v=2026-09-25.3-vNext3';
+  s.src = './pudding_peq.js?v=2026-09-25.5-vNext4-LM-IRLS';
   s.nonce = '9HKSOsB546xzOv-LNV9nGCiZix5pNLIC';
   document.body.appendChild(s);
 </script>

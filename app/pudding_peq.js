@@ -8,7 +8,7 @@
   'use strict';
 
   const CFG = {
-    version: '2026-09-25.3-vNext3',
+    version: '2026-09-25.5-vNext4-LM-IRLS',
     topologyToleranceDb: 0.15,
     bands: 10,
     minFreq: 20,
@@ -53,6 +53,32 @@
     ,hfValidation: { startHz: 12000, endHz: 20000, maxDeviationDb: 6, maxSlopeDbPerOct: 18 }
     ,quantization: { freqHz: 1, gainDb: 0.01, q: 0.01 }
     ,feature: { prominenceDb: 0.15, minWidthOct: 0.05, supportOct: 0.12 }
+    ,solver: {
+      mode: 'lm-irls',
+      initialBands: 3,
+      growth: [3,5,7,10],
+      candidateLimit: 24,
+      minBandImprovementDb: 0.004,
+      lmPoints: 240,
+      maxIterations: 8,
+      irlsIterations: 2,
+      lambdaInitial: 0.03,
+      lambdaUp: 6.0,
+      lambdaDown: 0.35,
+      maxRejectedSteps: 5,
+      stepTolerance: 1e-4,
+      lossTolerance: 1e-7,
+      freqJacobianStep: 0.003,
+      gainJacobianStepDb: 0.03,
+      qJacobianStep: 0.01,
+      gainRegularization: 0.0008,
+      highQRegularization: 0.0015,
+      boundaryHz: 1000,
+      boundaryWidthOct: 0.10,
+      boundaryHighQPenalty: 0.004,
+      perturbationMaxRmseDeltaDb: 0.08,
+      quantizationRescuePasses: 1
+    }
   };
 
   const DOMAIN_BANDS = Object.freeze([
@@ -76,6 +102,23 @@
       out.push(Math.exp(la+(lb-la)*i/(n-1)));
     }
     return out;
+  }
+
+
+  // Moondrop Link export validator (v4.1.1)
+  // This validates device compatibility only. It does not change the
+  // EarPrint optimization boundary (personal region remains 1kHz-12kHz).
+  function validateMoondropLinkBands(bands){
+    const errors=[];
+    if(!Array.isArray(bands)) return ['Bands must be an array'];
+    if(bands.length>10) errors.push('Band count exceeds Moondrop Link limit (10).');
+    for(let i=0;i<bands.length;i++){
+      const b=bands[i]||{};
+      if(!(b.freq>=20&&b.freq<=20000)) errors.push(`Band ${i+1}: frequency out of 20Hz-20kHz range.`);
+      if(!(b.gain>=-12&&b.gain<=3)) errors.push(`Band ${i+1}: gain out of -12dB/+3dB range.`);
+      if(!(b.q>=0.3&&b.q<=10)) errors.push(`Band ${i+1}: Q out of 0.3-10 range.`);
+    }
+    return errors;
   }
 
   function parseCurveText(text){
@@ -260,7 +303,7 @@
       const bw=Math.max((CFG.feature||{}).minWidthOct||0.05,f.widthOct);
       const x=Math.pow(2,bw);
       const q0=clamp(Math.sqrt(x)/Math.max(1e-9,x-1),CFG.minQ,2.0);
-      const c={freq:f.freq,q:q0,gain:clamp(f.gain,CFG.minGain,CFG.maxGain),risk:boostRisk(f)};
+      const c={freq:f.freq,q:q0,gain:clamp(f.gain,CFG.minGain,CFG.maxGain),risk:boostRisk(f),morphologyConfidence:residualMorphologyConfidence(f)};
       const key=`${Math.round(c.freq)}:${Math.round(c.q*100)}`;
       if(!seen.has(key)){out.push(c);seen.add(key);}
     }
@@ -304,6 +347,16 @@
     return features.sort((a,b)=>Math.abs(b.gain)-Math.abs(a.gain));
   }
 
+  // v4.1.2 Residual Morphology Confidence: scores residual shape, not magnitude.
+  // This intentionally complements Huber IRLS instead of duplicating outlier rejection.
+  function residualMorphologyConfidence(feature){
+    if(!feature) return 0.5;
+    const broad = clamp(feature.widthOct/0.35,0,1);
+    const smooth = clamp(feature.continuation,0,1);
+    const isolatedPenalty = feature.isolated ? 0.25 : 0;
+    return clamp(0.35*broad + 0.45*smooth + 0.20*(1-isolatedPenalty),0,1);
+  }
+
   function boostRisk(feature){
     if(!feature || feature.gain<=0)return 0;
     const hf=clamp(Math.log2(Math.max(feature.freq,1000)/1000)/Math.log2(12),0,1);
@@ -334,9 +387,24 @@
   }
   function modeledHeadroom(bands){const f=logspace(20,20000,720),eq=totalEq(f,bands),m=Math.max(0,...eq);return {modeledMaxBoostDb:m,recommendedHeadroomDb:-m-0.5};}
 
+  // v4.1: frequency confidence weighting. Keeps EarPrint/Robust Target unchanged.
+  // It only changes optimizer loss weighting to reduce over-trusting uncertain regions.
+  function frequencyConfidence(freq){
+    if(freq<1000) return 0.9;
+    if(freq<=5000) return 1.0;
+    if(freq<=12000) return 0.75;
+    return 0.45;
+  }
+
+  function weightedHuberLoss(freqs, errors){
+    let total=0;
+    for(let i=0;i<errors.length;i++) total += frequencyConfidence(freqs[i])*deadZoneHuber(errors[i]);
+    return total/Math.max(1,errors.length);
+  }
+
   function objectiveComponents(freqs,curve,target,bands=[],validation=null){
     const errors=curve.map((v,i)=>v-target[i]), abs=errors.map(Math.abs);
-    const h=errors.reduce((s,e)=>s+deadZoneHuber(e),0)/Math.max(1,errors.length);
+    const h=weightedHuberLoss(freqs,errors);
     const gainEnergy=bands.reduce((s,b)=>s+b.gain*b.gain,0);
     const qComplexity=bands.reduce((s,b)=>s+Math.max(0,b.q-2)*Math.max(0,Math.abs(b.gain)),0);
     const risk=bands.reduce((s,b)=>s+(b.gain>0?boostRisk({freq:b.freq,gain:b.gain,widthOct:1,support:1}):0),0);
@@ -344,7 +412,7 @@
     const sharpness=curve.length>2?curve.slice(1,-1).reduce((s,v,i)=>s+Math.abs(curve[i]-2*v+curve[i+2]),0)/curve.length:0;
     const hfPenalty=hf.maxDeviation+0.5*hf.p95Deviation;
     const erbError=erbBandError(freqs,curve,target), narrowError=narrowFeatureError(freqs,curve,target), topology=topologyError(freqs,curve,target);
-    return {rmse:rmse(errors),mae:abs.reduce((s,v)=>s+v,0)/Math.max(1,abs.length),p95:percentile(abs,.95),max:Math.max(0,...abs),erbError,narrowError,topologyError:topology,huberLoss:h,gainEnergy,qComplexity,bandCost:bands.length,boostRisk:risk,sharpnessPenalty:sharpness,hfPenalty,score:rmse(errors)+0.08*erbError+0.05*narrowError+0.03*topology+CFG.complexityPenaltyWeight*(gainEnergy+qComplexity+bands.length)+CFG.sharpnessPenaltyWeight*sharpness+CFG.boostRiskWeight*risk+CFG.complexityPenaltyWeight*hfPenalty};
+    return {rmse:rmse(errors),mae:abs.reduce((s,v)=>s+v,0)/Math.max(1,abs.length),p95:percentile(abs,.95),max:Math.max(0,...abs),erbError,narrowError,topologyError:topology,huberLoss:h,gainEnergy,qComplexity,bandCost:bands.length,boostRisk:risk,sharpnessPenalty:sharpness,hfPenalty,score:rmse(errors)+0.08*erbError+0.05*narrowError+0.03*topology+CFG.complexityPenaltyWeight*(gainEnergy+qComplexity+bands.length)+0.002*qComplexity+CFG.sharpnessPenaltyWeight*sharpness+CFG.boostRiskWeight*risk+CFG.complexityPenaltyWeight*hfPenalty};
   }
 
   function highFrequencyValidation(rawCurve,bands){
@@ -637,24 +705,6 @@
     return bestWork;
   }
 
-  function shapeMetrics(freqs,curve){
-    if(!pure||pure.length<2) return null;
-    const p1=interp(pure,1000);
-    const c1=gridInterp(freqs,curve,1000);
-    let s=0,n=0,ds=0,prevD=null,prevX=null;
-    for(let i=0;i<freqs.length;i++){
-      const f=freqs[i];
-      if(f<1000||f>12000) continue;
-      const x=Math.log(f);
-      const pv=interp(pure,f);
-      const d=(curve[i]-c1)-(pv-p1);
-      s+=d*d;n++;
-      if(prevD!==null){const dx=x-prevX;ds+=((d-prevD)/(dx||1))**2;}
-      prevD=d;prevX=x;
-    }
-    return {rms:n?Math.sqrt(s/n):0,derivative:n>1?Math.sqrt(ds/(n-1)):0};
-  }
-
   function targetShapeGuard(freqs,base,target,preFilters,finalFilters){
     const pre=applyFilters(base,preFilters,freqs), fin=applyFilters(base,finalFilters,freqs);
     const a=topologyError(freqs,pre,target), b=topologyError(freqs,fin,target), delta=b-a;
@@ -707,11 +757,8 @@
     allFilters=ceilingAwareReoptimize(freqs,rawA,target,allFilters);
     allFilters=strip(allFilters);
 
-    // Target Topology Guard: Pure EarPrint is the personal authority.
-    // It is used only as a secondary transactional guard; the target remains
-    // the optimizer's numerical authority. A regression >0.01 dB RMS in the
-    // strict 1–12 kHz personal shape rolls back the preceding transformation.
-    const pureForGuard = window.__EARPRINT_PURE_CURVE__ || null;
+    // Target Topology Guard: the selected Robust Target is the sole reference.
+    // Pure EarPrint is upstream-only and is not read by the PEQ solver.
     const sg=targetShapeGuard(freqs,rawA,target,preCeilingFilters,allFilters);
     allFilters=sg.filters;
 
@@ -829,7 +876,6 @@
     const pre=work.map(b=>({...b}));
     work=ceilingAwareReoptimize(freqs,rawA,target,work);
     work=strip(work);
-    const pure=window.__EARPRINT_PURE_CURVE__||null;
     const sg=targetShapeGuard(freqs,rawA,target,pre,work);
     work=sg.filters;
     CFG.minQ=oldMinQ; CFG.maxQ=oldMaxQ;
@@ -1023,7 +1069,438 @@
     }
   }
 
+  /* ============================================================
+     vNext4 LM + IRLS production solver
+     ------------------------------------------------------------
+     - Robust Target remains the sole numerical target.
+     - Exact RBJ responses are used in every model/Jacobian evaluation.
+     - Levenberg-Marquardt jointly refines Fc/Gain/Q.
+     - Huber is applied by IRLS as an outlier-robust fitting component.
+     - Band count is grown inside the solve and never sliced after solving.
+     - Final exported/quantized filters are exactly re-simulated.
+     ============================================================ */
+
+  const RESPONSE_CACHE = new WeakMap();
+  function cachedRbj(freqs,b){
+    let cache=RESPONSE_CACHE.get(freqs);
+    if(!cache){cache=new Map();RESPONSE_CACHE.set(freqs,cache);}
+    const key=`${Number(b.freq).toFixed(5)}|${Number(b.gain).toFixed(5)}|${Number(b.q).toFixed(5)}`;
+    let r=cache.get(key);
+    if(!r){r=rbj(freqs,b); if(cache.size>6000)cache.clear(); cache.set(key,r);}
+    return r;
+  }
+
+  function applyFiltersCached(fr,bands,freqs){
+    const out=new Float64Array(fr);
+    for(const b of bands){
+      if(Math.abs(b.gain)<1e-12)continue;
+      const r=cachedRbj(freqs,b);
+      for(let i=0;i<out.length;i++)out[i]+=r[i];
+    }
+    return out;
+  }
+
+  function huberWeight(e,delta=CFG.huberDeltaDb,epsilon=CFG.huberEpsilonDb){
+    const a=Math.max(0,Math.abs(e)-epsilon);
+    return a<=delta||a===0 ? 1 : delta/a;
+  }
+
+  function solverFitCost(errors,bands,mode='standard'){
+    let fit=0;
+    if(mode==='huber'){
+      for(const e of errors)fit+=deadZoneHuber(e);
+      fit=2*fit/Math.max(1,errors.length);
+    }else{
+      for(const e of errors){const a=Math.max(0,Math.abs(e)-CFG.huberEpsilonDb);fit+=a*a;}
+      fit/=Math.max(1,errors.length);
+    }
+    const sc=CFG.solver||{};
+    let reg=0;
+    for(const b of bands){
+      reg+=(sc.gainRegularization||0)*b.gain*b.gain;
+      reg+=(sc.highQRegularization||0)*Math.max(0,b.q-2)**2*Math.max(0.25,Math.abs(b.gain));
+      const d=Math.abs(Math.log2(Math.max(1,b.freq)/(sc.boundaryHz||1000)));
+      if(d<(sc.boundaryWidthOct||0.10) && b.q>2)reg+=(sc.boundaryHighQPenalty||0)*Math.pow(b.q-2,2);
+    }
+    return fit+reg;
+  }
+
+  function paramsFromBands(bands){
+    const p=[];
+    for(const b of bands)p.push(Math.log(clamp(b.freq,CFG.minFreq,CFG.maxFreq)),clamp(b.gain,CFG.minGain,CFG.maxGain),Math.log(clamp(b.q,CFG.minQ,CFG.maxQ)));
+    return p;
+  }
+
+  function bandsFromParams(params){
+    const bands=[];
+    for(let i=0;i<params.length;i+=3){
+      bands.push({
+        freq:clamp(Math.exp(params[i]),CFG.minFreq,CFG.maxFreq),
+        gain:clamp(params[i+1],CFG.minGain,CFG.maxGain),
+        q:clamp(Math.exp(params[i+2]),CFG.minQ,CFG.maxQ)
+      });
+    }
+    return bands.sort((a,b)=>a.freq-b.freq);
+  }
+
+  function solveLinearSystem(A,b){
+    const n=b.length, M=A.map((row,i)=>Array.from(row).concat([b[i]]));
+    for(let col=0;col<n;col++){
+      let pivot=col;
+      for(let r=col+1;r<n;r++)if(Math.abs(M[r][col])>Math.abs(M[pivot][col]))pivot=r;
+      if(!Number.isFinite(M[pivot][col])||Math.abs(M[pivot][col])<1e-12)return null;
+      if(pivot!==col){const tmp=M[col];M[col]=M[pivot];M[pivot]=tmp;}
+      const d=M[col][col];
+      for(let j=col;j<=n;j++)M[col][j]/=d;
+      for(let r=0;r<n;r++){
+        if(r===col)continue;
+        const f=M[r][col]; if(Math.abs(f)<1e-18)continue;
+        for(let j=col;j<=n;j++)M[r][j]-=f*M[col][j];
+      }
+    }
+    const x=M.map(row=>row[n]);
+    return x.every(Number.isFinite)?x:null;
+  }
+
+  function modelAndErrors(freqs,base,target,bands){
+    const curve=applyFiltersCached(base,bands,freqs), errors=new Float64Array(freqs.length);
+    for(let i=0;i<errors.length;i++)errors[i]=curve[i]-target[i];
+    return {curve,errors};
+  }
+
+  function jacobianColumns(freqs,bands){
+    const sc=CFG.solver||{}, cols=[];
+    for(let bi=0;bi<bands.length;bi++){
+      const b=bands[bi];
+      const specs=[
+        {kind:'freq',step:sc.freqJacobianStep||0.003},
+        {kind:'gain',step:sc.gainJacobianStepDb||0.03},
+        {kind:'q',step:sc.qJacobianStep||0.01}
+      ];
+      for(const spec of specs){
+        let lo={...b},hi={...b},den=2*spec.step;
+        if(spec.kind==='freq'){
+          lo.freq=clamp(b.freq*Math.exp(-spec.step),CFG.minFreq,CFG.maxFreq);
+          hi.freq=clamp(b.freq*Math.exp(spec.step),CFG.minFreq,CFG.maxFreq);
+          den=Math.log(hi.freq)-Math.log(lo.freq);
+        }else if(spec.kind==='gain'){
+          lo.gain=clamp(b.gain-spec.step,CFG.minGain,CFG.maxGain);
+          hi.gain=clamp(b.gain+spec.step,CFG.minGain,CFG.maxGain);
+          den=hi.gain-lo.gain;
+        }else{
+          lo.q=clamp(b.q*Math.exp(-spec.step),CFG.minQ,CFG.maxQ);
+          hi.q=clamp(b.q*Math.exp(spec.step),CFG.minQ,CFG.maxQ);
+          den=Math.log(hi.q)-Math.log(lo.q);
+        }
+        const rl=cachedRbj(freqs,lo),rh=cachedRbj(freqs,hi),col=new Float64Array(freqs.length);
+        const safe=Math.abs(den)>1e-12?den:1;
+        for(let i=0;i<col.length;i++)col[i]=(rh[i]-rl[i])/safe;
+        cols.push(col);
+      }
+    }
+    return cols;
+  }
+
+  function lmRefine(freqs,base,target,seedBands,mode='standard'){
+    const sc=CFG.solver||{};
+    let bands=strip(seedBands).filter(b=>Math.abs(b.gain)>=0.01);
+    if(!bands.length)return {bands:[],iterations:0,acceptedSteps:0,rejectedSteps:0,cost:Infinity,converged:true};
+    let state=modelAndErrors(freqs,base,target,bands);
+    let cost=solverFitCost(state.errors,bands,mode), lambda=sc.lambdaInitial||0.03;
+    let accepted=0,rejected=0,converged=false,iterations=0;
+    const maxOuter=mode==='huber'?(sc.irlsIterations||3):1;
+    const maxIter=Math.max(2,Math.ceil((sc.maxIterations||12)/maxOuter));
+
+    for(let outer=0;outer<maxOuter;outer++){
+      for(let iter=0;iter<maxIter;iter++){
+        iterations++;
+        state=modelAndErrors(freqs,base,target,bands);
+        const errors=state.errors, weights=new Float64Array(errors.length);
+        for(let i=0;i<weights.length;i++)weights[i]=mode==='huber'?huberWeight(errors[i]):1;
+        const J=jacobianColumns(freqs,bands), m=J.length;
+        if(!m){converged=true;break;}
+        const A=Array.from({length:m},()=>new Float64Array(m)), g=new Float64Array(m);
+        for(let j=0;j<m;j++){
+          const cj=J[j]; let gj=0;
+          for(let i=0;i<errors.length;i++)gj+=weights[i]*cj[i]*errors[i];
+          g[j]=gj;
+          for(let k=0;k<=j;k++){
+            const ck=J[k]; let v=0;
+            for(let i=0;i<errors.length;i++)v+=weights[i]*cj[i]*ck[i];
+            A[j][k]=A[k][j]=v;
+          }
+        }
+        for(let j=0;j<m;j++)A[j][j]+=lambda*(A[j][j]+1e-6);
+        const delta=solveLinearSystem(A,Array.from(g,x=>-x));
+        if(!delta){lambda*=sc.lambdaUp||6;rejected++;continue;}
+        let norm=0;for(const d of delta)norm+=d*d;norm=Math.sqrt(norm);
+        if(norm<(sc.stepTolerance||1e-4)){converged=true;break;}
+        const p=paramsFromBands(bands);
+        for(let j=0;j<p.length;j++)p[j]+=clamp(delta[j],-0.75,0.75);
+        const trialBands=bandsFromParams(p);
+        const trial=modelAndErrors(freqs,base,target,trialBands);
+        const trialCost=solverFitCost(trial.errors,trialBands,mode);
+        if(Number.isFinite(trialCost)&&trialCost<cost-(sc.lossTolerance||1e-7)){
+          const improvement=cost-trialCost;
+          bands=trialBands;cost=trialCost;accepted++;lambda=Math.max(1e-8,lambda*(sc.lambdaDown||0.35));rejected=0;
+          if(improvement<(sc.lossTolerance||1e-7)){converged=true;break;}
+        }else{
+          lambda=Math.min(1e8,lambda*(sc.lambdaUp||6));rejected++;
+          if(rejected>=(sc.maxRejectedSteps||5))break;
+        }
+      }
+      if(converged)break;
+    }
+    return {bands:strip(bands),iterations,acceptedSteps:accepted,rejectedSteps:rejected,cost,converged};
+  }
+
+  function candidatePoolForState(freqs,base,target,currentBands=[]){
+    const current=applyFiltersCached(base,currentBands,freqs), residual=Array.from(current,(v,i)=>v-target[i]);
+    const featureSeeds=featureAnalysis(freqs,residual).map(f=>{
+      const bw=Math.max((CFG.feature||{}).minWidthOct||0.05,f.widthOct);
+      const x=Math.pow(2,bw), q=clamp(Math.sqrt(x)/Math.max(1e-9,x-1),CFG.minQ,2.0);
+      return {freq:f.freq,gain:clamp(f.gain,CFG.minGain,CFG.maxGain),q,risk:boostRisk(f),support:f.support};
+    });
+    const regions=searchCandidates(freqs,current,target,0.25).map(c=>({...c,q:clamp(c.q,CFG.minQ,2.0)}));
+    let pool=augmentCandidates(freqs,current,target,regions.concat(featureSeeds));
+    pool=pool.filter(c=>Math.abs(c.gain)>=CFG.minSeedGain && c.freq>=CFG.minFreq && c.freq<=CFG.maxFreq);
+    pool=rankCandidates(freqs,current,target,pool);
+    const out=[];
+    for(const c of pool){
+      if(currentBands.some(b=>Math.abs(Math.log2(b.freq/c.freq))<0.055 && Math.abs(b.q-c.q)<0.35))continue;
+      if(out.some(b=>Math.abs(Math.log2(b.freq/c.freq))<CFG.minSeedSeparationOct*0.55))continue;
+      out.push({freq:c.freq,gain:c.gain,q:c.q});
+      if(out.length>=(CFG.solver||{}).candidateLimit)break;
+    }
+    return out;
+  }
+
+  function addBandsToCount(freqs,base,target,bands,count){
+    const work=cloneBands(bands);
+    let safety=0;
+    while(work.length<count && safety++<count*3){
+      const pool=candidatePoolForState(freqs,base,target,work);
+      if(!pool.length)break;
+      work.push(pool[0]);work.sort((a,b)=>a.freq-b.freq);
+    }
+    return work;
+  }
+
+  function solutionMetrics(freqs,base,target,bands){
+    const curve=applyFiltersCached(base,bands,freqs), comp=objectiveComponents(freqs,curve,target,bands);
+    return {curve,comp};
+  }
+
+  function bandGrowthAccept(previous,next){
+    if(!previous)return true;
+    const p=previous.comp,n=next.comp, min=(CFG.solver||{}).minBandImprovementDb||0.004;
+    const rmseGain=p.rmse-n.rmse;
+    const bounded=n.p95<=p.p95+0.04 && n.max<=p.max+0.05 && n.erbError<=p.erbError+0.025 && n.narrowError<=p.narrowError+0.035;
+    return bounded && (rmseGain>=min || (p.score-n.score)>=min*0.5);
+  }
+
+  function responseAwarePruneLM(freqs,base,target,bands,mode){
+    // Fast active-set pruning: removal is judged on the exact current response;
+    // one joint LM refinement is performed after pruning, not once per trial.
+    let work=cloneBands(bands), current=solutionMetrics(freqs,base,target,work);
+    // Small/low-value bands are tested first.
+    const order=work.map((b,i)=>({i,mag:Math.abs(b.gain)})).sort((a,b)=>a.mag-b.mag).map(x=>x.i);
+    const removed=new Set();
+    for(const originalIndex of order){
+      if(removed.has(originalIndex))continue;
+      const trial=work.filter((_,j)=>j!==originalIndex && !removed.has(j));
+      const m=solutionMetrics(freqs,base,target,trial);
+      if(m.comp.rmse<=current.comp.rmse+0.006 && m.comp.p95<=current.comp.p95+0.04 && m.comp.max<=current.comp.max+0.05){removed.add(originalIndex);current=m;}
+    }
+    work=work.filter((_,i)=>!removed.has(i));
+    if(work.length)work=lmRefine(freqs,base,target,work,mode).bands;
+    return work;
+  }
+
+  function fastRedundancyCleanup(freqs,base,target,bands,mode){
+    let work=cloneBands(bands).sort((a,b)=>a.freq-b.freq), changed=true;
+    while(changed){
+      changed=false;
+      const baseline=solutionMetrics(freqs,base,target,work);
+      for(let i=0;i<work.length-1;i++){
+        const a=work[i],b=work[i+1];
+        if(Math.sign(a.gain)!==Math.sign(b.gain))continue;
+        if(Math.abs(Math.log2(a.freq/b.freq))>0.045 || Math.abs(a.q-b.q)>0.25)continue;
+        const drop=Math.abs(a.gain)<=Math.abs(b.gain)?i:i+1;
+        const trial=work.filter((_,j)=>j!==drop), m=solutionMetrics(freqs,base,target,trial);
+        if(m.comp.rmse<=baseline.comp.rmse+0.004 && m.comp.p95<=baseline.comp.p95+0.025 && m.comp.max<=baseline.comp.max+0.04){
+          work=trial.length?lmRefine(freqs,base,target,trial,mode).bands:[];changed=true;break;
+        }
+      }
+    }
+    return work;
+  }
+
+  function stabilityPerturbationTest(freqs,base,target,bands){
+    const baseline=solutionMetrics(freqs,base,target,bands).comp.rmse;
+    let worst=0,sum=0,n=0;
+    for(let i=0;i<bands.length;i++){
+      const variants=[
+        {...bands[i],freq:clamp(bands[i].freq*0.995,CFG.minFreq,CFG.maxFreq)},
+        {...bands[i],freq:clamp(bands[i].freq*1.005,CFG.minFreq,CFG.maxFreq)},
+        {...bands[i],gain:clamp(bands[i].gain-0.05,CFG.minGain,CFG.maxGain)},
+        {...bands[i],gain:clamp(bands[i].gain+0.05,CFG.minGain,CFG.maxGain)},
+        {...bands[i],q:clamp(bands[i].q*0.98,CFG.minQ,CFG.maxQ)},
+        {...bands[i],q:clamp(bands[i].q*1.02,CFG.minQ,CFG.maxQ)}
+      ];
+      for(const v of variants){
+        const trial=cloneBands(bands);trial[i]=v;
+        const d=Math.max(0,solutionMetrics(freqs,base,target,trial).comp.rmse-baseline);
+        worst=Math.max(worst,d);sum+=d;n++;
+      }
+    }
+    const limit=(CFG.solver||{}).perturbationMaxRmseDeltaDb||0.08;
+    return {status:worst<=limit?'PASS':'WARN',baselineRmse:baseline,worstRmseDeltaDb:worst,meanRmseDeltaDb:n?sum/n:0,tests:n,limitDb:limit};
+  }
+
+  function hfSafetyRescue(rawCurve,freqs,base,target,bands){
+    let work=cloneBands(bands), validation=highFrequencyValidation(rawCurve,work);
+    if(validation.status!=='FAIL')return {bands:work,validation,rescued:false,scale:1};
+    const baseline=solutionMetrics(freqs,base,target,work).comp;
+    let best=null;
+    const consider=(trial,meta)=>{
+      const qtrial=quantizeBands(trial), hf=highFrequencyValidation(rawCurve,qtrial);
+      if(hf.status!=='PASS')return;
+      const m=solutionMetrics(freqs,base,target,qtrial).comp;
+      if(!best || m.rmse<best.metrics.rmse-1e-9 || (Math.abs(m.rmse-best.metrics.rmse)<1e-9&&m.p95<best.metrics.p95))best={bands:qtrial,validation:hf,metrics:m,...meta};
+    };
+    // First search a coherent transform of all positive near-boundary filters.
+    // Moving them slightly down and/or narrowing Q often preserves 10-12 kHz
+    // fit better than simply reducing all gains.
+    for(const fScale of [0.84,0.88,0.92,0.96,1.00]){
+      for(const qScale of [0.8,1.0,1.2,1.5,1.8,2.2]){
+        for(const gScale of [0.55,0.60,0.65,0.70,0.75,0.80,0.85,0.90,0.95,0.98]){
+          const trial=work.map(b=>b.freq>=9000&&b.gain>0?{
+            ...b,
+            freq:clamp(b.freq*fScale,CFG.minFreq,CFG.maxFreq),
+            q:clamp(b.q*qScale,CFG.minQ,CFG.maxQ),
+            gain:clamp(b.gain*gScale,CFG.minGain,CFG.maxGain)
+          }:{...b});
+          consider(trial,{scale:gScale,freqScale:fScale,qScale});
+        }
+      }
+    }
+    if(best)return {bands:best.bands,validation:best.validation,rescued:true,scale:best.scale,freqScale:best.freqScale,qScale:best.qScale,rmseDeltaDb:best.metrics.rmse-baseline.rmse};
+    return {bands:work,validation,rescued:false,scale:1,freqScale:1,qScale:1,rmseDeltaDb:0};
+  }
+
+  function quantizationRescue(freqs,base,target,bands){
+    let work=quantizeBands(bands), current=solutionMetrics(freqs,base,target,work);
+    const qz=CFG.quantization||{}, passes=(CFG.solver||{}).quantizationRescuePasses||1;
+    for(let pass=0;pass<passes;pass++){
+      let changed=false;
+      for(let i=0;i<work.length;i++){
+        const b=work[i], others=work.filter((_,j)=>j!==i), baseWithout=applyFiltersCached(base,others,freqs);
+        let best={...b}, bestComp=current.comp;
+        for(const df of [-1,0,1])for(const dg of [-1,0,1])for(const dq of [-1,0,1]){
+          if(df===0&&dg===0&&dq===0)continue;
+          const cand={
+            freq:clamp(b.freq+df*(qz.freqHz||1),CFG.minFreq,CFG.maxFreq),
+            gain:clamp(b.gain+dg*(qz.gainDb||0.01),CFG.minGain,CFG.maxGain),
+            q:clamp(b.q+dq*(qz.q||0.01),CFG.minQ,CFG.maxQ)
+          };
+          if(!biquadSafety(cand).stable)continue;
+          const curve=applyFiltersCached(baseWithout,[cand],freqs), comp=objectiveComponents(freqs,curve,target,others.concat([cand]));
+          if(comp.rmse<bestComp.rmse-1e-6 && comp.p95<=bestComp.p95+0.01 && comp.max<=bestComp.max+0.02){best=cand;bestComp=comp;}
+        }
+        if(best.freq!==b.freq||best.gain!==b.gain||best.q!==b.q){work[i]=best;current=solutionMetrics(freqs,base,target,work);changed=true;}
+      }
+      if(!changed)break;
+    }
+    return work.sort((a,b)=>a.freq-b.freq);
+  }
+
+  function optimizeLMIRLS(rawCurve,targetCurve){
+    const started=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+    const lo=Math.max(CFG.minFreq,rawCurve[0][0],targetCurve[0][0]);
+    const hi=Math.min(CFG.maxFreq,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
+    if(hi<=lo||hi<2000)throw Error('Raw Pudding and Robust Target have insufficient frequency overlap.');
+    const sc=CFG.solver||{}, grids=resolutionGrids(lo,hi);
+    const lmN=Math.min(Math.max(48,sc.lmPoints||240),grids.R0.length);
+    const lmFreqs=logspace(lo,hi,lmN), rawLM=resample(rawCurve,lmFreqs), targetLM=resample(targetCurve,lmFreqs);
+    const alignedLM=alignLevel(lmFreqs,rawLM,targetLM), baseLM=alignedLM.curve;
+    const growth=(sc.growth||[3,5,7,10]).map(n=>Math.min(n,CFG.bands)).filter((n,i,a)=>n>0&&a.indexOf(n)===i).sort((a,b)=>a-b);
+    if(!growth.includes(CFG.bands))growth.push(CFG.bands);
+    let bands=[], acceptedState=null, trace=[], totalIterations=0, totalAccepted=0, totalRejected=0;
+
+    for(const count of growth){
+      const seeded=addBandsToCount(lmFreqs,baseLM,targetLM,bands,count);
+      if(seeded.length<=bands.length && bands.length)break;
+      const standard=lmRefine(lmFreqs,baseLM,targetLM,seeded,'standard');
+      totalIterations+=standard.iterations;totalAccepted+=standard.acceptedSteps;totalRejected+=standard.rejectedSteps;
+      let chosen=standard, branch='standard';
+      if(CFG.huberEnabled){
+        const robust=lmRefine(lmFreqs,baseLM,targetLM,standard.bands,'huber');
+        totalIterations+=robust.iterations;totalAccepted+=robust.acceptedSteps;totalRejected+=robust.rejectedSteps;
+        const sm=solutionMetrics(lmFreqs,baseLM,targetLM,standard.bands), rm=solutionMetrics(lmFreqs,baseLM,targetLM,robust.bands);
+        const standardHuberCost=solverFitCost(modelAndErrors(lmFreqs,baseLM,targetLM,standard.bands).errors,standard.bands,'huber');
+        const robustHuberCost=solverFitCost(modelAndErrors(lmFreqs,baseLM,targetLM,robust.bands).errors,robust.bands,'huber');
+        const robustPass=robustHuberCost<standardHuberCost-1e-8 && rm.comp.rmse<=sm.comp.rmse+0.015 && rm.comp.p95<=sm.comp.p95+CFG.huberP95ToleranceDb && rm.comp.max<=sm.comp.max+CFG.huberMaxToleranceDb && rm.comp.score<=sm.comp.score+0.003;
+        if(robustPass){chosen=robust;branch='huber-irls';}
+      }
+      let candidateBands=responseAwarePruneLM(lmFreqs,baseLM,targetLM,chosen.bands,branch==='huber-irls'?'huber':'standard');
+      candidateBands=fastRedundancyCleanup(lmFreqs,baseLM,targetLM,candidateBands,branch==='huber-irls'?'huber':'standard');
+      const state=solutionMetrics(lmFreqs,baseLM,targetLM,candidateBands);
+      const accepted=bandGrowthAccept(acceptedState,state);
+      trace.push({requestedBands:count,actualBands:candidateBands.length,rmse:state.comp.rmse,p95:state.comp.p95,max:state.comp.max,erb:state.comp.erbError,narrow:state.comp.narrowError,score:state.comp.score,branch,accepted});
+      if(accepted){bands=candidateBands;acceptedState=state;}else break;
+      if(bands.length>=CFG.bands)break;
+    }
+
+    if(!bands.length)throw Error('LM/IRLS solver could not initialize a valid PEQ solution.');
+
+    // Dense final joint refinement; Huber IRLS remains active, then exact guards.
+    const f=grids.R0, raw=resample(rawCurve,f), target=resample(targetCurve,f), aligned=alignLevel(f,raw,target), base=aligned.curve;
+    let final=lmRefine(f,base,target,bands,CFG.huberEnabled?'huber':'standard');
+    totalIterations+=final.iterations;totalAccepted+=final.acceptedSteps;totalRejected+=final.rejectedSteps;
+    bands=responseAwarePruneLM(f,base,target,final.bands,CFG.huberEnabled?'huber':'standard');
+    bands=fastRedundancyCleanup(f,base,target,bands,CFG.huberEnabled?'huber':'standard');
+    bands=strip(bands).filter(b=>Math.abs(b.gain)>=CFG.minActiveGain);
+    if(bands.length>CFG.bands)throw Error('LM/IRLS active-set invariant violated: more than '+CFG.bands+' bands.');
+    for(const b of bands)if(!biquadSafety(b).stable)throw Error('LM/IRLS produced an unstable biquad.');
+
+    const continuous=solutionMetrics(f,base,target,bands);
+    let qbands=quantizationRescue(f,base,target,bands);
+    qbands=responseAwarePrune(f,base,target,qbands);
+    if(qbands.length>CFG.bands)throw Error('Quantized active-set invariant violated.');
+    const hfRescue=hfSafetyRescue(rawCurve,f,base,target,qbands);
+    qbands=hfRescue.bands;
+    const corrected=applyFiltersCached(base,qbands,f), before=Array.from(base,(v,i)=>Math.abs(v-target[i])), after=Array.from(corrected,(v,i)=>Math.abs(v-target[i]));
+    const hf=hfRescue.validation, qcomp=objectiveComponents(f,corrected,target,qbands,hf);
+    const qtop=topologyError(f,corrected,target), ctop=topologyError(f,continuous.curve,target);
+    const shapeGuard={status:qtop<=ctop+CFG.topologyToleranceDb?'PASS':'FAIL',deltaDb:qtop-ctop};
+    const stability=stabilityPerturbationTest(f,base,target,qbands);
+    const headroom=modeledHeadroom(qbands);
+    const elapsed=((typeof performance!=='undefined'&&performance.now)?performance.now():Date.now())-started;
+    return {bands:qbands,metrics:{
+      rmseBefore:rmse(before),rmseAfter:rmse(after),p95Before:percentile(before,.95),p95After:percentile(after,.95),maxBefore:Math.max(...before),maxAfter:Math.max(...after),
+      activeBands:qbands.length,maxBoost:Math.max(0,...qbands.map(b=>b.gain)),maxCut:Math.min(0,...qbands.map(b=>b.gain)),maxQ:Math.max(0,...qbands.map(b=>b.q)),
+      levelOffsetDb:aligned.offset,coverage:[lo,hi],objective:qcomp.score,objectiveComponents:qcomp,erbError:qcomp.erbError,narrowError:qcomp.narrowError,
+      shapeGuardEnabled:true,shapeGuardAccepted:shapeGuard.status==='PASS',shapeGuardReason:shapeGuard.status==='PASS'?'target_relative_pass':'target_relative_warning',shapeGuardDeltaDb:shapeGuard.deltaDb,
+      shapeGuardPreRmsDb:ctop,shapeGuardFinalRmsDb:qtop,quantizationRescue:'accepted',quantizedObjective:qcomp,hfValidation:hf,quantizedShapeGuard:shapeGuard,exactExportSimulation:true,
+      qAllowed:[0.30,10.00],qRangeSelected:qbands.some(b=>b.q>2)?'0.30–10.00':'0.30–2.00',q10Committed:qbands.some(b=>b.q>2),lossMode:CFG.huberEnabled?'LM + Huber IRLS':'LM least-squares',performanceMode:'lm-irls',huberCommitted:CFG.huberEnabled,
+      solver:{name:'Levenberg-Marquardt + Huber IRLS',jointParameters:['log(Fc)','Gain','log(Q)'],iterations:totalIterations,acceptedSteps:totalAccepted,rejectedSteps:totalRejected,bandGrowthTrace:trace,elapsedMs:elapsed,continuousRmse:continuous.comp.rmse,quantizedRmse:qcomp.rmse,responseCache:true},
+      stabilityPerturbation:stability,hfSafetyRescue:{applied:hfRescue.rescued,scale:hfRescue.scale,rmseDeltaDb:hfRescue.rmseDeltaDb||0},modeledHeadroom:headroom,resolution:{R0:f.length,R1:grids.R1.length,R2:grids.R2.length}
+    }};
+  }
+
   function optimize(rawCurve,targetCurve){
+    if((CFG.solver||{}).mode==='lm-irls'){
+      try{return optimizeLMIRLS(rawCurve,targetCurve);}
+      catch(e){
+        // Transactional fallback keeps the app usable if a numerical edge case
+        // defeats LM. The fallback is explicit in metrics and never silent.
+        const fallback=CFG.performanceMode==='balanced'?optimizeBalanced(rawCurve,targetCurve):optimizeBranch(rawCurve,targetCurve,'standard');
+        fallback.metrics.solverFallback={from:'LM + Huber IRLS',to:'legacy constrained solver',reason:String(e&&e.message||e)};
+        fallback.metrics.performanceMode='legacy-fallback';
+        return fallback;
+      }
+    }
     if(CFG.performanceMode==='balanced')return optimizeBalanced(rawCurve,targetCurve);
     const standard=optimizeBranch(rawCurve,targetCurve,'standard');
     if(!CFG.huberEnabled){
@@ -1066,12 +1543,14 @@
       implementation:'MOONDROP Link-compatible constraint set',
       dsp_model:{type:'RBJ peaking biquad',sample_rate_hz:CFG.sampleRate,status:'PROVISIONAL'},
       level_alignment:{method:'mean raw-target error over 100 Hz–10 kHz',removed_offset_db:result.metrics.levelOffsetDb},
-      optimizer:{initialization:'Residual-feature candidates + bandwidth-derived Q + exact local refinement',
-                 loss:'standard mean absolute error with errors below 0.1 dB ignored; guarded Huber branch for outlier robustness',
-                 robust_loss:{name:'Huber',delta_db:CFG.huberDeltaDb,enabled:CFG.huberEnabled,selection:'guarded comparison against standard-loss branch'},
-                 performance_mode:CFG.performanceMode,
-                 batches:'first batch <=7 kHz, second residual batch, then full two-direction optimization; response-aware overlap merge after final pass'},
-      constraints:{bands:CFG.bands,frequency_hz:[CFG.minFreq,CFG.maxFreq],gain_db:[CFG.minGain,CFG.maxGain],q:[0.30,10.00],q_range_selected:result.metrics.qRangeSelected},
+      optimizer:{initialization:'Evidence-driven residual features + bandwidth-derived Q; active band growth inside the <=10-band constraint',
+                 algorithm:'Joint Levenberg-Marquardt refinement of log(Fc), Gain and log(Q), followed by Huber IRLS robust refinement',
+                 loss:'exact pointwise residual fit with Huber IRLS robustness; ERB/narrow/topology/complexity metrics used as bounded validation criteria',
+                 robust_loss:{name:'Huber IRLS',delta_db:CFG.huberDeltaDb,enabled:CFG.huberEnabled,selection:'transactional robust refinement with bounded RMSE/P95/max/secondary-metric guards'},
+                 performance_mode:result.metrics.performanceMode||CFG.performanceMode,
+                 active_set:'3 -> 5 -> 7 -> <=10 bands, stopping when validated marginal improvement is negligible',
+                 exact_model:'RBJ peaking biquad at every candidate, Jacobian and final export validation'},
+      constraints:{bands:CFG.bands,device_frequency_hz:[20,20000],correction_domain_hz:[CFG.minFreq,CFG.maxFreq],gain_db:[CFG.minGain,CFG.maxGain],q:[0.30,10.00],q_range_selected:result.metrics.qRangeSelected},
       source:meta,metrics:result.metrics,target_topology_guard:{reference:'selected Robust Target',tolerance_db:CFG.topologyToleranceDb},peq:result.bands.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain).slice(0,CFG.bands)
     },null,2)+'\n';
   }
@@ -1168,7 +1647,7 @@
 
     table.innerHTML='<div class="pudding-peq-head"><span>Band</span><span>Type</span><span>Freq</span><span>Gain</span><span>Q</span></div>'+
       result.bands.map((b,i)=>`<div class="pudding-peq-row"><span>${i+1}</span><span>PK</span><span>${fmt(b.freq)} Hz</span><span>${b.gain>=0?'+':''}${b.gain.toFixed(2)} dB</span><span>${b.q.toFixed(2)}</span></div>`).join('')+
-      '<div class="pudding-note">Evidence-driven residual candidates · conservative Q≤2 branch · evidence-gated high-Q rescue · exact RBJ @ 48 kHz provisional · export quantization only at final boundary · Robust Target-relative validation.</div>';
+      '<div class="pudding-note">Evidence-driven active bands · joint LM Fc/Gain/Q refinement · Huber IRLS robustness · exact RBJ @ 48 kHz provisional · exact post-quantization validation · Robust Target only.</div>';
   }
 
   function downloadTxt(){
@@ -1213,5 +1692,5 @@
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 
   window.MoondropPuddingPEQ={CFG,optimize,formatPEQ,
-    __test:{DOMAIN_BANDS,resolutionGrids,featureAnalysis,boostRisk,deadZoneHuber,objectiveComponents,highFrequencyValidation,quantizeBands,responseAwarePrune,finalizeQuantized,responseDelta,rbj,totalEq,applyFilters,erbRate,erbBandError,narrowFeatureError,topologyError,biquadSafety,modeledHeadroom,parseImportedPeq}};
+    __test:{DOMAIN_BANDS,resolutionGrids,featureAnalysis,boostRisk,deadZoneHuber,huberWeight,objectiveComponents,highFrequencyValidation,quantizeBands,responseAwarePrune,finalizeQuantized,responseDelta,rbj,totalEq,applyFilters,applyFiltersCached,erbRate,erbBandError,narrowFeatureError,topologyError,biquadSafety,modeledHeadroom,parseImportedPeq,solveLinearSystem,lmRefine,candidatePoolForState,stabilityPerturbationTest,hfSafetyRescue,quantizationRescue,optimizeLMIRLS}};
 })();
