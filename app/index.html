@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'nonce-9HKSOsB546xzOv-LNV9nGCiZix5pNLIC'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.github.com https://raw.githubusercontent.com; media-src 'none';">
-<title>EarPrint — Personal</title>
+<title>EARPRINT STUDIO</title>
 
 <style>
 
@@ -1133,6 +1133,19 @@ select,input{
 .session-status.connected{
   color:#7dbb9b;
 }
+
+/* v4.2 PERSONAL EARPRINT STUDIO UI OVERRIDE */
+:root{--bg:#000;--panel:#090909;--panel2:#050505;--line:#182230;--accent:#00d9ff;--accent2:#00f59a;--text:#f5f7fb;--muted:#8c98aa}
+body{background:#000;color:var(--text)}
+.wrap{width:min(1500px,100%);padding:22px}
+.brand h1{font-size:32px;letter-spacing:.02em}
+.brand h1::before{content:'〰 ';color:#00d9ff}
+.card,.viz-panel{background:linear-gradient(145deg,#0a0d12,#050505);border-color:#162230;border-radius:18px;box-shadow:0 0 0 1px rgba(0,217,255,.03),0 12px 40px rgba(0,0,0,.35)}
+button,a.btn{background:#10151d;border-color:#203040;border-radius:12px}
+button.primary,a.primary{background:linear-gradient(90deg,#00aee8,#00e5ff);color:#001018;border-color:transparent;font-weight:700}
+.miniStats{display:none}
+.chart{background:#020406;border-color:#12202e}
+.disclaimer{margin-top:20px;padding:14px;border-radius:14px;background:#070707;border:1px solid #182230;color:#aeb8c8;font-size:12px}
 </style>
 </head>
 
@@ -1140,6 +1153,7 @@ select,input{
 <body>
 
 <div class="wrap">
+<div class="earprint-banner card"><strong>EARPRINT STUDIO — Personal Calibration Engine</strong><br><span>Built for my own earprint workflow. This system uses personal preference references and is not a universal IEM target.</span></div>
 
 
   <!-- ========================================================
@@ -1151,11 +1165,11 @@ select,input{
     <div class="brand">
 
       <h1>
-        EarPrint — Personal
+        EARPRINT STUDIO
       </h1>
 
       <p id="repoLabel">
-        Loading repository…
+        Personal Calibration Engine
       </p>
 
     </div>
@@ -1306,7 +1320,7 @@ select,input{
       <div>
         <h2 style="margin:0">Target Visualizer</h2>
         <div class="visualizer-subtitle">
-          Original vs Robust
+          Raw Frequency / EarPrint / Corrected FR / Robust Target
         </div>
       </div>
       <div class="viz-actions">
@@ -1351,7 +1365,7 @@ select,input{
 
         <div class="legend" aria-label="Chart legend">
           <span class="legend-item" style="color:#dce7f8">
-            <span class="legend-line dashed"></span> Original Target
+            <span class="legend-line dashed"></span> Raw Frequency
           </span>
           <span class="legend-item" style="color:#66a3ff">
             <span class="legend-line"></span> Robust Target
@@ -1422,7 +1436,6 @@ select,input{
 
       <button
         type="button"
-        id="closeModalButton"
         id="closeModalButton"
         style="cursor:pointer">
 
@@ -2196,10 +2209,10 @@ function buildHybrid(
 ){
 
   if(!Array.isArray(frequencyGrid) || frequencyGrid.length < 2)
-    throw Error('Pure EarPrint frequency grid is not available.');
+    throw Error('EarPrint frequency grid is not available.');
 
   if(!Array.isArray(pure) || pure.length !== frequencyGrid.length)
-    throw Error('Pure EarPrint frequency grid is invalid.');
+    throw Error('EarPrint frequency grid is invalid.');
 
   const targetAtJoin =
     logInterp(
@@ -2231,8 +2244,8 @@ function buildHybrid(
     /*
       Locked hybrid math:
       - selected target at/below join
-      - Pure EarPrint above join
-      - ONE constant continuity shift applied only to the Pure EarPrint side
+      - EarPrint above join
+      - ONE constant continuity shift applied only to the EarPrint side
     */
     const value =
       frequency <= join
@@ -2337,8 +2350,8 @@ function targetDisplayShift(){
     DISPLAY ONLY:
     Target files may use different absolute offsets (e.g. 0 dB-normalized
     delta targets vs absolute 5128 targets). The engine/output files are NOT
-    modified. For visual comparison only, align Original + Robust to the
-    Pure EarPrint at the common 1 kHz anchor. This preserves each target's
+    modified. For visual comparison only, align Raw Frequency + Robust to the
+    EarPrint at the common 1 kHz anchor. This preserves each target's
     shape while putting all curves into the same vertical frame.
   */
   const anchorHz=1000;
@@ -2553,7 +2566,7 @@ function updateReadout(frequency){
 
   const display=getDisplayCurves();
   put('readFreq',fmtHz(frequency)+' Hz');
-  put('readOriginal',fmtDb(curveValue(display.original,frequency)));
+  put('readRaw Frequency',fmtDb(curveValue(display.original,frequency)));
   put('readRobust',fmtDb(curveValue(display.robust,frequency)));
 
 }
@@ -4108,7 +4121,7 @@ async function loadAll(){
                 ` data-iem-name="` +
                   esc(item.name) +
                 `"` +
-                ` title="Delete preferred IEM"` +
+                ` title="Delete EarPrint Signature"` +
                 ` aria-label="Delete ${esc(item.name.replace(/\.txt$/i,''))}"` +
               `>×</button>` +
             `</span>`
@@ -4157,8 +4170,8 @@ async function loadAll(){
 
 
     /*
-      Load Pure EarPrint when available.
-      The target visualizer must not depend on Pure EarPrint loading:
+      Load EarPrint when available.
+      The target visualizer must not depend on EarPrint loading:
       original/robust target visualization remains usable even if the
       personal curve is temporarily unavailable.
     */
@@ -4210,13 +4223,13 @@ async function deleteIem(filename){
   // The engine requires at least one preferred curve. Keep the last vote safe.
   const remaining = document.querySelectorAll('#iems .iem-delete').length;
   if(remaining <= 1){
-    showErr('At least one preferred IEM must remain. Add another IEM before deleting this one.');
+    showErr('At least one EarPrint Signature must remain. Add another IEM before deleting this one.');
     return;
   }
 
   const label = filename.replace(/\.txt$/i,'');
   if(!window.confirm(
-    'Delete preferred IEM "' + label + '"?\n\n' +
+    'Delete EarPrint Signature "' + label + '"?\n\n' +
     'This removes the equal-vote curve from input/preferred/. ' +
     'GitHub Actions will rebuild the EarPrint from the remaining IEMs.'
   )) return;
@@ -4230,17 +4243,17 @@ async function deleteIem(filename){
     await ghAuth(inputPath,{
       method:'DELETE',
       body:JSON.stringify({
-        message:'Delete preferred IEM ' + filename,
+        message:'Delete EarPrint Signature ' + filename,
         sha:meta.sha,
         branch:'main'
       })
     });
 
     document.getElementById('targetStatus').textContent =
-      'Deleted preferred IEM ' + label + '. GitHub Actions will rebuild the EarPrint.';
+      'Deleted EarPrint Signature ' + label + '. GitHub Actions will rebuild the EarPrint.';
     await loadAll();
   }catch(error){
-    showErr('Could not delete preferred IEM: ' + error.message);
+    showErr('Could not delete EarPrint Signature: ' + error.message);
   }
 
 }
@@ -4375,18 +4388,18 @@ async function showTarget(){
     /*
       MASK CONSISTENCY LOCK:
       Robust Target is authoritative for the displayed engine result.
-      Displayed Mask Δ = Robust Target - Original Target.
+      Displayed Mask Δ = Robust Target - Raw Frequency.
       Downloaded Robust Target is never modified.
     */
     if(original && robust){
-      const robustMinusOriginal=[];
+      const robustMinusRaw Frequency=[];
       for(const [f,rv] of robust){
         const ov=curveValue(original,f);
         if(Number.isFinite(rv) && Number.isFinite(ov)){
-          robustMinusOriginal.push([f,rv-ov]);
+          robustMinusRaw Frequency.push([f,rv-ov]);
         }
       }
-      if(robustMinusOriginal.length) mask=robustMinusOriginal;
+      if(robustMinusRaw Frequency.length) mask=robustMinusRaw Frequency;
     }
 
     pureCurve=pure || pureCurve;
@@ -4417,7 +4430,7 @@ async function showTarget(){
       status.textContent=
         missing.length
           ? 'Loaded with '+missing.join(', ')+' unavailable. Engine outputs were not changed.'
-          : 'Original + robust target loaded. Robust Target is the only downloadable target; mask is display-only.';
+          : 'Raw Frequency + Robust Target loaded. Robust Target is the only downloadable target; advanced mask display remains optional.';
     }
 
     updateMaskSummary();
@@ -4523,7 +4536,7 @@ async function generateHybrid(){
 
     /*
       Locked hybrid logic:
-      target <=1 kHz; Pure EarPrint >1 kHz and <12 kHz; HF extension >=12 kHz.
+      target <=1 kHz; EarPrint >1 kHz and <12 kHz; HF extension >=12 kHz.
       Continuity shift is applied only inside the Hybrid output.
     */
 
@@ -4709,5 +4722,5 @@ loadAll();
   document.body.appendChild(s);
 </script>
 
-</body>
+<div class="disclaimer">This project is a personal earprint calibration workflow built from my own ear preference references. Third-party measurements may be used as input references. The generated target represents personal preference alignment, not a universal target.</div></body>
 </html>
