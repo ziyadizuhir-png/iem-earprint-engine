@@ -42,10 +42,15 @@ assert.equal(sorted.removedPoints, 0);
 const overshoot = t.parseCustomFR('20,0\n100,1\n20000,-1\n20186,-2', 'overshoot.txt');
 assert.equal(overshoot.originalPoints, 4);
 assert.equal(overshoot.removedPoints, 1);
+assert.equal(overshoot.removedReasons.above20kHz, 1);
 assert(overshoot.curve.at(-1)[0] <= 20000);
 const builtIn = t.parseCustomFR(fs.readFileSync('input/original_711/moondrop pudding fr.txt', 'utf8'), 'moondrop pudding fr.txt', { walkplay: true });
 assert.equal(builtIn.removedPoints, 1);
 assert(builtIn.curve.at(-1)[0] <= 20000);
+const damagedJson = t.parseCustomFR(JSON.stringify({ points: [null, { frequency: 20, amplitude: 0 }, { frequency: 1000, amplitude: 1 }, { frequency: 1000, amplitude: 1.2 }, { frequency: 21000, amplitude: 2 }] }), 'damaged.json');
+assert.equal(damagedJson.removedReasons.invalid, 1);
+assert.equal(damagedJson.removedReasons.above20kHz, 1);
+assert.equal(damagedJson.removedReasons.duplicate, 1);
 assert.throws(() => t.parseCustomFR('20,NaN\n100,1', 'bad.txt'), /at least 2/);
 
 const frequencies = Array.from({ length: 64 }, (_, i) => 20 * Math.pow(1000, i / 63));

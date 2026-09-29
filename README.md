@@ -79,6 +79,13 @@ The app exposes two workflow tabs over the same solver and Robust Target list:
   original/processed/removed counts. It supports 8 hardware bands by default
   or 10 bands, -10 to +10 dB gain, Q 0.10–5.00, and 0.1 dB gain rounding.
 
+All FR sources pass through the same defensive input normalizer. It also
+handles future IEM files with blank/header rows, malformed or non-finite
+values, duplicate frequencies, unsorted points, sub-20 Hz points, and points
+above 20 kHz. These points are removed before log-frequency interpolation; the
+solver only receives the resulting usable curve. The UI reports the cleanup
+counts so a new IEM source does not require a code-specific exception.
+
 The target dropdown is populated dynamically from READY Robust Target outputs;
 the default selection is `5128 DF Tilt -1dB Oct B 4dB Target` when available,
 while other discovered Robust Targets remain selectable. No alternate target

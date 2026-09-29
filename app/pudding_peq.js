@@ -230,11 +230,34 @@
 
   function customFRRowsFromJSON(value){
     const data=value&&typeof value==='object'&&(value.points||value.data||value.curve)?(value.points||value.data||value.curve):value;
-    if(Array.isArray(data))return data.map(row=>Array.isArray(row)?[row[0],row[1]]:[row.frequency??row.frequencyHz??row.freq??row.hz,row.amplitude??row.amplitudeDb??row.gain??row.db??row.value]);
+    if(Array.isArray(data))return data.map(row=>Array.isArray(row)?[row[0],row[1]]:[row?.frequency??row?.frequencyHz??row?.freq??row?.hz,row?.amplitude??row?.amplitudeDb??row?.gain??row?.db??row?.value]);
     if(data&&Array.isArray(data.frequency)&&Array.isArray(data.amplitude))return data.frequency.map((f,i)=>[f,data.amplitude[i]]);
     if(data&&Array.isArray(data.frequencies)&&Array.isArray(data.amplitudes))return data.frequencies.map((f,i)=>[f,data.amplitudes[i]]);
     if(data&&Array.isArray(data.frequencies)&&Array.isArray(data.response))return data.frequencies.map((f,i)=>[f,data.response[i]]);
     throw Error('JSON FR must contain points or frequency/amplitude arrays.');
+  }
+
+  function normalizeFRInputRows(rows,source='Custom FR'){
+    if(!Array.isArray(rows))throw Error('Custom FR data must be an array of frequency/response points.');
+    const originalPoints=rows.length;
+    let removedPoints=0;
+    const removedReasons={invalid:0,below20Hz:0,above20kHz:0,duplicate:0};
+    const usable=[];
+    for(const row of rows){
+      const frequency=Number(row?.[0]), amplitude=Number(row?.[1]);
+      if(!Number.isFinite(frequency)||!Number.isFinite(amplitude)||Math.abs(amplitude)>200){removedPoints++;removedReasons.invalid++;continue;}
+      if(frequency<20){removedPoints++;removedReasons.below20Hz++;continue;}
+      if(frequency>20000){removedPoints++;removedReasons.above20kHz++;continue;}
+      usable.push([frequency,amplitude]);
+    }
+    usable.sort((a,b)=>a[0]-b[0]);
+    const deduped=[];
+    for(const row of usable){
+      if(deduped.length&&row[0]===deduped.at(-1)[0]){deduped[deduped.length-1]=row;removedPoints++;removedReasons.duplicate++;}
+      else deduped.push(row);
+    }
+    const normalized=normalizeFRRows(deduped,source);
+    return {...normalized,originalPoints,removedPoints,processedPoints:normalized.pointCount,sorted:true,removedReasons,normalizationWarning:removedPoints>0||normalized.interpolatedPoints>0};
   }
 
   function parseCustomFR(text,source='Custom FR',options={}){
@@ -252,24 +275,7 @@
         rows.push(match?[match[1],match[2]]:[NaN,NaN]);
       }
     }
-    if(options.walkplay!==false){
-      const originalPoints=rows.length;
-      let removedPoints=0;
-      const usable=[];
-      for(const row of rows){
-        const frequency=Number(row?.[0]), amplitude=Number(row?.[1]);
-        if(!Number.isFinite(frequency)||!Number.isFinite(amplitude)||Math.abs(amplitude)>200||frequency<20||frequency>20000){removedPoints++;continue;}
-        usable.push([frequency,amplitude]);
-      }
-      usable.sort((a,b)=>a[0]-b[0]);
-      const deduped=[];
-      for(const row of usable){
-        if(deduped.length&&row[0]===deduped.at(-1)[0]){deduped[deduped.length-1]=row;removedPoints++;}
-        else deduped.push(row);
-      }
-      const normalized=normalizeFRRows(deduped,name);
-      return {...normalized,originalPoints,removedPoints,processedPoints:normalized.pointCount,sorted:true,normalizationWarning:removedPoints>0||normalized.interpolatedPoints>0};
-    }
+    if(options.walkplay!==false)return normalizeFRInputRows(rows,name);
     return normalizeFRRows(rows,name,options);
   }
 
@@ -1953,13 +1959,14 @@
   }
   function selectedTarget(){const id=$('puddingTargetSelect')?.value; const t=targetRegistry.find(x=>x.id===id); if(!t)throw Error('Selected Robust Target is unavailable.'); return t;}
   let activeWorkflow='pudding';
-  let last=null,lastSolverResult=null,lastMeta=null,lastContext=null,customFR=null;
+  let last=null,lastSolverResult=null,lastMeta=null,lastContext=null,customFR=null,lastInput=null;
 
   function selectedDeviceId(){return activeWorkflow==='walkplay'?'walkplay':'moondrop';}
   function selectedDeviceOptions(){return {walkplayBands:Number($('puddingWalkplayBands')?.value||8)};}
   async function selectedFR(){
     if(activeWorkflow==='walkplay'){
       if(!customFR)throw Error('Choose a CSV, TXT, or JSON WalkPlay FR file first.');
+      lastInput=customFR;
       return customFR;
     }
     const path='input/original_711/moondrop pudding fr.txt';
@@ -1968,7 +1975,8 @@
     // used for uploaded FR data so the Pudding tab can load its built-in source
     // without changing the solver or the correction domain.
     const normalized=parseCustomFR(await readRepo(path),path,{walkplay:true});
-    return {...normalized,source:'Moondrop FR · '+path};
+    lastInput={...normalized,source:'Moondrop FR · '+path};
+    return lastInput;
   }
 
   function applyCurrentDeviceProfile(){
@@ -2009,6 +2017,7 @@
     status('Preparing raw Pudding + target…');
     try{
       const raw=await selectedFR();
+      updateFRSummary();
       const reg=selectedTarget();
       const target={curve:parseCurveText(await readRepo(reg.robustTargetPath)),source:reg.displayName,path:reg.robustTargetPath};
       status('IEM EarPrint constrained optimization…');
@@ -2016,9 +2025,10 @@
       const solverResult=optimize(raw.curve,target.curve,solverConstraints);
       const result=applyDeviceProfile(solverResult,raw.curve,target.curve,selectedDeviceId(),selectedDeviceOptions());
       lastSolverResult=solverResult;lastContext={raw,target};
-      last=result;lastMeta={raw:raw.source,target:target.source,target_mode:'Robust Target',robust_target_path:target.path,device:result.metrics.deviceProfile.label};
+      last=result;lastMeta={raw:raw.source,target:target.source,target_mode:'Robust Target',robust_target_path:target.path,device:result.metrics.deviceProfile.label,frStats:Number.isFinite(raw.originalPoints)?{original:raw.originalPoints,processed:raw.processedPoints,removed:raw.removedPoints,removedReasons:raw.removedReasons}:null};
       render(result,lastMeta);
-      status('Done · '+result.metrics.deviceProfile.label+' · '+result.bands.length+' bands · RMSE '+result.metrics.rmseBefore.toFixed(2)+' → '+result.metrics.rmseAfter.toFixed(2)+' dB','ok');
+      const cleanup=lastMeta.frStats?' · FR '+lastMeta.frStats.original+'→'+lastMeta.frStats.processed+' · removed '+lastMeta.frStats.removed:'';
+      status('Done · '+result.metrics.deviceProfile.label+' · '+result.bands.length+' bands · RMSE '+result.metrics.rmseBefore.toFixed(2)+' → '+result.metrics.rmseAfter.toFixed(2)+' dB'+cleanup,'ok');
     }catch(e){last=null;lastSolverResult=null;lastContext=null;lastMeta=null;render(null,null);status(e.message,'warn');}
     finally{if(button){button.disabled=false;button.textContent='Generate Pudding PEQ';}}
   }
@@ -2027,8 +2037,9 @@
     const summary=$('puddingFRSummary'), custom=$('puddingCustomFRFile');
     if(!summary)return;
     const source=activeWorkflow==='walkplay'?'walkplay':'pudding';
-    const counts=customFR&&source==='walkplay'?' · Original '+customFR.originalPoints+' · Processed '+customFR.processedPoints+' · Removed '+customFR.removedPoints:'';
-    summary.textContent=message||source==='walkplay'?(message||(customFR?.source||'Upload a CSV, TXT, or JSON WalkPlay FR file.')+counts):'Moondrop FR · input/original_711/moondrop pudding fr.txt';
+    const input=source==='walkplay'?customFR:lastInput;
+    const counts=input&&Number.isFinite(input.originalPoints)?' · Original '+input.originalPoints+' · Processed '+input.processedPoints+' · Removed '+input.removedPoints:'';
+    summary.textContent=message||source==='walkplay'?(message||(input?.source||'Upload a CSV, TXT, or JSON WalkPlay FR file.')+counts):'Moondrop FR · input/original_711/moondrop pudding fr.txt'+counts;
     summary.className='pudding-constraint-summary'+(message?' invalid':'');
     if(custom)custom.hidden=source!=='walkplay';
   }
@@ -2053,6 +2064,7 @@
       ['Active bands',result.metrics.activeBands+' / '+result.metrics.solverConstraints.maxBands],
       ['Actual Bands Used',String(result.metrics.actualBands)],
       ['FR',meta?.raw||'—'],
+      ...(meta?.frStats?[['FR cleanup','Original '+meta.frStats.original+' · Processed '+meta.frStats.processed+' · Removed '+meta.frStats.removed]]:[]),
       ['Target','Robust Target (locked)'],
       ['Device',result.metrics.deviceProfile?.label||'Generic PEQ'],
       ['Headroom',result.metrics.deviceProfile?.id==='moondrop'?result.metrics.deviceProfile.headroomBefore.message:(result.metrics.deviceProfile?.headroom?.message||'—')],
@@ -2137,5 +2149,5 @@
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 
   window.MoondropPuddingPEQ={CFG,HARDWARE_CONSTRAINTS,DEFAULT_SOLVER_CONSTRAINTS,DEVICE_PROFILES,optimize,solvePEQ,getAllowedGrowth,normalizeSolverConstraints,formatPEQ,
-    __test:{DOMAIN_BANDS,resolutionGrids,featureAnalysis,boostRisk,deadZoneHuber,huberWeight,objectiveComponents,worstErrorRegion,highFrequencyValidation,quantizeBands,findQuantizationSensitiveBands,responseAwarePrune,finalizeQuantized,responseDelta,rbj,totalEq,applyFilters,applyFiltersCached,erbRate,erbBandError,narrowFeatureError,topologyError,biquadSafety,modeledHeadroom,parseImportedPeq,parseCustomFR,normalizeFRRows,solveLinearSystem,lmRefine,candidatePoolForState,stabilityPerturbationTest,hfSafetyRescue,quantizationRescue,highQReasonMetadata,optimizeLMIRLS,solverConfigurationHash,applyDeviceProfile,profileHeadroom,rankDeviceBands}};
+    __test:{DOMAIN_BANDS,resolutionGrids,featureAnalysis,boostRisk,deadZoneHuber,huberWeight,objectiveComponents,worstErrorRegion,highFrequencyValidation,quantizeBands,findQuantizationSensitiveBands,responseAwarePrune,finalizeQuantized,responseDelta,rbj,totalEq,applyFilters,applyFiltersCached,erbRate,erbBandError,narrowFeatureError,topologyError,biquadSafety,modeledHeadroom,parseImportedPeq,parseCustomFR,normalizeFRRows,normalizeFRInputRows,solveLinearSystem,lmRefine,candidatePoolForState,stabilityPerturbationTest,hfSafetyRescue,quantizationRescue,highQReasonMetadata,optimizeLMIRLS,solverConfigurationHash,applyDeviceProfile,profileHeadroom,rankDeviceBands}};
 })();
