@@ -61,8 +61,24 @@ smoothing:
   method: gaussian
   sigma_indices: 16
   radius_indices: 64
+  pure_earprint:
+    sigma_indices: 4
+    radius_indices: 16
   padding: nearest
   passes: 1
+
+
+# Numerical validation and confidence controls. These values are intentionally
+# configuration-owned so the implementation has one source of truth.
+validation:
+  min_curve_points: 10
+  min_iem_votes: 1
+  grid_epsilon_hz: 1.0e-12
+  finite_epsilon: 1.0e-12
+
+confidence:
+  uncertainty_epsilon: 1.0e-12
+  stability_reference_db: 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +113,7 @@ robust_mask:
     tuning_constant: 1.345
     scale_factor: 1.4826
     scale_floor_db: 0.15
+    residual_epsilon: 1.0e-12
     passes: 1
   diagnostics:
     - cross_iem_mad
@@ -177,6 +194,11 @@ peq:
   correction_domain_hz: [20, 12000]
   validation_domain_hz: [20, 20000]
   max_bands: 10
+  min_gain_db: -12
+  max_gain_db: 3
+  min_q: 0.30
+  max_q: 10.0
+  minimum_correction_db: 1.0
   resolutions:
     r0_points: 720
     r1_points: 240

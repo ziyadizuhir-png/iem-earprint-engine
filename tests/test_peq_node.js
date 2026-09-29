@@ -11,6 +11,7 @@ const sandbox = {
   console, setTimeout, clearTimeout, URL, Blob, fetch() { throw new Error('not used'); }
 };
 sandbox.window = sandbox.window;
+vm.runInNewContext(fs.readFileSync('app/equal_loudness.js', 'utf8'), sandbox, { filename: 'app/equal_loudness.js' });
 vm.runInNewContext(fs.readFileSync('app/pudding_peq.js', 'utf8'), sandbox, { filename: 'app/pudding_peq.js' });
 const api = sandbox.window.MoondropPuddingPEQ;
 const t = api.__test;

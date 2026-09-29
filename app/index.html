@@ -4703,10 +4703,16 @@ loadAll();
 </script>
 
 <script nonce="9HKSOsB546xzOv-LNV9nGCiZix5pNLIC">
-  const s = document.createElement('script');
-  s.src = './pudding_peq.js?v=2026-09-25.5-vNext4-LM-IRLS';
-  s.nonce = '9HKSOsB546xzOv-LNV9nGCiZix5pNLIC';
-  document.body.appendChild(s);
+  const elc = document.createElement('script');
+  elc.src = './equal_loudness.js?v=2026-09-29-iso226';
+  elc.nonce = '9HKSOsB546xzOv-LNV9nGCiZix5pNLIC';
+  elc.onload = () => {
+    const s = document.createElement('script');
+    s.src = './pudding_peq.js?v=2026-09-29.5-vNext4-LM-IRLS';
+    s.nonce = '9HKSOsB546xzOv-LNV9nGCiZix5pNLIC';
+    document.body.appendChild(s);
+  };
+  document.body.appendChild(elc);
 </script>
 
 </body>

@@ -36,6 +36,8 @@
     maxPasses: 3,
     huberEnabled: true,
     huberDeltaDb: 1.0,
+    minimumCorrectionDb: 1.0,
+    equalLoudness: { enabled: true, standard: 'ISO226', phon: 60, iemFactor: 0.5 },
     huberMinImprovementDb: 0.002,
     huberP95ToleranceDb: 0.15,
     huberMaxToleranceDb: 0.05,
@@ -47,6 +49,7 @@
     performanceMode: 'balanced'
     ,resolution: { r0Points: 720, r1Points: 240, r2Points: 96, tonalOctaves: 1/6 }
     ,huberEpsilonDb: 0.10
+    ,frequencyConfidence: { below1000: 0.9, through5000: 1.0, through12000: 0.75, above12000: 0.45 }
     ,sharpnessPenaltyWeight: 0.002
     ,complexityPenaltyWeight: 0.003
     ,boostRiskWeight: 0.025
@@ -111,12 +114,12 @@
   function validateMoondropLinkBands(bands){
     const errors=[];
     if(!Array.isArray(bands)) return ['Bands must be an array'];
-    if(bands.length>10) errors.push('Band count exceeds Moondrop Link limit (10).');
+    if(bands.length>CFG.bands) errors.push('Band count exceeds Moondrop Link limit ('+CFG.bands+').');
     for(let i=0;i<bands.length;i++){
       const b=bands[i]||{};
-      if(!(b.freq>=20&&b.freq<=20000)) errors.push(`Band ${i+1}: frequency out of 20Hz-20kHz range.`);
-      if(!(b.gain>=-12&&b.gain<=3)) errors.push(`Band ${i+1}: gain out of -12dB/+3dB range.`);
-      if(!(b.q>=0.3&&b.q<=10)) errors.push(`Band ${i+1}: Q out of 0.3-10 range.`);
+      if(!(b.freq>=CFG.minFreq&&b.freq<=20000)) errors.push(`Band ${i+1}: frequency out of 20Hz-20kHz range.`);
+      if(!(b.gain>=CFG.minGain&&b.gain<=CFG.maxGain)) errors.push(`Band ${i+1}: gain out of ${CFG.minGain}dB/${CFG.maxGain}dB range.`);
+      if(!(b.q>=CFG.minQ&&b.q<=CFG.maxQ)) errors.push(`Band ${i+1}: Q out of ${CFG.minQ}-${CFG.maxQ} range.`);
     }
     return errors;
   }
@@ -238,18 +241,19 @@
   }
 
   function distance(freqs,curve,target){
+    const loudness = optimizerWeights(freqs);
     if(LOSS_MODE==='huber'){
       let s=0; const d=CFG.huberDeltaDb;
       for(let i=0;i<freqs.length;i++){
         const e=Math.abs(curve[i]-target[i]);
-        s += e<=d ? 0.5*e*e : d*(e-0.5*d);
+        s += loudness[i]*(e<=d ? 0.5*e*e : d*(e-0.5*d));
       }
       return Math.sqrt(2*s/freqs.length);
     }
     let d=0;
     for(let i=0;i<freqs.length;i++){
       const e=Math.abs(curve[i]-target[i]);
-      if(e>=0.1)d+=e;
+      if(e>=CFG.huberEpsilonDb)d+=loudness[i]*e;
     }
     return d/freqs.length;
   }
@@ -357,6 +361,13 @@
     return clamp(0.35*broad + 0.45*smooth + 0.20*(1-isolatedPenalty),0,1);
   }
 
+  function residualFilterConfidence(freqs,residual){
+    const features=featureAnalysis(freqs,residual);
+    if(!features.length)return 1;
+    const selected=features.slice(0,Math.max(1,CFG.bands));
+    return selected.reduce((sum,feature)=>sum+residualMorphologyConfidence(feature),0)/selected.length;
+  }
+
   function boostRisk(feature){
     if(!feature || feature.gain<=0)return 0;
     const hf=clamp(Math.log2(Math.max(feature.freq,1000)/1000)/Math.log2(12),0,1);
@@ -390,16 +401,27 @@
   // v4.1: frequency confidence weighting. Keeps EarPrint/Robust Target unchanged.
   // It only changes optimizer loss weighting to reduce over-trusting uncertain regions.
   function frequencyConfidence(freq){
-    if(freq<1000) return 0.9;
-    if(freq<=5000) return 1.0;
-    if(freq<=12000) return 0.75;
-    return 0.45;
+    const c=CFG.frequencyConfidence||{};
+    if(freq<1000) return c.below1000??0.9;
+    if(freq<=5000) return c.through5000??1.0;
+    if(freq<=12000) return c.through12000??0.75;
+    return c.above12000??0.45;
   }
 
   function weightedHuberLoss(freqs, errors){
+    const loudness = optimizerWeights(freqs);
     let total=0;
-    for(let i=0;i<errors.length;i++) total += frequencyConfidence(freqs[i])*deadZoneHuber(errors[i]);
+    for(let i=0;i<errors.length;i++) total += frequencyConfidence(freqs[i])*loudness[i]*deadZoneHuber(errors[i]);
     return total/Math.max(1,errors.length);
+  }
+
+  function optimizerWeights(freqs){
+    const cfg=CFG.equalLoudness||{};
+    if(!cfg.enabled || cfg.standard!=='ISO226' || !window.IEMEqualLoudness) return new Float64Array(freqs.length).fill(1);
+    return Float64Array.from(freqs, f => {
+      const w=window.IEMEqualLoudness.optimizerWeight(f, Number(cfg.phon), Number(cfg.iemFactor));
+      return Number.isFinite(w)&&w>0?w:1;
+    });
   }
 
   function objectiveComponents(freqs,curve,target,bands=[],validation=null){
@@ -448,7 +470,7 @@
     const beforeTopology=topologyError(freqs,continuousCurve,target), afterTopology=topologyError(freqs,curve,target);
     const shapeGuard={status:afterTopology<=beforeTopology+CFG.topologyToleranceDb?'PASS':'FAIL',deltaDb:afterTopology-beforeTopology};
     const components=objectiveComponents(freqs,curve,target,qbands,validation);
-    const finite=qbands.length<=CFG.bands&&qbands.every(b=>Number.isFinite(b.freq)&&Number.isFinite(b.gain)&&Number.isFinite(b.q)&&b.freq>=20&&b.freq<=12000&&b.gain>=-12&&b.gain<=3&&b.q>=.3&&b.q<=10);
+    const finite=qbands.length<=CFG.bands&&qbands.every(b=>Number.isFinite(b.freq)&&Number.isFinite(b.gain)&&Number.isFinite(b.q)&&b.freq>=CFG.minFreq&&b.freq<=CFG.maxFreq&&b.gain>=CFG.minGain&&b.gain<=CFG.maxGain&&b.q>=CFG.minQ&&b.q<=CFG.maxQ);
     return {bands:qbands,components,validation,shapeGuard,finite,exactSimulation:{freqs,curve,target}};
   }
 
@@ -926,7 +948,7 @@
         chosen.metrics.maxQ=Math.max(0,...chosen.bands.map(b=>b.q));
       }
       chosen.metrics.lossMode=lossMode;
-      chosen.metrics.qAllowed=[0.30,10.00];
+      chosen.metrics.qAllowed=[CFG.minQ,CFG.maxQ];
       chosen.metrics.qRangeSelected=useExtended?'0.30–10.00':'0.30–2.00';
       chosen.metrics.q2Candidate={rmse:q2.metrics.rmseAfter,p95:q2.metrics.p95After,max:q2.metrics.maxAfter,maxQ:q2.metrics.maxQ,shapeGuardAccepted:q2.metrics.shapeGuardAccepted,shapeGuardDeltaDb:q2.metrics.shapeGuardDeltaDb};
       chosen.metrics.q10Candidate={rmse:q10.metrics.rmseAfter,p95:q10.metrics.p95After,max:q10.metrics.maxAfter,maxQ:q10.metrics.maxQ,shapeGuardAccepted:q10.metrics.shapeGuardAccepted,shapeGuardDeltaDb:q10.metrics.shapeGuardDeltaDb};
@@ -981,7 +1003,7 @@
       LOSS_MODE='standard';
       standardQ2=optimizeSingle(rawCurve,targetCurve);
       standardQ2.metrics.lossMode='standard';
-      standardQ2.metrics.qAllowed=[0.30,10.00];
+        standardQ2.metrics.qAllowed=[CFG.minQ,CFG.maxQ];
       standardQ2.metrics.qRangeSelected='0.30–2.00';
       const robustNeeded=CFG.huberEnabled &&
         (standardQ2.metrics.maxAfter>CFG.huberTriggerMaxDb || standardQ2.metrics.p95After>CFG.huberTriggerP95Db);
@@ -996,7 +1018,7 @@
         }
         huberQ2=rescoreCandidate(rawCurve,targetCurve,huberQ2);
         huberQ2.metrics.lossMode='huber';
-        huberQ2.metrics.qAllowed=[0.30,10.00];
+        huberQ2.metrics.qAllowed=[CFG.minQ,CFG.maxQ];
         huberQ2.metrics.qRangeSelected='0.30–2.00';
       }
     }finally{
@@ -1058,7 +1080,7 @@
         chosen.metrics.maxQ=Math.max(0,...chosen.bands.map(b=>b.q));
       }
       chosen.metrics.lossMode=lossMode;
-      chosen.metrics.qAllowed=[0.30,10.00];
+      chosen.metrics.qAllowed=[CFG.minQ,CFG.maxQ];
       chosen.metrics.qRangeSelected=useExtended?'0.30–10.00':'0.30–2.00';
       chosen.metrics.q2Candidate={rmse:q2.metrics.rmseAfter,p95:q2.metrics.p95After,max:q2.metrics.maxAfter,maxQ:q2.metrics.maxQ,shapeGuardAccepted:q2.metrics.shapeGuardAccepted,shapeGuardDeltaDb:q2.metrics.shapeGuardDeltaDb};
       chosen.metrics.q10Candidate={rmse:q10.metrics.rmseAfter,p95:q10.metrics.p95After,max:q10.metrics.maxAfter,maxQ:q10.metrics.maxQ,shapeGuardAccepted:q10.metrics.shapeGuardAccepted,shapeGuardDeltaDb:q10.metrics.shapeGuardDeltaDb};
@@ -1105,13 +1127,14 @@
     return a<=delta||a===0 ? 1 : delta/a;
   }
 
-  function solverFitCost(errors,bands,mode='standard'){
+  function solverFitCost(errors,bands,mode='standard',freqs=null){
     let fit=0;
+    const loudness=freqs?optimizerWeights(freqs):new Float64Array(errors.length).fill(1);
     if(mode==='huber'){
-      for(const e of errors)fit+=deadZoneHuber(e);
+      for(let i=0;i<errors.length;i++)fit+=loudness[i]*deadZoneHuber(errors[i]);
       fit=2*fit/Math.max(1,errors.length);
     }else{
-      for(const e of errors){const a=Math.max(0,Math.abs(e)-CFG.huberEpsilonDb);fit+=a*a;}
+      for(let i=0;i<errors.length;i++){const a=Math.max(0,Math.abs(errors[i])-CFG.huberEpsilonDb);fit+=loudness[i]*a*a;}
       fit/=Math.max(1,errors.length);
     }
     const sc=CFG.solver||{};
@@ -1206,7 +1229,7 @@
     let bands=strip(seedBands).filter(b=>Math.abs(b.gain)>=0.01);
     if(!bands.length)return {bands:[],iterations:0,acceptedSteps:0,rejectedSteps:0,cost:Infinity,converged:true};
     let state=modelAndErrors(freqs,base,target,bands);
-    let cost=solverFitCost(state.errors,bands,mode), lambda=sc.lambdaInitial||0.03;
+    let cost=solverFitCost(state.errors,bands,mode,freqs), lambda=sc.lambdaInitial||0.03;
     let accepted=0,rejected=0,converged=false,iterations=0;
     const maxOuter=mode==='huber'?(sc.irlsIterations||3):1;
     const maxIter=Math.max(2,Math.ceil((sc.maxIterations||12)/maxOuter));
@@ -1216,7 +1239,8 @@
         iterations++;
         state=modelAndErrors(freqs,base,target,bands);
         const errors=state.errors, weights=new Float64Array(errors.length);
-        for(let i=0;i<weights.length;i++)weights[i]=mode==='huber'?huberWeight(errors[i]):1;
+        const loudness=optimizerWeights(freqs);
+        for(let i=0;i<weights.length;i++)weights[i]=loudness[i]*(mode==='huber'?huberWeight(errors[i]):1);
         const J=jacobianColumns(freqs,bands), m=J.length;
         if(!m){converged=true;break;}
         const A=Array.from({length:m},()=>new Float64Array(m)), g=new Float64Array(m);
@@ -1239,7 +1263,7 @@
         for(let j=0;j<p.length;j++)p[j]+=clamp(delta[j],-0.75,0.75);
         const trialBands=bandsFromParams(p);
         const trial=modelAndErrors(freqs,base,target,trialBands);
-        const trialCost=solverFitCost(trial.errors,trialBands,mode);
+        const trialCost=solverFitCost(trial.errors,trialBands,mode,freqs);
         if(Number.isFinite(trialCost)&&trialCost<cost-(sc.lossTolerance||1e-7)){
           const improvement=cost-trialCost;
           bands=trialBands;cost=trialCost;accepted++;lambda=Math.max(1e-8,lambda*(sc.lambdaDown||0.35));rejected=0;
@@ -1438,8 +1462,8 @@
         const robust=lmRefine(lmFreqs,baseLM,targetLM,standard.bands,'huber');
         totalIterations+=robust.iterations;totalAccepted+=robust.acceptedSteps;totalRejected+=robust.rejectedSteps;
         const sm=solutionMetrics(lmFreqs,baseLM,targetLM,standard.bands), rm=solutionMetrics(lmFreqs,baseLM,targetLM,robust.bands);
-        const standardHuberCost=solverFitCost(modelAndErrors(lmFreqs,baseLM,targetLM,standard.bands).errors,standard.bands,'huber');
-        const robustHuberCost=solverFitCost(modelAndErrors(lmFreqs,baseLM,targetLM,robust.bands).errors,robust.bands,'huber');
+        const standardHuberCost=solverFitCost(modelAndErrors(lmFreqs,baseLM,targetLM,standard.bands).errors,standard.bands,'huber',lmFreqs);
+        const robustHuberCost=solverFitCost(modelAndErrors(lmFreqs,baseLM,targetLM,robust.bands).errors,robust.bands,'huber',lmFreqs);
         const robustPass=robustHuberCost<standardHuberCost-1e-8 && rm.comp.rmse<=sm.comp.rmse+0.015 && rm.comp.p95<=sm.comp.p95+CFG.huberP95ToleranceDb && rm.comp.max<=sm.comp.max+CFG.huberMaxToleranceDb && rm.comp.score<=sm.comp.score+0.003;
         if(robustPass){chosen=robust;branch='huber-irls';}
       }
@@ -1471,6 +1495,7 @@
     const hfRescue=hfSafetyRescue(rawCurve,f,base,target,qbands);
     qbands=hfRescue.bands;
     const corrected=applyFiltersCached(base,qbands,f), before=Array.from(base,(v,i)=>Math.abs(v-target[i])), after=Array.from(corrected,(v,i)=>Math.abs(v-target[i]));
+    const filterConfidence=residualFilterConfidence(f,Array.from(corrected,(v,i)=>v-target[i]));
     const hf=hfRescue.validation, qcomp=objectiveComponents(f,corrected,target,qbands,hf);
     const qtop=topologyError(f,corrected,target), ctop=topologyError(f,continuous.curve,target);
     const shapeGuard={status:qtop<=ctop+CFG.topologyToleranceDb?'PASS':'FAIL',deltaDb:qtop-ctop};
@@ -1480,10 +1505,11 @@
     return {bands:qbands,metrics:{
       rmseBefore:rmse(before),rmseAfter:rmse(after),p95Before:percentile(before,.95),p95After:percentile(after,.95),maxBefore:Math.max(...before),maxAfter:Math.max(...after),
       activeBands:qbands.length,maxBoost:Math.max(0,...qbands.map(b=>b.gain)),maxCut:Math.min(0,...qbands.map(b=>b.gain)),maxQ:Math.max(0,...qbands.map(b=>b.q)),
+      filterConfidence,
       levelOffsetDb:aligned.offset,coverage:[lo,hi],objective:qcomp.score,objectiveComponents:qcomp,erbError:qcomp.erbError,narrowError:qcomp.narrowError,
       shapeGuardEnabled:true,shapeGuardAccepted:shapeGuard.status==='PASS',shapeGuardReason:shapeGuard.status==='PASS'?'target_relative_pass':'target_relative_warning',shapeGuardDeltaDb:shapeGuard.deltaDb,
       shapeGuardPreRmsDb:ctop,shapeGuardFinalRmsDb:qtop,quantizationRescue:'accepted',quantizedObjective:qcomp,hfValidation:hf,quantizedShapeGuard:shapeGuard,exactExportSimulation:true,
-      qAllowed:[0.30,10.00],qRangeSelected:qbands.some(b=>b.q>2)?'0.30–10.00':'0.30–2.00',q10Committed:qbands.some(b=>b.q>2),lossMode:CFG.huberEnabled?'LM + Huber IRLS':'LM least-squares',performanceMode:'lm-irls',huberCommitted:CFG.huberEnabled,
+      qAllowed:[CFG.minQ,CFG.maxQ],qRangeSelected:qbands.some(b=>b.q>2)?`${CFG.minQ.toFixed(2)}–${CFG.maxQ.toFixed(2)}`:`${CFG.minQ.toFixed(2)}–2.00`,q10Committed:qbands.some(b=>b.q>2),lossMode:CFG.huberEnabled?'LM + Huber IRLS':'LM least-squares',performanceMode:'lm-irls',huberCommitted:CFG.huberEnabled,
       solver:{name:'Levenberg-Marquardt + Huber IRLS',jointParameters:['log(Fc)','Gain','log(Q)'],iterations:totalIterations,acceptedSteps:totalAccepted,rejectedSteps:totalRejected,bandGrowthTrace:trace,elapsedMs:elapsed,continuousRmse:continuous.comp.rmse,quantizedRmse:qcomp.rmse,responseCache:true},
       stabilityPerturbation:stability,hfSafetyRescue:{applied:hfRescue.rescued,scale:hfRescue.scale,rmseDeltaDb:hfRescue.rmseDeltaDb||0},modeledHeadroom:headroom,resolution:{R0:f.length,R1:grids.R1.length,R2:grids.R2.length}
     }};
@@ -1550,7 +1576,8 @@
                  performance_mode:result.metrics.performanceMode||CFG.performanceMode,
                  active_set:'3 -> 5 -> 7 -> <=10 bands, stopping when validated marginal improvement is negligible',
                  exact_model:'RBJ peaking biquad at every candidate, Jacobian and final export validation'},
-      constraints:{bands:CFG.bands,device_frequency_hz:[20,20000],correction_domain_hz:[CFG.minFreq,CFG.maxFreq],gain_db:[CFG.minGain,CFG.maxGain],q:[0.30,10.00],q_range_selected:result.metrics.qRangeSelected},
+      constraints:{bands:CFG.bands,device_frequency_hz:[20,20000],correction_domain_hz:[CFG.minFreq,CFG.maxFreq],gain_db:[CFG.minGain,CFG.maxGain],q:[CFG.minQ,CFG.maxQ],q_range_selected:result.metrics.qRangeSelected},
+      equal_loudness:{standard:CFG.equalLoudness?.enabled?CFG.equalLoudness.standard:'disabled',phon:CFG.equalLoudness?.enabled?CFG.equalLoudness.phon:null,iem_factor:CFG.equalLoudness?.enabled?CFG.equalLoudness.iemFactor:null,weighting:'relative ISO226 contour in dB converted to positive optimizer weight'},
       source:meta,metrics:result.metrics,target_topology_guard:{reference:'selected Robust Target',tolerance_db:CFG.topologyToleranceDb},peq:result.bands.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain).slice(0,CFG.bands)
     },null,2)+'\n';
   }
@@ -1573,6 +1600,22 @@
     const r=await fetch('https://raw.githubusercontent.com/'+rootRepo()+'/main/'+path+'?t='+Date.now(),{cache:'no-store'});
     if(!r.ok)throw Error('Could not read '+path);
     return r.text();
+  }
+
+  async function loadPeqConfig(){
+    try{
+      const text=await readRepo('config/peq.yaml');
+      const jsonText=String(text).split(/\r?\n/).filter(line=>!line.trim().startsWith('#')).join('\n');
+      const loaded=JSON.parse(jsonText);
+      Object.assign(CFG,loaded);
+      for(const key of ['resolution','quantization','feature','hfValidation','solver','equalLoudness']){
+        if(loaded[key]&&typeof loaded[key]==='object'&&!Array.isArray(loaded[key])) CFG[key]=Object.assign({},CFG[key]||{},loaded[key]);
+      }
+      return true;
+    }catch(_error){
+      // Keep the checked-in compatibility defaults for offline/local test runs.
+      return false;
+    }
   }
 
   async function ghList(path){
@@ -1633,7 +1676,11 @@
       ['Max error',result.metrics.maxBefore.toFixed(2)+' → '+result.metrics.maxAfter.toFixed(2)+' dB'],
       ['Coverage',fmt(result.metrics.coverage[0])+'–'+fmt(result.metrics.coverage[1])+' Hz'],
       ['Active bands',result.metrics.activeBands+' / '+CFG.bands],
-      ['Gain range',result.metrics.maxCut.toFixed(2)+' to '+(result.metrics.maxBoost>=0?'+':'')+result.metrics.maxBoost.toFixed(2)+' dB'],
+      ['Gain range',CFG.minGain+' dB to '+(CFG.maxGain>=0?'+':'')+CFG.maxGain+' dB'],
+      ['Equal Loudness',CFG.equalLoudness?.enabled?CFG.equalLoudness.standard:'disabled'],
+      ['Phon',CFG.equalLoudness?.enabled?String(CFG.equalLoudness.phon):'—'],
+      ['IEM factor',CFG.equalLoudness?.enabled?String(CFG.equalLoudness.iemFactor):'—'],
+      ['Filter confidence',Number.isFinite(result.metrics.filterConfidence)?result.metrics.filterConfidence.toFixed(2):'—'],
       ['Max Q',result.metrics.maxQ.toFixed(2)],
       ['ERB error',(result.metrics.erbError??0).toFixed(3)+' dB'],
       ['Narrow error',(result.metrics.narrowError??0).toFixed(3)],
@@ -1673,12 +1720,13 @@
     const style=document.createElement('style');style.textContent=`#puddingEngine{margin-top:12px}.peq-source{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12px}.peq-source code{overflow-wrap:anywhere}.pudding-table{border:1px solid var(--line);border-radius:6px;overflow:hidden}.pudding-peq-head,.pudding-peq-row{display:grid;grid-template-columns:.5fr .6fr 1.3fr 1.2fr 1fr;gap:8px;padding:7px 9px;align-items:center;font-size:12px;font-variant-numeric:tabular-nums}.pudding-peq-head{background:#0d141c;color:#7f8b99;border-bottom:1px solid var(--line);font-size:10px;text-transform:uppercase}.pudding-peq-row{border-bottom:1px solid #1b2530}.pudding-note{padding:8px 9px;color:#7f8b99;font-size:10px}`;document.head.appendChild(style);
   }
   let importedPeqText=null;
-  function parseImportedPeq(text){const rows=[];for(const line of String(text).split(/\r?\n/)){const m=line.match(/PK\s+([\d.]+)\s*Hz\s*,?\s*([+-]?[\d.]+)\s*dB\s*,?\s*Q\s*([\d.]+)/i);if(m)rows.push({freq:+m[1],gain:+m[2],q:+m[3]});}if(!rows.length)throw Error('No valid PK filters found.');if(rows.length>10)throw Error('Imported preset has more than 10 filters.');rows.forEach((b,i)=>{if(b.freq<20||b.freq>12000||b.gain<-12||b.gain>3||b.q<.3||b.q>10||!biquadSafety(b).stable)throw Error('Filter '+(i+1)+' is outside device/stability limits.');});return rows;}
+  function parseImportedPeq(text){const rows=[];for(const line of String(text).split(/\r?\n/)){const m=line.match(/PK\s+([\d.]+)\s*Hz\s*,?\s*([+-]?[\d.]+)\s*dB\s*,?\s*Q\s*([\d.]+)/i);if(m)rows.push({freq:+m[1],gain:+m[2],q:+m[3]});}if(!rows.length)throw Error('No valid PK filters found.');if(rows.length>CFG.bands)throw Error('Imported preset has more than '+CFG.bands+' filters.');rows.forEach((b,i)=>{if(b.freq<CFG.minFreq||b.freq>CFG.maxFreq||b.gain<CFG.minGain||b.gain>CFG.maxGain||b.q<CFG.minQ||b.q>CFG.maxQ||!biquadSafety(b).stable)throw Error('Filter '+(i+1)+' is outside device/stability limits.');});return rows;}
   async function validateImport(){const f=$('importPeqFile')?.files?.[0];if(!f)return;try{const txt=await f.text(),bands=parseImportedPeq(txt);importedPeqText=txt;$('importPeqStatus').textContent='VALID · '+bands.length+' PK filters · no optimizer/repository changes';$('downloadImportedPeq').disabled=false;}catch(e){importedPeqText=null;$('importPeqStatus').textContent='INVALID · '+e.message;$('downloadImportedPeq').disabled=true;}}
 
-  function init(){
+  async function init(){
     ensureUi();
     if(!$('puddingEngine'))return;
+    await loadPeqConfig();
     status('Pudding PEQ Engine v'+CFG.version);
     $('generatePuddingPEQ')?.addEventListener('click',generate);
     $('downloadPuddingPEQ')?.addEventListener('click',downloadTxt);

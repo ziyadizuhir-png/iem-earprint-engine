@@ -91,7 +91,10 @@ def parse_xy(path: Path) -> tuple[np.ndarray, np.ndarray]:
     if np.any(arr[:, 0] <= 0):
         fail(f"{path.name}: frequency must be > 0 Hz")
 
-    if np.any(np.diff(arr[:, 0]) <= 0):
+    differences = np.diff(arr[:, 0])
+    if np.any(differences == 0):
+        fail(f"{path.name}: duplicate frequency values are not allowed")
+    if np.any(differences < 0):
         fail(f"{path.name}: frequency values must be strictly ascending")
 
     if not (
@@ -101,6 +104,26 @@ def parse_xy(path: Path) -> tuple[np.ndarray, np.ndarray]:
         fail(f"{path.name}: non-finite data detected")
 
     return arr[:, 0], arr[:, 1]
+
+
+def validate_grid(
+    values: np.ndarray,
+    label: str,
+    grid_epsilon_hz: float = 1.0e-12,
+) -> None:
+    """Validate a non-empty finite positive frequency grid before math."""
+    grid = np.asarray(values, dtype=float)
+    if grid.ndim != 1 or grid.size == 0:
+        fail(f"{label}: frequency grid is empty or not one-dimensional")
+    if not math.isfinite(grid_epsilon_hz) or grid_epsilon_hz <= 0:
+        fail("Grid epsilon must be finite and > 0.")
+    if not np.all(np.isfinite(grid)) or np.any(grid <= 0):
+        fail(f"{label}: frequency grid contains NaN, Inf, or non-positive values")
+    differences = np.diff(grid)
+    if np.any(np.abs(differences) <= grid_epsilon_hz):
+        fail(f"{label}: duplicate or indistinguishable frequency values detected")
+    if np.any(differences < 0):
+        fail(f"{label}: frequency grid must be strictly ascending")
 
 
 def validate_curve_coverage(
@@ -124,8 +147,16 @@ def interpolate_log_frequency(
     freq_src: np.ndarray,
     level_src: np.ndarray,
     freq_dst: np.ndarray,
+    grid_epsilon_hz: float = 1.0e-12,
 ) -> np.ndarray:
     """Linear interpolation in log-frequency space."""
+    validate_grid(freq_src, "Interpolation source grid", grid_epsilon_hz)
+    validate_grid(freq_dst, "Interpolation destination grid", grid_epsilon_hz)
+    levels = np.asarray(level_src, dtype=float)
+    if levels.ndim != 1 or len(levels) != len(freq_src):
+        fail("Interpolation source levels must match the source grid")
+    if not np.all(np.isfinite(levels)):
+        fail("Interpolation source levels contain NaN or Inf")
     if freq_dst[0] < freq_src[0] or freq_dst[-1] > freq_src[-1]:
         fail(
             "Grid coverage error: "
@@ -348,6 +379,9 @@ def huber_consensus(
     tuning_constant: float = 1.345,
     scale_factor: float = 1.4826,
     scale_floor_db: float = 0.15,
+    uncertainty: np.ndarray | None = None,
+    uncertainty_epsilon: float = 1.0e-12,
+    residual_epsilon: float = 1.0e-12,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     One-pass Huber robust consensus across IEMs.
@@ -356,16 +390,29 @@ def huber_consensus(
     MAD = median(abs(values - median))
     scale = max(1.4826 * MAD, 0.15 dB)
     cutoff = 1.345 * scale
-    weight_i = min(1, cutoff / |residual_i|)
-    Centre = sum(weight_i * value_i) / sum(weight_i)
+    huber_weight_i = min(1, cutoff / max(|residual_i|, epsilon))
+    confidence_weight_i = 1 / (1 + uncertainty_i)
+    final_weight_i = huber_weight_i * confidence_weight_i
+    Centre = sum(final_weight_i * value_i) / sum(final_weight_i)
 
     No Retention attenuation is applied.
     """
-    if values.ndim != 2:
+    if values.ndim != 2 or values.shape[1] == 0:
         fail("Huber consensus input must be a 2-D IEM x frequency array.")
 
     if values.shape[0] < 1:
         fail("Huber consensus requires at least one IEM.")
+
+    if not np.all(np.isfinite(values)):
+        fail("Huber consensus input contains NaN or Inf")
+    if uncertainty is not None:
+        uncertainty = np.asarray(uncertainty, dtype=float)
+        if uncertainty.shape != values.shape:
+            fail("Huber uncertainty must match the IEM x frequency input shape")
+        if not np.all(np.isfinite(uncertainty)) or np.any(uncertainty < 0):
+            fail("Huber uncertainty must be finite and non-negative")
+        if not math.isfinite(uncertainty_epsilon) or uncertainty_epsilon <= 0:
+            fail("Uncertainty epsilon must be finite and > 0")
 
     if not (
         math.isfinite(tuning_constant)
@@ -376,6 +423,8 @@ def huber_consensus(
         and scale_floor_db > 0
     ):
         fail("Huber parameters must be finite and > 0.")
+    if not math.isfinite(residual_epsilon) or residual_epsilon <= 0:
+        fail("Huber residual epsilon must be finite and > 0.")
 
     median = np.median(values, axis=0)
 
@@ -394,21 +443,56 @@ def huber_consensus(
     residual = values - median[None, :]
     abs_residual = np.abs(residual)
 
-    weights = np.minimum(
+    huber_weights = np.minimum(
         1.0,
         cutoff[None, :]
         / np.maximum(
             abs_residual,
-            np.finfo(float).tiny,
+            residual_epsilon,
         ),
     )
 
+    if uncertainty is None:
+        confidence_weights = 1.0
+    else:
+        confidence_weights = 1.0 / (
+            1.0 + uncertainty
+        )
+
+    weights = huber_weights * confidence_weights
+    denominator = np.sum(weights, axis=0)
+    if not np.all(np.isfinite(denominator)) or np.any(denominator <= 0):
+        fail("Huber consensus produced an invalid weight denominator")
+
     centre = (
         np.sum(weights * values, axis=0)
-        / np.sum(weights, axis=0)
+        / denominator
     )
 
+    if not np.all(np.isfinite(centre)):
+        fail("Huber consensus produced NaN or Inf")
+
     return centre, robust_scale, weights
+
+
+def stability_score(
+    cross_iem_mad: np.ndarray,
+    alignment_uncertainty: np.ndarray,
+    reference_db: float = 1.0,
+) -> float:
+    """Return a bounded diagnostic score; it never changes EarPrint values."""
+    mad = np.asarray(cross_iem_mad, dtype=float)
+    uncertainty = np.asarray(alignment_uncertainty, dtype=float)
+    if mad.shape != uncertainty.shape or mad.size == 0:
+        fail("Stability diagnostics require equal non-empty arrays")
+    if not np.all(np.isfinite(mad)) or not np.all(np.isfinite(uncertainty)):
+        fail("Stability diagnostics contain NaN or Inf")
+    if np.any(mad < 0) or np.any(uncertainty < 0):
+        fail("Stability diagnostics must be non-negative")
+    if not math.isfinite(reference_db) or reference_db <= 0:
+        fail("Stability reference must be finite and > 0 dB")
+    spread = float(np.median(mad) + np.median(uncertainty))
+    return float(np.clip(1.0 / (1.0 + spread / reference_db), 0.0, 1.0))
 
 
 def safe_stem(filename: str) -> str:
@@ -539,6 +623,24 @@ def main() -> None:
     alignment_cfg = cfg["alignment"]
     smoothing_cfg = cfg["smoothing"]
     robust_cfg = cfg["robust_mask"]
+    validation_cfg = cfg.get("validation", {})
+    confidence_cfg = cfg.get("confidence", {})
+
+    grid_epsilon_hz = float(
+        validation_cfg.get("grid_epsilon_hz", 1.0e-12)
+    )
+    min_curve_points = int(
+        validation_cfg.get("min_curve_points", 10)
+    )
+    min_iem_votes = int(
+        validation_cfg.get("min_iem_votes", 1)
+    )
+    uncertainty_epsilon = float(
+        confidence_cfg.get("uncertainty_epsilon", 1.0e-12)
+    )
+    stability_reference_db = float(
+        confidence_cfg.get("stability_reference_db", 1.0)
+    )
 
     huber_cfg = robust_cfg.get("huber", {})
 
@@ -550,6 +652,9 @@ def main() -> None:
     )
     huber_scale_floor_db = float(
         huber_cfg.get("scale_floor_db", 0.15)
+    )
+    huber_residual_epsilon = float(
+        huber_cfg.get("residual_epsilon", 1.0e-12)
     )
 
     huber_passes = int(
@@ -591,6 +696,12 @@ def main() -> None:
             [],
         ),
     )
+
+    if len(preferred_files) < min_iem_votes:
+        fail(
+            f"Insufficient IEM votes: found {len(preferred_files)}, "
+            f"require at least {min_iem_votes}."
+        )
 
     bands = [
         tuple(map(float, p))
@@ -653,6 +764,20 @@ def main() -> None:
         p.name: parse_xy(p)
         for p in target_files
     }
+
+    if min_curve_points < 1:
+        fail("Minimum curve point count must be at least 1")
+    if not math.isfinite(grid_epsilon_hz) or grid_epsilon_hz <= 0:
+        fail("Grid epsilon must be finite and > 0")
+    if not math.isfinite(uncertainty_epsilon) or uncertainty_epsilon <= 0:
+        fail("Uncertainty epsilon must be finite and > 0")
+
+    for name, (freq, level) in {**preferred, **targets}.items():
+        if len(freq) < min_curve_points:
+            fail(f"{name}: fewer than {min_curve_points} numeric data rows found")
+        validate_grid(freq, f"{name} input grid", grid_epsilon_hz)
+        if not np.all(np.isfinite(level)):
+            fail(f"{name}: response contains NaN or Inf")
 
     # Validate every discovered curve before deleting any previous outputs.
     # This turns malformed or under-covered input into a clean early failure.
@@ -735,6 +860,7 @@ def main() -> None:
             original_master_freq,
             original_master_lf,
             master_freq,
+            grid_epsilon_hz,
         )
 
         anchor_index = int(
@@ -769,6 +895,7 @@ def main() -> None:
                 f,
                 y,
                 master_freq,
+                grid_epsilon_hz,
             )
         )
 
@@ -777,6 +904,7 @@ def main() -> None:
     # ============================================================
 
     pure_aligned_curves = []
+    pure_alignment_uncertainties = []
     alignment_report = []
 
     for path in preferred_files:
@@ -804,6 +932,7 @@ def main() -> None:
         pure_aligned_curves.append(
             selected_aligned
         )
+        pure_alignment_uncertainties.append(scenario_unc)
 
         alignment_report.append({
             "iem": path.name,
@@ -822,6 +951,9 @@ def main() -> None:
     pure_aligned_stack = np.vstack(
         pure_aligned_curves
     )
+    pure_alignment_uncertainty_stack = np.vstack(
+        pure_alignment_uncertainties
+    )
 
     # ------------------------------------------------------------
     # PURE EARPRINT — ONE-PASS HUBER ROBUST CONSENSUS
@@ -836,10 +968,18 @@ def main() -> None:
         tuning_constant=huber_tuning_constant,
         scale_factor=huber_scale_factor,
         scale_floor_db=huber_scale_floor_db,
+        uncertainty=pure_alignment_uncertainty_stack,
+        uncertainty_epsilon=uncertainty_epsilon,
+        residual_epsilon=huber_residual_epsilon,
     )
 
-    pure_earprint_smoothing_sigma = 4
-    pure_earprint_smoothing_radius = 16
+    pure_smoothing_cfg = smoothing_cfg.get("pure_earprint", {})
+    pure_earprint_smoothing_sigma = int(
+        pure_smoothing_cfg.get("sigma_indices", sigma)
+    )
+    pure_earprint_smoothing_radius = int(
+        pure_smoothing_cfg.get("radius_indices", radius)
+    )
 
     smoothed_personal = (
         gaussian_once_strict_domain(
@@ -914,6 +1054,7 @@ def main() -> None:
             master_freq,
             pure,
             output_freq,
+            grid_epsilon_hz,
         ),
         decimals,
     )
@@ -959,6 +1100,7 @@ def main() -> None:
             tf,
             tv,
             master_freq,
+            grid_epsilon_hz,
         )
 
         per_iem_delta = []
@@ -1017,6 +1159,9 @@ def main() -> None:
             tuning_constant=huber_tuning_constant,
             scale_factor=huber_scale_factor,
             scale_floor_db=huber_scale_floor_db,
+            uncertainty=alignment_unc_stack,
+            uncertainty_epsilon=uncertainty_epsilon,
+            residual_epsilon=huber_residual_epsilon,
         )
 
         cross_iem_mad = np.median(
@@ -1033,6 +1178,12 @@ def main() -> None:
         alignment_uncertainty = np.median(
             alignment_unc_stack,
             axis=0,
+        )
+
+        stability = stability_score(
+            cross_iem_mad,
+            alignment_uncertainty,
+            stability_reference_db,
         )
 
         raw_mask = centre.copy()
@@ -1133,6 +1284,7 @@ def main() -> None:
                     master_freq,
                     mask,
                     output_freq,
+                    grid_epsilon_hz,
                 ),
                 decimals,
             )
@@ -1147,6 +1299,7 @@ def main() -> None:
                     master_freq,
                     robust_target,
                     output_freq,
+                    grid_epsilon_hz,
                 ),
                 decimals,
             )
@@ -1156,6 +1309,8 @@ def main() -> None:
             "huber_tuning_constant": huber_tuning_constant,
             "huber_scale_factor": huber_scale_factor,
             "huber_scale_floor_db": huber_scale_floor_db,
+            "huber_residual_epsilon": huber_residual_epsilon,
+            "confidence_weighting": "1 / (1 + uncertainty)",
             "cross_iem_mad_median_db": float(
                 np.median(cross_iem_mad)
             ),
@@ -1171,6 +1326,7 @@ def main() -> None:
             "alignment_uncertainty_max_db": float(
                 np.max(alignment_uncertainty)
             ),
+            "stability_score": stability,
             "repeatability_floor_median_db": float(
                 np.median(repeatability_floor)
             ),
@@ -1217,7 +1373,7 @@ def main() -> None:
             newline="",
             encoding="utf-8",
         ) as f:
-            writer = csv.writer(f)
+            writer = csv.writer(f, lineterminator="\n")
 
             writer.writerow([
                 "iem",
@@ -1251,6 +1407,7 @@ def main() -> None:
         writer = csv.DictWriter(
             f,
             fieldnames=fields,
+            lineterminator="\n",
         )
 
         writer.writeheader()
@@ -1272,6 +1429,7 @@ def main() -> None:
         writer = csv.DictWriter(
             f,
             fieldnames=fields,
+            lineterminator="\n",
         )
 
         writer.writeheader()
@@ -1286,7 +1444,7 @@ def main() -> None:
         newline="",
         encoding="utf-8",
     ) as f:
-        writer = csv.writer(f)
+        writer = csv.writer(f, lineterminator="\n")
 
         writer.writerow([
             "band_hz",
@@ -1430,11 +1588,15 @@ def main() -> None:
             "huber_scale_floor_db": (
                 huber_scale_floor_db
             ),
+            "huber_residual_epsilon": (
+                huber_residual_epsilon
+            ),
+            "confidence_weighting": "1 / (1 + uncertainty)",
             "retention_formula": None,
             "smoothing": {
                 "method": "gaussian",
-                "sigma_indices": 4,
-                "radius_indices": 16,
+                "sigma_indices": pure_earprint_smoothing_sigma,
+                "radius_indices": pure_earprint_smoothing_radius,
                 "padding": "nearest",
                 "passes": 1,
             },
@@ -1453,6 +1615,10 @@ def main() -> None:
             "scale_floor_db": (
                 huber_scale_floor_db
             ),
+            "residual_epsilon": (
+                huber_residual_epsilon
+            ),
+            "confidence_weighting": "1 / (1 + uncertainty)",
             "passes": huber_passes,
             "raw_mask_definition": (
                 "Huber robust consensus Centre"
@@ -1548,6 +1714,8 @@ def main() -> None:
         f"Targets discovered: {len(target_files)}",
         "One IEM file = one equal vote.",
         "Interpolation: log-frequency.",
+        f"Grid validation: finite, positive, strictly ascending; epsilon={grid_epsilon_hz:g} Hz.",
+        "NaN/Inf and empty-data validation: enabled before output cleanup.",
         f"Alignment bands: {bands}",
         "Per-IEM scenario centre: pointwise median of 3 aligned scenarios.",
         "Per-IEM alignment uncertainty: pointwise max absolute distance from scenario centre.",
@@ -1556,7 +1724,7 @@ def main() -> None:
         "Pure EarPrint Huber scale: max(1.4826*MAD, 0.15 dB).",
         "Pure EarPrint Huber correction is not attenuated by a Retention formula.",
         "Pure EarPrint smoothing: exactly one Gaussian pass, strict >1 kHz and <12 kHz.",
-        "Pure EarPrint Gaussian parameters: sigma=4 grid indices, radius=16, nearest-endpoint padding.",
+        f"Pure EarPrint Gaussian parameters: sigma={pure_earprint_smoothing_sigma} grid indices, radius={pure_earprint_smoothing_radius}, nearest-endpoint padding.",
         "Target-specific Robust Mask smoothing continues to use the project smoothing parameters.",
         "LF reference: preserved exactly at/below 1 kHz.",
         "HF extension: display-only -6 dB/octave log-frequency at/above 12 kHz.",
@@ -1566,6 +1734,8 @@ def main() -> None:
         "Huber correction magnitude is not attenuated by a Retention formula.",
         "CrossIEM_MAD: pointwise median absolute deviation across IEM Delta_i; diagnostic only.",
         "AlignmentUncertainty: pointwise median across IEM per-IEM uncertainty curves; diagnostic only.",
+        "Consensus confidence weight: 1 / (1 + uncertainty), multiplied by Huber weight.",
+        f"Stability score: bounded diagnostic using Cross-IEM MAD and AlignmentUncertainty; reference={stability_reference_db:g} dB.",
         "RepeatabilityFloor: inactive because no valid same-IEM repeat data are supplied.",
         "RawMask: Huber Centre.",
         "Mask smoothing: exactly one Gaussian pass inside strict personal domain.",
@@ -1596,8 +1766,9 @@ def main() -> None:
             "The upper personal-domain boundary remains a 1/4-octave sin-squared transition.",
             "Robust masking uses one-pass reweighted Huber consensus.",
             "Pure EarPrint also uses one-pass reweighted Huber consensus across aligned preferred curves.",
-            "Pure EarPrint smoothing is intentionally lighter: sigma=4, radius=16, one pass.",
-            "Huber constants are tuning_constant=1.345, scale_factor=1.4826, scale_floor=0.15 dB.",
+            f"Pure EarPrint smoothing is intentionally lighter: sigma={pure_earprint_smoothing_sigma}, radius={pure_earprint_smoothing_radius}, one pass.",
+            f"Huber constants are tuning_constant={huber_tuning_constant}, scale_factor={huber_scale_factor}, scale_floor={huber_scale_floor_db} dB, residual_epsilon={huber_residual_epsilon}.",
+            "Consensus weight is Huber weight multiplied by 1 / (1 + uncertainty).",
             "Cross-IEM MAD, AlignmentUncertainty and RepeatabilityFloor remain diagnostics and do not attenuate correction magnitude.",
             "No Retention formula is applied to the Huber correction.",
             "When repeatability data are absent, the prompt's conditional RepeatabilityFloor term is inactive.",

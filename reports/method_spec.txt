@@ -7,7 +7,8 @@ The upper personal-domain boundary remains a 1/4-octave sin-squared transition.
 Robust masking uses one-pass reweighted Huber consensus.
 Pure EarPrint also uses one-pass reweighted Huber consensus across aligned preferred curves.
 Pure EarPrint smoothing is intentionally lighter: sigma=4, radius=16, one pass.
-Huber constants are tuning_constant=1.345, scale_factor=1.4826, scale_floor=0.15 dB.
+Huber constants are tuning_constant=1.345, scale_factor=1.4826, scale_floor=0.15 dB, residual_epsilon=1e-12.
+Consensus weight is Huber weight multiplied by 1 / (1 + uncertainty).
 Cross-IEM MAD, AlignmentUncertainty and RepeatabilityFloor remain diagnostics and do not attenuate correction magnitude.
 No Retention formula is applied to the Huber correction.
 When repeatability data are absent, the prompt's conditional RepeatabilityFloor term is inactive.
