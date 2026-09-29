@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-09-29T09:24:51.263912+00:00",
+  "generated_utc": "2026-09-29T23:17:26.882714+00:00",
   "engine": "IEM EarPrint Engine 3.4.0",
   "specification": "General_Prompt_EarPrint_8_MATH_LOCKED.txt",
   "specification_addendum": "General_Prompt_EarPrint_8_MATH_LOCKED_boundary_addendum.txt",
@@ -22,12 +22,13 @@
     "IEF2025.txt",
     "Listener_Type_3.3_JM-1_B_4.8dB_T_-4.4dB_Harman_2013_OE_Filters_Target.txt",
     "SoundGuys.txt",
+    "SoundGuys_5128.txt",
     "Super_22_Target.txt",
     "_5128_DF_Tilt__-1dB_Oct_B_4dB_Target.txt",
     "_Headphones.com_IEM_DF_Tilt__-1dB_Oct_B_4dB_Target.txt",
     "_JM-1_DF_Tilt__-1dB_Oct_B_4dB_Target.txt"
   ],
-  "target_count": 7,
+  "target_count": 8,
   "low_frequency_reference": "IEF2025.txt",
   "alignment_bands_hz": [
     [
@@ -117,6 +118,7 @@
     "input/targets/IEF2025.txt": "399e5129d80087ff4330e1f75da505f9799fe0cddc28b3a34aaaf68eef5b87d8",
     "input/targets/Listener_Type_3.3_JM-1_B_4.8dB_T_-4.4dB_Harman_2013_OE_Filters_Target.txt": "e00f585759fbe49915b6293fa5a2f4cb577eb26fa15db3c2ae40f418d182fe6c",
     "input/targets/SoundGuys.txt": "b8bfa7e67a9263634b78485bbfca8b6b750182e27b52d1ae7bf1debcf9dbabb4",
+    "input/targets/SoundGuys_5128.txt": "5ec76f3ef98ffe8e0725b4f181e487fda07617cacf394fedc9e771869a00037f",
     "input/targets/Super_22_Target.txt": "dafc4ba48fc8318b3f62bc4e2e236606ebbb08aa7eab62f59d0931c29f80f32c",
     "input/targets/_5128_DF_Tilt__-1dB_Oct_B_4dB_Target.txt": "d92bd971b8e3c570991eaeae7eccf96eb6584cd5b5be2b69b92934c600c0e1e9",
     "input/targets/_Headphones.com_IEM_DF_Tilt__-1dB_Oct_B_4dB_Target.txt": "9f1f166b7dc4472f9114278674a828255f69a63b6336ceeb940a8095823c4510",
@@ -133,6 +135,8 @@
     "JM-1_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "d1c5a018888d6607154a437a59f88b3f7b869d3996c19c14d2e9fb4cd0f6450f",
     "Listener_Type_3.3_JM-1_B_4.8dB_T_-4.4dB_Harman_2013_OE_Filters_Target__mask.txt": "4234934e0a24a9e0c3d13bf207ef66ee65070c80d8c54e5dddfff6ada2f24ebb",
     "Listener_Type_3.3_JM-1_B_4.8dB_T_-4.4dB_Harman_2013_OE_Filters_Target__robust_target.txt": "c066be6956c3c56217d87effd7f1db86ed5334d099c844c68b0aea30e6088f60",
+    "SoundGuys_5128__mask.txt": "e0d7302099b98f5673fa4125d433c6fe4572e490d362a9ce9324f2d707470204",
+    "SoundGuys_5128__robust_target.txt": "15c0d21e33b3725bfdc60464129489eaaba7ecfd96d5779b98553019d590b947",
     "SoundGuys__mask.txt": "e0b70793855d40c137266e22ffc28c8b34187d20ec2278b3671e2417c78d3059",
     "SoundGuys__robust_target.txt": "b3b69b232a450c90b25e30e8a629a89f5c34a454c0d5ee09ca559deb8cd4ed5d",
     "Super_22_Target__mask.txt": "b93fe332958ef2991eaa1a01cf82b9f8358404f9c5b21b2659cf5cac50766dad",
