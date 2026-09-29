@@ -5,6 +5,8 @@ on:
     paths:
       - "app/**"
       - "tests/test_peq_node.js"
+      - "tests/test_peq_constraints_node.js"
+      - "tests/test_peq_device_profiles_node.js"
       - ".github/workflows/app.yml"
   pull_request:
     paths:
@@ -28,4 +30,4 @@ jobs:
       - name: Check Pudding PEQ JavaScript syntax
         run: node --check app/pudding_peq.js
       - name: Run deterministic PEQ regression tests
-        run: node tests/test_peq_node.js
+        run: node tests/test_peq_node.js && node tests/test_peq_constraints_node.js && node tests/test_peq_device_profiles_node.js

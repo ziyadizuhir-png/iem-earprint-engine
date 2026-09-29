@@ -80,6 +80,24 @@ Exports include the active constraint object and a deterministic configuration
 hash, while diagnostics include local worst-error, HF validation, stability,
 quantization sensitivity, and high-Q rescue metadata.
 
+### FR input and device profiles
+
+The Pudding panel can use the default Moondrop FR or a local custom FR upload
+in CSV, TXT, or JSON form. Custom points are validated to 20 Hz–20 kHz,
+strictly ascending frequency order, and finite dB values; gaps are filled on a
+log-frequency input grid before the unchanged solver is called.
+
+The selected target remains the checked-in Robust Target only. Device handling
+is post-processing after the solver:
+
+- Generic PEQ preserves solver precision and reports a virtual preamp value.
+- Moondrop Link applies automatic no-preamp gain compensation and rounds gain
+  and Q to 0.1.
+- WalkPlay / CrinEar DSP supports 8 bands by default or 10 bands, -10 to +10
+  dB gain, Q 0.10–5.00, 0.1 dB gain rounding, and a -8 to +4 dB DAC volume
+  warning check. Band reduction is contribution-ranked and never changes the
+  locked target or optimization objective.
+
 ## Locked handoff
 
 ```text
