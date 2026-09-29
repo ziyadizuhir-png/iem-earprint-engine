@@ -92,10 +92,14 @@ the default selection is `5128 DF Tilt -1dB Oct B 4dB Target` when available,
 while other discovered Robust Targets remain selectable. No alternate target
 family is introduced.
 
-Moondrop Link has no preamp. After the fixed Pudding limits are applied, the
-maximum positive exported gain is measured and compensation is
-`-min(maxBoost, 3 dB)`. The TXT export contains only frequency, gain, and Q
-filters; the UI and JSON metadata show the compensation summary.
+Moondrop Link has no preamp. After the fixed Pudding limits and quantization
+are applied, the actual combined RBJ response is analyzed. The metadata
+separates PEQ headroom (`-maximum response boost`) from the weighted output
+level shift over the valid range and over the 1–12 kHz EarPrint region. No
+headroom value is added to individual PEQ gains; the UI reports whether a
+level-preserving external volume adjustment would conflict with clipping
+headroom. The TXT export contains only frequency, gain, and Q filters; the UI
+and JSON metadata contain the separate level analysis.
 
 WalkPlay DAC volume is a playback recommendation rather than a solver input:
 `recommended DAC = -(maximum PEQ boost + 1 dB)`, clamped to -8…+4 dB. The
@@ -108,8 +112,9 @@ The selected target remains the dynamically loaded Robust Target only. Device
 handling is post-processing after the solver:
 
 - Generic PEQ preserves solver precision and reports a virtual preamp value.
-- Moondrop Link applies capped automatic no-preamp gain compensation and
-  rounds gain to 0.1 dB and Q to 0.01.
+- Moondrop Link keeps the final PEQ correction unchanged, removes inactive
+  filters after quantization, and reports no-preamp headroom separately while
+  rounding gain to 0.1 dB and Q to 0.01.
 - WalkPlay / CrinEar DSP uses contribution-ranked band reduction and keeps the
   locked target and optimization objective unchanged.
 

@@ -318,35 +318,68 @@
 
   function profileHeadroom(profile,bands,dacVolume=0){
     const maxBoost=Math.max(0,...bands.map(b=>Number(b.gain)||0));
-    const compensation=profile.id==='moondrop'?-Math.min(maxBoost,3):0;
+    const compensation=profile.id==='moondrop'?-maxBoost:0;
     const peakWithDac=maxBoost+Number(dacVolume||0);
     const warning=profile.preamp?false:profile.id==='moondrop'?false:peakWithDac>0;
-    return {maxBoostDb:maxBoost,compensationDb:compensation,dacVolumeDb:Number(dacVolume||0),peakWithDacDb:peakWithDac,status:warning?'WARN':'PASS',message:profile.id==='generic'?'Virtual preamp available: '+(-maxBoost).toFixed(2)+' dB':profile.id==='moondrop'?'Moondrop Link has no preamp. Maximum boost +'+maxBoost.toFixed(1)+' dB. External headroom required '+compensation.toFixed(1)+' dB; PEQ gains unchanged.':warning?'Clipping risk: PEQ peak + DAC volume is '+peakWithDac.toFixed(1)+' dB.':'Headroom OK'};
+    return {maxBoostDb:maxBoost,headroomRequiredDb:profile.id==='moondrop'?-maxBoost:0,compensationDb:compensation,dacVolumeDb:Number(dacVolume||0),peakWithDacDb:peakWithDac,status:warning?'WARN':'PASS',message:profile.id==='generic'?'Virtual preamp available: '+(-maxBoost).toFixed(2)+' dB':profile.id==='moondrop'?'Moondrop Link has no preamp. PEQ headroom required '+(-maxBoost).toFixed(1)+' dB; PEQ gains unchanged.':warning?'Clipping risk: PEQ peak + DAC volume is '+peakWithDac.toFixed(1)+' dB.':'Headroom OK'};
   }
 
-  function validatePuddingAdapterBands(bands){
+  function filterActiveMoondropBands(bands){
     const errors=[];
     if(bands.length>10)errors.push('band count exceeds 10');
     bands.forEach((band,index)=>{
       if(!Number.isFinite(band.freq)||band.freq<20||band.freq>20000)errors.push('band '+(index+1)+' frequency is outside 20–20,000 Hz');
       if(!Number.isFinite(band.gain)||band.gain<-12||band.gain>3)errors.push('band '+(index+1)+' gain is outside -12…+3 dB');
       if(!Number.isFinite(band.q)||band.q<0.3||band.q>10)errors.push('band '+(index+1)+' Q is outside 0.30…10.00');
-      if(Math.abs(band.gain)<CFG.minActiveGain)errors.push('band '+(index+1)+' is inactive');
     });
     if(errors.length)throw Error('Pudding adapter output validation failed: '+errors.join('; '));
-    return true;
+    return bands.filter(band=>Math.abs(band.gain)>=CFG.minActiveGain);
+  }
+
+  function finalOutputBands(result){
+    return result.metrics?.deviceProfile?.id==='moondrop'?filterActiveMoondropBands(result.bands||[]):(result.bands||[]);
+  }
+
+  function analyzeOutputLevel(rawResponse,correctedResponse,frequencies){
+    if(!Array.isArray(rawResponse)||!Array.isArray(correctedResponse)||!Array.isArray(frequencies)||rawResponse.length!==correctedResponse.length||rawResponse.length!==frequencies.length||!rawResponse.length)throw Error('Output-level analysis requires equal non-empty response arrays.');
+    const deltas=correctedResponse.map((value,index)=>Number(value)-Number(rawResponse[index]));
+    const weights=optimizerWeights(frequencies);
+    const summary=indices=>{
+      if(!indices.length)return {meanDeltaDb:0,rmsDeltaDb:0,medianDeltaDb:0,weightedMeanDeltaDb:0};
+      const values=indices.map(index=>deltas[index]), localWeights=indices.map(index=>Number(weights[index])||1), weightTotal=localWeights.reduce((sum,value)=>sum+value,0);
+      return {meanDeltaDb:values.reduce((sum,value)=>sum+value,0)/values.length,rmsDeltaDb:Math.sqrt(values.reduce((sum,value)=>sum+value*value,0)/values.length),medianDeltaDb:percentile(values,.5),weightedMeanDeltaDb:values.reduce((sum,value,index)=>sum+value*localWeights[index],0)/Math.max(weightTotal,1e-12)};
+    };
+    const all=summary(deltas.map((_,index)=>index)), earprint=summary(frequencies.map((frequency,index)=>frequency>=1000&&frequency<=12000?index:-1).filter(index=>index>=0));
+    return {meanDeltaDb:all.meanDeltaDb,rmsDeltaDb:all.rmsDeltaDb,medianDeltaDb:all.medianDeltaDb,integratedWeightedLevelShiftDb:all.weightedMeanDeltaDb,fullRangeDeltaDb:all.meanDeltaDb,earprintDeltaDb:earprint.weightedMeanDeltaDb,maxBoostDb:Math.max(...deltas),maxCutDb:Math.min(...deltas),sampleCount:deltas.length};
+  }
+
+  function moondropOutputLevelMetadata(outputLevel,headroom){
+    const shift=Math.abs(outputLevel.integratedWeightedLevelShiftDb)<CFG.minActiveGain?0:outputLevel.integratedWeightedLevelShiftDb;
+    const desired=shift===0?0:-shift;
+    const positiveConflict=desired>CFG.minActiveGain&&headroom.maxBoostDb>CFG.minActiveGain;
+    return {headroomRequiredDb:headroom.headroomRequiredDb,outputLevelShiftDb:shift,desiredExternalVolumeAdjustmentDb:desired,externalVolumeAdjustmentDb:positiveConflict?null:desired,externalVolumeSafe:!positiveConflict,externalVolumeStatus:positiveConflict?'No safe positive digital adjustment; headroom takes priority.':Math.abs(desired)<CFG.minActiveGain?'No volume adjustment required.':'Manual playback-volume adjustment may be used if desired.',outputLevel};
+  }
+
+  function moondropHeadroomFromOutput(headroom,outputLevel){
+    const maxBoost=Math.max(0,outputLevel.maxBoostDb);
+    return {...headroom,maxBoostDb:maxBoost,headroomRequiredDb:-maxBoost,compensationDb:-maxBoost,peakWithDacDb:maxBoost+headroom.dacVolumeDb,message:'Moondrop Link has no preamp. PEQ headroom required '+(-maxBoost).toFixed(1)+' dB; PEQ gains unchanged.'};
   }
 
   function finalAdapterMetrics(result,rawCurve,targetCurve,bands){
-    const lo=Math.max(20,result.metrics.coverage?.[0]||20,rawCurve[0][0],targetCurve[0][0]);
-    const hi=Math.min(20000,result.metrics.coverage?.[1]||20000,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
-    if(hi<=lo)return {...result.metrics,activeBands:bands.length,actualBands:bands.length,deviceActiveBands:bands.length};
-    const freqs=logspace(lo,hi,Math.min(240,Math.max(96,bands.length*24)));
-    const raw=resample(rawCurve,freqs).map(v=>v-(result.metrics.levelOffsetDb||0));
-    const target=resample(targetCurve,freqs);
-    const corrected=applyFilters(raw,bands,freqs);
+    const metricLo=Math.max(20,result.metrics.coverage?.[0]||20,rawCurve[0][0],targetCurve[0][0]);
+    const metricHi=Math.min(20000,result.metrics.coverage?.[1]||20000,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
+    const levelLo=Math.max(20,rawCurve[0][0],targetCurve[0][0]);
+    const levelHi=Math.min(20000,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
+    if(metricHi<=metricLo||levelHi<=levelLo)return {...result.metrics,activeBands:bands.length,actualBands:bands.length,deviceActiveBands:bands.length};
+    const metricFreqs=logspace(metricLo,metricHi,Math.min(240,Math.max(96,bands.length*24)));
+    const raw=resample(rawCurve,metricFreqs).map(v=>v-(result.metrics.levelOffsetDb||0));
+    const target=resample(targetCurve,metricFreqs);
+    const corrected=applyFilters(raw,bands,metricFreqs);
     const errors=Array.from(corrected,(value,index)=>Math.abs(value-target[index]));
-    return {...result.metrics,rmseAfter:rmse(errors),p95After:percentile(errors,.95),maxAfter:Math.max(...errors),maxBoost:Math.max(0,...bands.map(b=>b.gain)),maxCut:Math.min(0,...bands.map(b=>b.gain)),maxQ:Math.max(0,...bands.map(b=>b.q)),objective:distance(freqs,corrected,target),objectiveComponents:objectiveComponents(freqs,corrected,target,bands),activeBands:bands.length,actualBands:bands.length,deviceActiveBands:bands.length};
+    const levelFreqs=logspace(levelLo,levelHi,Math.min(360,Math.max(180,bands.length*36)));
+    const rawResponse=resample(rawCurve,levelFreqs), correctedResponse=Array.from(applyFilters(rawResponse,bands,levelFreqs));
+    const outputLevel=analyzeOutputLevel(rawResponse,correctedResponse,levelFreqs);
+    return {...result.metrics,rmseAfter:rmse(errors),p95After:percentile(errors,.95),maxAfter:Math.max(...errors),maxBoost:outputLevel.maxBoostDb,maxCut:outputLevel.maxCutDb,filterMaxBoost:Math.max(0,...bands.map(b=>b.gain)),filterMaxCut:Math.min(0,...bands.map(b=>b.gain)),maxQ:Math.max(0,...bands.map(b=>b.q)),objective:distance(metricFreqs,corrected,target),objectiveComponents:objectiveComponents(metricFreqs,corrected,target,bands),outputLevel,activeBands:bands.length,actualBands:bands.length,deviceActiveBands:bands.length};
   }
 
   function walkplayDacRecommendation(bands){
@@ -368,16 +401,18 @@
     if(profile.id==='moondrop'){
       removedInactive=bands.filter(b=>Math.abs(b.gain)<CFG.minActiveGain).map(b=>({frequency:b.freq,gain:b.gain,q:b.q,reason:'inactive after Pudding quantization'}));
       bands=bands.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain);
-      validatePuddingAdapterBands(bands);
+      bands=filterActiveMoondropBands(bands);
     }else if(profile.id==='walkplay'){
       bands=bands.map(b=>({...b,freq:clamp(b.freq,20,20000),gain:clamp(roundProfileValue(b.gain,profile.gainPrecision),profile.gainRange[0],profile.gainRange[1]),q:clamp(roundProfileValue(b.q,profile.qPrecision),profile.qRange[0],profile.qRange[1])}));
     }
-    const headroom=profileHeadroom(profile,bands,options.dacVolumeDb||0);
     const finalMetrics=profile.id==='moondrop'?finalAdapterMetrics(result,rawCurve,targetCurve,bands):result.metrics;
+    let headroom=profileHeadroom(profile,bands,options.dacVolumeDb||0);
+    if(profile.id==='moondrop'&&finalMetrics.outputLevel)headroom=moondropHeadroomFromOutput(headroom,finalMetrics.outputLevel);
     const preampDb=profile.preamp?-headroom.maxBoostDb:0;
     const dacRecommendation=profile.id==='walkplay'?walkplayDacRecommendation(bands):null;
     const finalHeadroomBefore=profile.id==='moondrop'?headroom:headroomBefore;
-    return {...result,bands,metrics:{...finalMetrics,deviceProfile:{id:profile.id,label:profile.label,bandLimit:profile.maxBands,removedBands:removed.concat(removedInactive),removedInactiveBands:removedInactive,rounding:{gainDb:profile.gainPrecision,q:profile.qPrecision},preampSupported:profile.preamp,preampDb,dacVolumeRange:profile.id==='walkplay'?[-8,4]:null,dacVolumeDb:null,dacRecommendation,headroom,headroomBefore:finalHeadroomBefore,headroomAppliedToBands:profile.id==='moondrop'?false:null,selectedBandContributions:ranking.slice(0,profile.maxBands).map(x=>({frequency:x.band.freq,improvementDb:x.improvementDb,score:x.score}))}}};
+    const outputLevel=profile.id==='moondrop'&&finalMetrics.outputLevel?moondropOutputLevelMetadata(finalMetrics.outputLevel,headroom):null;
+    return {...result,bands,metrics:{...finalMetrics,outputLevel,deviceProfile:{id:profile.id,label:profile.label,bandLimit:profile.maxBands,removedBands:removed.concat(removedInactive),removedInactiveBands:removedInactive,rounding:{gainDb:profile.gainPrecision,q:profile.qPrecision},preampSupported:profile.preamp,preampDb,dacVolumeRange:profile.id==='walkplay'?[-8,4]:null,dacVolumeDb:null,dacRecommendation,headroom,headroomBefore:finalHeadroomBefore,headroomAppliedToBands:profile.id==='moondrop'?false:null,outputLevel,selectedBandContributions:ranking.slice(0,profile.maxBands).map(x=>({frequency:x.band.freq,improvementDb:x.improvementDb,score:x.score}))}}};
   }
 
   function interp(c,f){
@@ -1886,9 +1921,10 @@
   function formatPEQ(result){
     const lines=[];
     const device=result.metrics?.deviceProfile;
+    const bands=finalOutputBands(result);
     if(device?.preampSupported)lines.push('Preamp: '+(device.preampDb>=0?'+':'')+(device.id==='generic'?String(device.preampDb):device.preampDb.toFixed(2))+' dB');
     if(device?.id==='walkplay'&&device.dacRecommendation)lines.push('DAC Playback Recommendation: '+(device.dacRecommendation.recommendedDb>=0?'+':'')+device.dacRecommendation.recommendedDb.toFixed(1)+' dB');
-    const filters=result.bands.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain).map((b,i)=>
+    const filters=bands.map((b,i)=>
       `Filter ${i+1}: PK ${fmt(b.freq)} Hz, ${b.gain>=0?'+':''}${device?.id==='generic'?String(b.gain):b.gain.toFixed(1)} dB, Q ${device?.id==='walkplay'?String(b.q):b.q.toFixed(2)}`
     );
     return lines.concat(filters).join('\n')+'\n';
@@ -1919,7 +1955,8 @@
       target_mode:'Robust Target (locked)',
       device_profile:result.metrics.deviceProfile||null,
       equal_loudness:{standard:CFG.equalLoudness?.enabled?CFG.equalLoudness.standard:'disabled',phon:CFG.equalLoudness?.enabled?CFG.equalLoudness.phon:null,iem_factor:CFG.equalLoudness?.enabled?CFG.equalLoudness.iemFactor:null,weighting:'relative ISO226 contour in dB converted to positive optimizer weight'},
-      source:meta,metrics:result.metrics,target_topology_guard:{reference:'selected Robust Target',tolerance_db:CFG.topologyToleranceDb},peq:result.bands.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain).slice(0,result.metrics.solverConstraints.maxBands)
+      source:meta,metrics:result.metrics,target_topology_guard:{reference:'selected Robust Target',tolerance_db:CFG.topologyToleranceDb},peq:finalOutputBands(result).slice(0,result.metrics.solverConstraints.maxBands)
+      ,output_level:result.metrics.outputLevel||null
     },null,2)+'\n';
   }
 
@@ -2086,6 +2123,8 @@
     if(!box||!table||!stats)return;
     if(!result){box.hidden=true;table.innerHTML='';stats.innerHTML='';return;}
     box.hidden=false;
+    const displayBands=finalOutputBands(result), device=result.metrics.deviceProfile, outputLevel=result.metrics.outputLevel;
+    const moondropLevel=device?.id==='moondrop'&&outputLevel;
     stats.innerHTML=[
       ['RMSE',result.metrics.rmseBefore.toFixed(2)+' → '+result.metrics.rmseAfter.toFixed(2)+' dB'],
       ['P95 error',result.metrics.p95Before.toFixed(2)+' → '+result.metrics.p95After.toFixed(2)+' dB'],
@@ -2097,7 +2136,11 @@
       ...(meta?.frStats?[['FR cleanup','Original '+meta.frStats.original+' · Processed '+meta.frStats.processed+' · Removed '+meta.frStats.removed]]:[]),
       ['Target','Robust Target (locked)'],
       ['Device',result.metrics.deviceProfile?.label||'Generic PEQ'],
-      ['Headroom',result.metrics.deviceProfile?.id==='moondrop'?result.metrics.deviceProfile.headroomBefore.message:(result.metrics.deviceProfile?.headroom?.message||'—')],
+      ...(moondropLevel?[
+        ['PEQ Headroom',(outputLevel.headroomRequiredDb>=0?'+':'')+outputLevel.headroomRequiredDb.toFixed(1)+' dB required'],
+        ['Output Level Shift',(outputLevel.outputLevelShiftDb>=0?'+':'')+outputLevel.outputLevelShiftDb.toFixed(2)+' dB (weighted)'],
+        ['External Volume',outputLevel.externalVolumeStatus]
+      ]:[['Headroom',result.metrics.deviceProfile?.headroom?.message||'—']]),
       ...(result.metrics.deviceProfile?.id==='walkplay'&&result.metrics.deviceProfile.dacRecommendation?[['DAC recommendation',result.metrics.deviceProfile.dacRecommendation.recommendedDb.toFixed(1)+' dB · PEQ → DAC → output']]:[]),
       ['Gain range',result.metrics.solverConstraints.minGain.toFixed(2)+' dB to '+(result.metrics.solverConstraints.maxGain>=0?'+':'')+result.metrics.solverConstraints.maxGain.toFixed(2)+' dB'],
       ['Equal Loudness',CFG.equalLoudness?.enabled?CFG.equalLoudness.standard:'disabled'],
@@ -2122,7 +2165,7 @@
     }
 
     table.innerHTML='<div class="pudding-peq-head"><span>Band</span><span>Type</span><span>Freq</span><span>Gain</span><span>Q</span></div>'+
-      result.bands.map((b,i)=>`<div class="pudding-peq-row"><span>${i+1}</span><span>PK</span><span>${fmt(b.freq)} Hz</span><span>${b.gain>=0?'+':''}${b.gain.toFixed(2)} dB</span><span>${b.q.toFixed(2)}</span></div>`).join('')+
+      displayBands.map((b,i)=>`<div class="pudding-peq-row"><span>${i+1}</span><span>PK</span><span>${fmt(b.freq)} Hz</span><span>${b.gain>=0?'+':''}${b.gain.toFixed(2)} dB</span><span>${b.q.toFixed(2)}</span></div>`).join('')+
       '<div class="pudding-note">Evidence-driven active bands · joint LM Fc/Gain/Q refinement · Huber IRLS robustness · exact RBJ @ 48 kHz provisional · exact post-quantization validation · Robust Target only.</div>';
   }
 
@@ -2143,7 +2186,7 @@
     <div class="pudding-tabs" role="tablist"><button type="button" class="pudding-tab active" data-pudding-workflow="pudding">PUDDING</button><button type="button" class="pudding-tab" data-pudding-workflow="walkplay">WALKPLAY</button></div>
     <div class="field" style="margin-top:10px"><label for="puddingTargetSelect">Robust Target — PEQ Reference</label><select id="puddingTargetSelect"></select><div class="pudding-help">Robust Target is the only tuning target. The list is loaded dynamically from READY outputs.</div></div>
     <div class="peq-source"><b>FR Source</b><span id="puddingFRSummary">Moondrop FR · input/original_711/moondrop pudding fr.txt</span><b>Selected Target</b><span>Robust Target (locked)</span></div>
-    <section data-pudding-panel="pudding" class="workflow-panel"><div class="pudding-panel-title">Moondrop Pudding</div><div class="pudding-help">Built-in Original 711 measurement · Moondrop Link output</div><fieldset class="pudding-config"><legend>FIXED PUDDING CONSTRAINTS</legend><div class="pudding-readonly-grid"><span>Maximum bands</span><b>10</b><span>Gain range</span><b>-12.0 dB to +3.0 dB</b><span>Q range</span><b>0.30 to 10.00</b><span>Output precision</span><b>Gain 0.1 dB · Q 0.01</b></div><div class="pudding-help">Moondrop Link has no preamp. Headroom compensation is applied after these limits.</div></fieldset></section>
+    <section data-pudding-panel="pudding" class="workflow-panel"><div class="pudding-panel-title">Moondrop Pudding</div><div class="pudding-help">Built-in Original 711 measurement · Moondrop Link output</div><fieldset class="pudding-config"><legend>FIXED PUDDING CONSTRAINTS</legend><div class="pudding-readonly-grid"><span>Maximum bands</span><b>10</b><span>Gain range</span><b>-12.0 dB to +3.0 dB</b><span>Q range</span><b>0.30 to 10.00</b><span>Output precision</span><b>Gain 0.1 dB · Q 0.01</b></div><div class="pudding-help">Moondrop Link has no preamp. Headroom and output-level effects are reported separately; PEQ gains remain unchanged.</div></fieldset></section>
     <section data-pudding-panel="walkplay" class="workflow-panel" hidden><div class="pudding-panel-title">WalkPlay / CrinEar DSP</div><div class="pudding-help">Upload a measured FR; unusable points are removed, sorted, and normalized to 20 Hz–20 kHz.</div><div class="field"><label for="puddingCustomFRFile">Upload FR · CSV, TXT, or JSON</label><input id="puddingCustomFRFile" type="file" accept=".csv,.txt,.json,text/csv,text/plain,application/json"></div><div class="pudding-device-options"><div id="puddingWalkplayBandsWrap"><label for="puddingWalkplayBands">Hardware PEQ bands</label><select id="puddingWalkplayBands"><option value="8">8 bands (default)</option><option value="10">10 bands</option></select></div><div><label>DAC Playback Volume</label><span class="pudding-readonly">Recommendation only · -8 dB to +4 dB</span><span id="puddingDacRecommendation" class="pudding-help">Generate a WalkPlay PEQ to calculate a recommendation.</span></div></div></section>
     <div class="inline" style="margin-top:10px"><button type="button" class="primary" id="generatePuddingPEQ">Generate PEQ</button><button type="button" id="downloadPuddingPEQ">Download TXT</button><button type="button" id="downloadPuddingJSON">Download JSON</button></div>
     <div id="puddingStatus" class="status small" style="margin-top:8px"></div><div id="puddingResult" hidden style="margin-top:10px"><div id="puddingStats" class="summary-grid"></div><div id="puddingTable" class="pudding-table" style="margin-top:10px"></div></div>
@@ -2178,6 +2221,6 @@
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 
-  window.MoondropPuddingPEQ={CFG,HARDWARE_CONSTRAINTS,DEFAULT_SOLVER_CONSTRAINTS,DEVICE_PROFILES,optimize,solvePEQ,getAllowedGrowth,normalizeSolverConstraints,formatPEQ,
-    __test:{DOMAIN_BANDS,resolutionGrids,featureAnalysis,boostRisk,deadZoneHuber,huberWeight,objectiveComponents,worstErrorRegion,highFrequencyValidation,quantizeBands,findQuantizationSensitiveBands,responseAwarePrune,finalizeQuantized,responseDelta,rbj,totalEq,applyFilters,applyFiltersCached,erbRate,erbBandError,narrowFeatureError,topologyError,biquadSafety,modeledHeadroom,parseImportedPeq,parseCustomFR,normalizeFRRows,normalizeFRInputRows,solveLinearSystem,lmRefine,candidatePoolForState,stabilityPerturbationTest,hfSafetyRescue,quantizationRescue,highQReasonMetadata,optimizeLMIRLS,solverConfigurationHash,applyDeviceProfile,profileHeadroom,rankDeviceBands}};
+  window.MoondropPuddingPEQ={CFG,HARDWARE_CONSTRAINTS,DEFAULT_SOLVER_CONSTRAINTS,DEVICE_PROFILES,optimize,solvePEQ,getAllowedGrowth,normalizeSolverConstraints,formatPEQ,jsonPEQ,
+    __test:{DOMAIN_BANDS,resolutionGrids,featureAnalysis,boostRisk,deadZoneHuber,huberWeight,objectiveComponents,worstErrorRegion,highFrequencyValidation,quantizeBands,findQuantizationSensitiveBands,responseAwarePrune,finalizeQuantized,responseDelta,rbj,totalEq,applyFilters,applyFiltersCached,erbRate,erbBandError,narrowFeatureError,topologyError,biquadSafety,modeledHeadroom,parseImportedPeq,parseCustomFR,normalizeFRRows,normalizeFRInputRows,filterActiveMoondropBands,analyzeOutputLevel,moondropOutputLevelMetadata,solveLinearSystem,lmRefine,candidatePoolForState,stabilityPerturbationTest,hfSafetyRescue,quantizationRescue,highQReasonMetadata,optimizeLMIRLS,solverConfigurationHash,applyDeviceProfile,profileHeadroom,rankDeviceBands}};
 })();

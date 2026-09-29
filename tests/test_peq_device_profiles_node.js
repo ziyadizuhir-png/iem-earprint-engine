@@ -22,6 +22,27 @@ assert(!/id="puddingMaxBands"/.test(appSource));
 assert(!/id="puddingMinGain"/.test(appSource));
 assert(!/id="puddingMaxGain"/.test(appSource));
 
+const cleanedBands = t.filterActiveMoondropBands([
+  { freq: 100, gain: 2, q: 1 },
+  { freq: 1000, gain: 0, q: 1 },
+  { freq: 3000, gain: -1.5, q: 2 },
+  { freq: 6000, gain: 0.04, q: 2 }
+]);
+assert.deepEqual(cleanedBands.map(b => b.gain), [2, -1.5]);
+const boostLevel = t.analyzeOutputLevel([0, 0], [3, 3], [100, 1000]);
+assert.equal(boostLevel.maxBoostDb, 3);
+assert.equal(boostLevel.maxCutDb, 3);
+const cutLevel = t.analyzeOutputLevel([0, 0, 0, 0], [-3, -2, -1, 0.5], [100, 1000, 3000, 10000]);
+assert(cutLevel.meanDeltaDb < 0);
+assert.notEqual(cutLevel.meanDeltaDb, (-3 - 2 - 1 + 0.5));
+const flatLevel = t.analyzeOutputLevel([0, 0], [0, 0], [100, 1000]);
+assert.equal(flatLevel.integratedWeightedLevelShiftDb, 0);
+const conflictLevel = t.moondropOutputLevelMetadata(cutLevel, { maxBoostDb: 2, headroomRequiredDb: -2 });
+assert.equal(conflictLevel.externalVolumeAdjustmentDb, null);
+assert.equal(conflictLevel.externalVolumeSafe, false);
+const flatMetadata = t.moondropOutputLevelMetadata(flatLevel, { maxBoostDb: 0, headroomRequiredDb: 0 });
+assert.equal(flatMetadata.externalVolumeAdjustmentDb, 0);
+
 const csv = 'Frequency (Hz),Amplitude (dB)\n20,-1\n100,0\n1000,3\n20000,-2\n';
 const parsedCsv = t.parseCustomFR(csv, 'custom.csv');
 assert.equal(parsedCsv.source, 'custom.csv');
@@ -79,13 +100,19 @@ assert.equal(generic.bands[1].gain, 4.567);
 const moondrop = t.applyDeviceProfile(solverResult, raw, target, 'moondrop');
 assert(moondrop.bands.every(b => Math.abs(b.gain * 10 - Math.round(b.gain * 10)) < 1e-9));
 assert(moondrop.bands.every(b => Math.abs(b.q * 100 - Math.round(b.q * 100)) < 1e-9));
-assert.equal(moondrop.metrics.deviceProfile.headroomBefore.compensationDb, -3);
+assert(Math.abs(moondrop.metrics.deviceProfile.headroomBefore.compensationDb + moondrop.metrics.outputLevel.outputLevel.maxBoostDb) < 1e-9);
 assert.equal(moondrop.metrics.deviceProfile.headroomAppliedToBands, false);
 assert(Math.abs(moondrop.bands.find(b => b.freq === 100).gain - 1.2) < 1e-9);
 assert.equal(moondrop.bands.find(b => b.freq === 1000).gain, 3);
 assert(moondrop.bands.every(b => Math.abs(b.gain) >= 0.05));
-assert(!api.formatPEQ(moondrop).includes('Preamp:'));
-assert(!api.formatPEQ(moondrop).includes('Headroom compensation:'));
+assert(moondrop.metrics.outputLevel);
+assert.equal(moondrop.metrics.outputLevel.headroomRequiredDb, moondrop.metrics.deviceProfile.headroomBefore.headroomRequiredDb);
+assert.equal(JSON.parse(api.jsonPEQ(moondrop, {})).peq.length, moondrop.bands.length);
+const moondropText = api.formatPEQ(moondrop);
+assert.equal((moondropText.match(/^Filter /gm)||[]).length, moondrop.bands.length);
+assert(!moondropText.includes('0.0 dB'));
+assert(!moondropText.includes('Preamp:'));
+assert(!moondropText.includes('Headroom compensation:'));
 
 const inactiveResult = t.applyDeviceProfile({...solverResult,bands:solverResult.bands.concat({freq:500,gain:0.02,q:1.2})}, raw, target, 'moondrop');
 assert(!inactiveResult.bands.some(b => b.freq === 500));
@@ -108,5 +135,6 @@ assert(iefPudding.bands.length <= 10);
 assert(iefPudding.bands.every(b => b.gain >= -12 && b.gain <= 3 && b.q >= 0.3 && b.q <= 10 && Math.abs(b.gain) >= 0.05));
 assert(iefPudding.metrics.shapeGuardAccepted !== false);
 assert(iefPudding.metrics.rmseAfter <= iefSolver.metrics.rmseAfter + 0.05);
+console.log('IEF2025 Pudding adapter', JSON.stringify({solverBands:iefSolver.bands.length,finalBands:iefPudding.bands.length,solverRmse:iefSolver.metrics.rmseAfter,finalRmse:iefPudding.metrics.rmseAfter,outputLevel:iefPudding.metrics.outputLevel}));
 
 console.log('PEQ FR input and device profiles PASS');
