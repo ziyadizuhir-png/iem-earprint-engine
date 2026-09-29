@@ -79,7 +79,8 @@ The app exposes two workflow tabs over the same solver and Robust Target list:
   original/processed/removed counts. It supports 8 hardware bands by default
   or 10 bands, -10 to +10 dB gain, Q 0.10–5.00, and 0.1 dB gain rounding.
 
-All FR sources pass through the same defensive input normalizer. It also
+All raw IEM FR sources pass through the same defensive input normalizer. The
+Robust Target path remains separate and locked. The normalizer also
 handles future IEM files with blank/header rows, malformed or non-finite
 values, duplicate frequencies, unsorted points, sub-20 Hz points, and points
 above 20 kHz. These points are removed before log-frequency interpolation; the
