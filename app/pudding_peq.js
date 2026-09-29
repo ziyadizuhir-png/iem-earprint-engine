@@ -1963,7 +1963,12 @@
       return customFR;
     }
     const path='input/original_711/moondrop pudding fr.txt';
-    return {curve:normalizeFRRows(parseCurveText(await readRepo(path)),path).curve,source:'Moondrop FR · '+path,pointCount:null,interpolatedPoints:null};
+    // The checked-in Original 711 file contains one harmless point slightly
+    // above 20 kHz (20186 Hz). Normalize it through the same input boundary
+    // used for uploaded FR data so the Pudding tab can load its built-in source
+    // without changing the solver or the correction domain.
+    const normalized=parseCustomFR(await readRepo(path),path,{walkplay:true});
+    return {...normalized,source:'Moondrop FR · '+path};
   }
 
   function applyCurrentDeviceProfile(){
