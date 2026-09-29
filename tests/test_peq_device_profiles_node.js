@@ -14,6 +14,13 @@ vm.runInNewContext(fs.readFileSync('app/equal_loudness.js', 'utf8'), sandbox);
 vm.runInNewContext(fs.readFileSync('app/pudding_peq.js', 'utf8'), sandbox);
 const api = sandbox.window.MoondropPuddingPEQ;
 const t = api.__test;
+const appSource = fs.readFileSync('app/pudding_peq.js', 'utf8');
+assert.match(appSource, /data-pudding-workflow="pudding"/);
+assert.match(appSource, /data-pudding-workflow="walkplay"/);
+assert.match(appSource, /5128\.\*DF\.\*Tilt/);
+assert(!/id="puddingMaxBands"/.test(appSource));
+assert(!/id="puddingMinGain"/.test(appSource));
+assert(!/id="puddingMaxGain"/.test(appSource));
 
 const csv = 'Frequency (Hz),Amplitude (dB)\n20,-1\n100,0\n1000,3\n20000,-2\n';
 const parsedCsv = t.parseCustomFR(csv, 'custom.csv');
@@ -29,9 +36,14 @@ const parsedJson = t.parseCustomFR(JSON.stringify({ points: [
   { frequency: 20000, amplitude: -1 }
 ] }), 'custom.json');
 assert(parsedJson.interpolatedPoints > 0);
-assert.throws(() => t.parseCustomFR('20,0\n100,1\n50,2', 'bad.csv'), /ascending/);
-assert.throws(() => t.parseCustomFR('10,0\n100,1', 'bad.txt'), /20 Hz/);
-assert.throws(() => t.parseCustomFR('20,NaN\n100,1', 'bad.txt'), /at least 2|invalid/);
+const sorted = t.parseCustomFR('20,0\n100,1\n50,2', 'sorted.csv');
+assert.equal(sorted.sorted, true);
+assert.equal(sorted.removedPoints, 0);
+const overshoot = t.parseCustomFR('20,0\n100,1\n20000,-1\n20186,-2', 'overshoot.txt');
+assert.equal(overshoot.originalPoints, 4);
+assert.equal(overshoot.removedPoints, 1);
+assert(overshoot.curve.at(-1)[0] <= 20000);
+assert.throws(() => t.parseCustomFR('20,NaN\n100,1', 'bad.txt'), /at least 2/);
 
 const frequencies = Array.from({ length: 64 }, (_, i) => 20 * Math.pow(1000, i / 63));
 const raw = frequencies.map(f => [f, 0]);
@@ -58,15 +70,18 @@ assert.equal(generic.bands[1].gain, 4.567);
 
 const moondrop = t.applyDeviceProfile(solverResult, raw, target, 'moondrop');
 assert(moondrop.bands.every(b => Math.abs(b.gain * 10 - Math.round(b.gain * 10)) < 1e-9));
-assert(moondrop.bands.every(b => Math.abs(b.q * 10 - Math.round(b.q * 10)) < 1e-9));
-assert.equal(moondrop.metrics.deviceProfile.headroomBefore.compensationDb, -4.567);
+assert(moondrop.bands.every(b => Math.abs(b.q * 100 - Math.round(b.q * 100)) < 1e-9));
+assert.equal(moondrop.metrics.deviceProfile.headroomBefore.compensationDb, -3);
+assert(!api.formatPEQ(moondrop).includes('Preamp:'));
+assert(!api.formatPEQ(moondrop).includes('Headroom compensation:'));
 
-const walkplay = t.applyDeviceProfile(solverResult, raw, target, 'walkplay', { walkplayBands: 8, dacVolumeDb: 4 });
+const walkplay = t.applyDeviceProfile(solverResult, raw, target, 'walkplay', { walkplayBands: 8 });
 assert.equal(walkplay.bands.length, 8);
 assert(walkplay.bands.every(b => b.gain >= -10 && b.gain <= 10 && b.q >= 0.1 && b.q <= 5));
 assert.equal(walkplay.metrics.deviceProfile.headroom.status, 'WARN');
-assert.equal(walkplay.metrics.deviceProfile.dacVolumeDb, 4);
-const walkplay10 = t.applyDeviceProfile(solverResult, raw, target, 'walkplay', { walkplayBands: 10, dacVolumeDb: 0 });
+assert.equal(walkplay.metrics.deviceProfile.dacVolumeDb, null);
+assert(Math.abs(walkplay.metrics.deviceProfile.dacRecommendation.recommendedDb + 5.6) < 1e-9);
+const walkplay10 = t.applyDeviceProfile(solverResult, raw, target, 'walkplay', { walkplayBands: 10 });
 assert.equal(walkplay10.bands.length, 9);
 
 console.log('PEQ FR input and device profiles PASS');

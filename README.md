@@ -65,38 +65,45 @@ A deterministic local rescue may adjust adjacent quantization steps. Final
 metadata records band-growth decisions, LM iteration counts, stability evidence,
 HF safety, modeled headroom and whether a numerical fallback was required.
 
-### Runtime PEQ configuration
+### Pudding and WalkPlay workflows
 
-The PEQ panel exposes:
+The app exposes two workflow tabs over the same solver and Robust Target list:
 
-- Maximum PEQ Bands: 1–10, default 10. This is a ceiling, not a required count.
-- Minimum Gain: -12 to +10 dB, default -12 dB.
-- Maximum Gain: -12 to +10 dB, default +3 dB.
+- **Pudding** automatically loads `input/original_711/moondrop pudding fr.txt`.
+  Its Moondrop Link constraints are fixed at 10 bands, -12 to +3 dB gain, and
+  Q 0.30–10.00. The controls are read-only so the internal device contract is
+  not accidentally changed.
+- **WalkPlay** accepts a user FR upload in CSV, TXT, or JSON form. The input
+  layer removes invalid points, sorts frequency, accepts small overshoot above
+  20 kHz while normalizing the usable curve to 20 Hz–20 kHz, and reports the
+  original/processed/removed counts. It supports 8 hardware bands by default
+  or 10 bands, -10 to +10 dB gain, Q 0.10–5.00, and 0.1 dB gain rounding.
 
-Invalid ranges are rejected (`minGain <= maxGain`). Growth is capped before
-candidate generation; for example, ceilings 4, 6, 7, and 10 use
-`3 → 4`, `3 → 5 → 6`, `3 → 5 → 7`, and `3 → 5 → 7 → 10` respectively.
-Exports include the active constraint object and a deterministic configuration
-hash, while diagnostics include local worst-error, HF validation, stability,
-quantization sensitivity, and high-Q rescue metadata.
+The target dropdown is populated dynamically from READY Robust Target outputs;
+the default selection is `5128 DF Tilt -1dB Oct B 4dB Target` when available,
+while other discovered Robust Targets remain selectable. No alternate target
+family is introduced.
+
+Moondrop Link has no preamp. After the fixed Pudding limits are applied, the
+maximum positive exported gain is measured and compensation is
+`-min(maxBoost, 3 dB)`. The TXT export contains only frequency, gain, and Q
+filters; the UI and JSON metadata show the compensation summary.
+
+WalkPlay DAC volume is a playback recommendation rather than a solver input:
+`recommended DAC = -(maximum PEQ boost + 1 dB)`, clamped to -8…+4 dB. The
+recommendation preserves the PEQ curve and reflects the signal order PEQ → DAC
+Playback Volume → output.
 
 ### FR input and device profiles
 
-The Pudding panel can use the default Moondrop FR or a local custom FR upload
-in CSV, TXT, or JSON form. Custom points are validated to 20 Hz–20 kHz,
-strictly ascending frequency order, and finite dB values; gaps are filled on a
-log-frequency input grid before the unchanged solver is called.
-
-The selected target remains the checked-in Robust Target only. Device handling
-is post-processing after the solver:
+The selected target remains the dynamically loaded Robust Target only. Device
+handling is post-processing after the solver:
 
 - Generic PEQ preserves solver precision and reports a virtual preamp value.
-- Moondrop Link applies automatic no-preamp gain compensation and rounds gain
-  and Q to 0.1.
-- WalkPlay / CrinEar DSP supports 8 bands by default or 10 bands, -10 to +10
-  dB gain, Q 0.10–5.00, 0.1 dB gain rounding, and a -8 to +4 dB DAC volume
-  warning check. Band reduction is contribution-ranked and never changes the
-  locked target or optimization objective.
+- Moondrop Link applies capped automatic no-preamp gain compensation and
+  rounds gain to 0.1 dB and Q to 0.01.
+- WalkPlay / CrinEar DSP uses contribution-ranked band reduction and keeps the
+  locked target and optimization objective unchanged.
 
 ## Locked handoff
 

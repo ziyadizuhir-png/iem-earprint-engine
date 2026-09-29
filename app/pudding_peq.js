@@ -209,14 +209,16 @@
   // FR input is deliberately kept outside the solver.  The solver continues
   // to receive a normalized [frequency, dB] curve and the selected Robust
   // Target remains the only target input.
-  function normalizeFRRows(rows,source='Custom FR'){
+  function normalizeFRRows(rows,source='Custom FR',options={}){
     if(!Array.isArray(rows)||rows.length<2)throw Error('Custom FR needs at least 2 frequency/response points.');
+    const sortRows=options.sort===true;
     const curve=rows.map((row,index)=>{
       const frequency=Number(row[0]), amplitude=Number(row[1]);
       if(!Number.isFinite(frequency)||frequency<20||frequency>20000)throw Error('Custom FR point '+(index+1)+' frequency must be within 20 Hz–20 kHz.');
       if(!Number.isFinite(amplitude)||Math.abs(amplitude)>200)throw Error('Custom FR point '+(index+1)+' has an invalid dB value.');
       return [frequency,amplitude];
     });
+    if(sortRows)curve.sort((a,b)=>a[0]-b[0]);
     for(let i=1;i<curve.length;i++)if(curve[i][0]<=curve[i-1][0])throw Error('Custom FR frequencies must be strictly ascending.');
     // Fill gaps on a log-frequency grid. This is input normalization only;
     // the existing solver response and interpolation math are unchanged.
@@ -235,7 +237,7 @@
     throw Error('JSON FR must contain points or frequency/amplitude arrays.');
   }
 
-  function parseCustomFR(text,source='Custom FR'){
+  function parseCustomFR(text,source='Custom FR',options={}){
     const name=String(source||'Custom FR'), trimmed=String(text||'').replace(/^\uFEFF/,'').trim();
     if(!trimmed)throw Error('Custom FR file is empty.');
     let rows;
@@ -246,15 +248,34 @@
       for(const raw of trimmed.split(/\r?\n/)){
         const line=raw.trim(); if(!line||line[0]==='#'||line.startsWith('//'))continue;
         const match=line.match(/^\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)\s*(?:Hz)?\s*(?:,|;|\t|\s+)\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)\s*(?:dB)?\s*$/i);
-        if(match)rows.push([match[1],match[2]]);
+        if(!match&&/frequency|amplitude|hz.*db/i.test(line))continue;
+        rows.push(match?[match[1],match[2]]:[NaN,NaN]);
       }
     }
-    return normalizeFRRows(rows,name);
+    if(options.walkplay!==false){
+      const originalPoints=rows.length;
+      let removedPoints=0;
+      const usable=[];
+      for(const row of rows){
+        const frequency=Number(row?.[0]), amplitude=Number(row?.[1]);
+        if(!Number.isFinite(frequency)||!Number.isFinite(amplitude)||Math.abs(amplitude)>200||frequency<20||frequency>20000){removedPoints++;continue;}
+        usable.push([frequency,amplitude]);
+      }
+      usable.sort((a,b)=>a[0]-b[0]);
+      const deduped=[];
+      for(const row of usable){
+        if(deduped.length&&row[0]===deduped.at(-1)[0]){deduped[deduped.length-1]=row;removedPoints++;}
+        else deduped.push(row);
+      }
+      const normalized=normalizeFRRows(deduped,name);
+      return {...normalized,originalPoints,removedPoints,processedPoints:normalized.pointCount,sorted:true,normalizationWarning:removedPoints>0||normalized.interpolatedPoints>0};
+    }
+    return normalizeFRRows(rows,name,options);
   }
 
   const DEVICE_PROFILES=Object.freeze({
     generic:Object.freeze({id:'generic',label:'Generic PEQ',maxBands:10,preamp:true,gainPrecision:null,qPrecision:null,gainRange:null,qRange:null}),
-    moondrop:Object.freeze({id:'moondrop',label:'Moondrop Link',maxBands:10,preamp:false,gainPrecision:0.1,qPrecision:0.1,gainRange:[-12,10],qRange:[0.3,10]}),
+    moondrop:Object.freeze({id:'moondrop',label:'Moondrop Link',maxBands:10,preamp:false,gainPrecision:0.1,qPrecision:0.01,gainRange:[-12,3],qRange:[0.3,10]}),
     walkplay:Object.freeze({id:'walkplay',label:'WalkPlay / CrinEar DSP',maxBands:8,selectableBands:[8,10],preamp:false,gainPrecision:0.1,qPrecision:null,gainRange:[-10,10],qRange:[0.1,5]})
   });
 
@@ -291,10 +312,15 @@
 
   function profileHeadroom(profile,bands,dacVolume=0){
     const maxBoost=Math.max(0,...bands.map(b=>Number(b.gain)||0));
-    const compensation=profile.id==='moondrop'?-maxBoost:0;
+    const compensation=profile.id==='moondrop'?-Math.min(maxBoost,3):0;
     const peakWithDac=maxBoost+Number(dacVolume||0);
     const warning=profile.preamp?false:profile.id==='moondrop'?false:peakWithDac>0;
-    return {maxBoostDb:maxBoost,compensationDb:compensation,dacVolumeDb:Number(dacVolume||0),peakWithDacDb:peakWithDac,status:warning?'WARN':'PASS',message:profile.id==='generic'?'Virtual preamp available: '+(-maxBoost).toFixed(2)+' dB':profile.id==='moondrop'?'Headroom compensation: '+compensation.toFixed(1)+' dB':warning?'Clipping risk: PEQ peak + DAC volume is '+peakWithDac.toFixed(1)+' dB.':'Headroom OK'};
+    return {maxBoostDb:maxBoost,compensationDb:compensation,dacVolumeDb:Number(dacVolume||0),peakWithDacDb:peakWithDac,status:warning?'WARN':'PASS',message:profile.id==='generic'?'Virtual preamp available: '+(-maxBoost).toFixed(2)+' dB':profile.id==='moondrop'?'Moondrop Link has no preamp. Maximum boost +'+maxBoost.toFixed(1)+' dB. Headroom compensation applied '+compensation.toFixed(1)+' dB':warning?'Clipping risk: PEQ peak + DAC volume is '+peakWithDac.toFixed(1)+' dB.':'Headroom OK'};
+  }
+
+  function walkplayDacRecommendation(bands){
+    const maxBoost=Math.max(0,...bands.map(b=>Number(b.gain)||0));
+    return {maxBoostDb:maxBoost,recommendedDb:clamp(-(maxBoost+1),-8,4),rangeDb:[-8,4],safetyMarginDb:1};
   }
 
   function applyDeviceProfile(result,rawCurve,targetCurve,deviceId='generic',options={}){
@@ -303,6 +329,9 @@
     const ranking=rankDeviceBands(rawCurve,targetCurve,original,result);
     const removed=ranking.slice(profile.maxBands).map(x=>({frequency:x.band.freq,gain:x.band.gain,q:x.band.q,improvementDb:x.improvementDb}));
     let bands=ranking.slice(0,profile.maxBands).map(x=>({...x.band})).sort((a,b)=>a.freq-b.freq);
+    if(profile.id==='moondrop'){
+      bands=bands.map(b=>({...b,gain:clamp(roundProfileValue(b.gain,profile.gainPrecision),profile.gainRange[0],profile.gainRange[1]),q:clamp(roundProfileValue(b.q,profile.qPrecision),profile.qRange[0],profile.qRange[1])}));
+    }
     const headroomBefore=profileHeadroom(profile,bands,options.dacVolumeDb||0);
     if(profile.id==='moondrop'){
       bands=bands.map(b=>({...b,gain:clamp(roundProfileValue(b.gain+headroomBefore.compensationDb,profile.gainPrecision),profile.gainRange[0],profile.gainRange[1]),q:clamp(roundProfileValue(b.q,profile.qPrecision),profile.qRange[0],profile.qRange[1])}));
@@ -311,7 +340,8 @@
     }
     const headroom=profileHeadroom(profile,bands,options.dacVolumeDb||0);
     const preampDb=profile.preamp?-headroom.maxBoostDb:0;
-    return {...result,bands,metrics:{...result.metrics,activeBands:bands.length,actualBands:bands.length,deviceActiveBands:bands.length,deviceProfile:{id:profile.id,label:profile.label,bandLimit:profile.maxBands,removedBands:removed,rounding:{gainDb:profile.gainPrecision,q:profile.qPrecision},preampSupported:profile.preamp,preampDb,dacVolumeRange:profile.id==='walkplay'?[-8,4]:null,dacVolumeDb:profile.id==='walkplay'?Number(options.dacVolumeDb||0):null,headroom,headroomBefore,selectedBandContributions:ranking.slice(0,profile.maxBands).map(x=>({frequency:x.band.freq,improvementDb:x.improvementDb,score:x.score}))}}};
+    const dacRecommendation=profile.id==='walkplay'?walkplayDacRecommendation(bands):null;
+    return {...result,bands,metrics:{...result.metrics,activeBands:bands.length,actualBands:bands.length,deviceActiveBands:bands.length,deviceProfile:{id:profile.id,label:profile.label,bandLimit:profile.maxBands,removedBands:removed,rounding:{gainDb:profile.gainPrecision,q:profile.qPrecision},preampSupported:profile.preamp,preampDb,dacVolumeRange:profile.id==='walkplay'?[-8,4]:null,dacVolumeDb:null,dacRecommendation,headroom,headroomBefore,selectedBandContributions:ranking.slice(0,profile.maxBands).map(x=>({frequency:x.band.freq,improvementDb:x.improvementDb,score:x.score}))}}};
   }
 
   function interp(c,f){
@@ -1820,11 +1850,10 @@
   function formatPEQ(result){
     const lines=[];
     const device=result.metrics?.deviceProfile;
-    if(device?.preampSupported)lines.push('Preamp: '+(device.preampDb>=0?'+':'')+device.preampDb.toFixed(2)+' dB');
-    if(device?.id==='moondrop')lines.push('Headroom compensation: '+device.headroomBefore.compensationDb.toFixed(1)+' dB');
-    if(device?.id==='walkplay')lines.push('DAC Playback Volume: '+(device.dacVolumeDb>=0?'+':'')+device.dacVolumeDb.toFixed(1)+' dB');
+    if(device?.preampSupported)lines.push('Preamp: '+(device.preampDb>=0?'+':'')+(device.id==='generic'?String(device.preampDb):device.preampDb.toFixed(2))+' dB');
+    if(device?.id==='walkplay'&&device.dacRecommendation)lines.push('DAC Playback Recommendation: '+(device.dacRecommendation.recommendedDb>=0?'+':'')+device.dacRecommendation.recommendedDb.toFixed(1)+' dB');
     const filters=result.bands.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain).map((b,i)=>
-      `Filter ${i+1}: PK ${fmt(b.freq)} Hz, ${b.gain>=0?'+':''}${b.gain.toFixed(2)} dB, Q ${b.q.toFixed(2)}`
+      `Filter ${i+1}: PK ${fmt(b.freq)} Hz, ${b.gain>=0?'+':''}${device?.id==='generic'?String(b.gain):b.gain.toFixed(1)} dB, Q ${device?.id==='walkplay'?String(b.q):b.q.toFixed(2)}`
     );
     return lines.concat(filters).join('\n')+'\n';
   }
@@ -1917,19 +1946,20 @@
     try{
       const outputs=await ghList('output');
       targetRegistry=(Array.isArray(outputs)?outputs:[]).filter(x=>x.name&&/__robust_target\.txt$/i.test(x.name)).map(x=>({id:x.name.replace(/__robust_target\.txt$/i,''),displayName:cleanDisplayName(x.name.replace(/__robust_target\.txt$/i,'')),robustTargetPath:'output/'+x.name,status:'READY'}));
-      const sel=$('puddingTargetSelect'); if(sel){sel.innerHTML=targetRegistry.map(t=>`<option value="${esc(t.id)}">${esc(t.displayName)}</option>`).join('');}
+      const sel=$('puddingTargetSelect'); if(sel){sel.innerHTML=targetRegistry.map(t=>`<option value="${esc(t.id)}">${esc(t.displayName)}</option>`).join('');const preferred=targetRegistry.find(t=>/5128.*DF.*Tilt/i.test(t.id+' '+t.displayName));if(preferred)sel.value=preferred.id;}
       status(targetRegistry.length?'Ready · fixed Moondrop Pudding Original 711 · '+targetRegistry.length+' Robust Targets':'No READY Robust Target found.');
-    }catch(e){status(e.message,'warn');}
+      return targetRegistry;
+    }catch(e){status(e.message,'warn');return []}
   }
   function selectedTarget(){const id=$('puddingTargetSelect')?.value; const t=targetRegistry.find(x=>x.id===id); if(!t)throw Error('Selected Robust Target is unavailable.'); return t;}
+  let activeWorkflow='pudding';
   let last=null,lastSolverResult=null,lastMeta=null,lastContext=null,customFR=null;
 
-  function selectedDeviceId(){return $('puddingDeviceSelect')?.value||'generic';}
-  function selectedDeviceOptions(){return {walkplayBands:Number($('puddingWalkplayBands')?.value||8),dacVolumeDb:Number($('puddingWalkplayDac')?.value||0)};}
+  function selectedDeviceId(){return activeWorkflow==='walkplay'?'walkplay':'moondrop';}
+  function selectedDeviceOptions(){return {walkplayBands:Number($('puddingWalkplayBands')?.value||8)};}
   async function selectedFR(){
-    const source=$('puddingFrSourceSelect')?.value||'moondrop';
-    if(source==='custom'){
-      if(!customFR)throw Error('Choose a CSV, TXT, or JSON custom FR file first.');
+    if(activeWorkflow==='walkplay'){
+      if(!customFR)throw Error('Choose a CSV, TXT, or JSON WalkPlay FR file first.');
       return customFR;
     }
     const path='input/original_711/moondrop pudding fr.txt';
@@ -1947,7 +1977,7 @@
     const file=$('puddingCustomFRFile')?.files?.[0];
     if(!file){customFR=null;updateFRSummary();return;}
     try{
-      customFR=parseCustomFR(await file.text(),file.name);
+      customFR=parseCustomFR(await file.text(),file.name,{walkplay:true});
       customFR.source='Custom FR · '+file.name;
       updateFRSummary();
       await generate();
@@ -1956,7 +1986,16 @@
 
   async function handleFRSourceChange(){
     updateFRSummary();
-    if($('puddingFrSourceSelect')?.value==='moondrop'||customFR)await generate();
+    if(activeWorkflow==='pudding'||customFR)await generate();
+  }
+
+  async function setWorkflow(workflow){
+    activeWorkflow=workflow==='walkplay'?'walkplay':'pudding';
+    document.querySelectorAll('[data-pudding-workflow]').forEach(button=>button.classList.toggle('active',button.dataset.puddingWorkflow===activeWorkflow));
+    document.querySelectorAll('[data-pudding-panel]').forEach(panel=>panel.hidden=panel.dataset.puddingPanel!==activeWorkflow);
+    updateFRSummary();
+    updateDeviceUi();
+    if(activeWorkflow==='pudding'||customFR)await generate();
   }
 
   async function generate(){
@@ -1968,7 +2007,8 @@
       const reg=selectedTarget();
       const target={curve:parseCurveText(await readRepo(reg.robustTargetPath)),source:reg.displayName,path:reg.robustTargetPath};
       status('IEM EarPrint constrained optimization…');
-      const solverResult=optimize(raw.curve,target.curve,readSolverConstraintsFromUi());
+      const solverConstraints=activeWorkflow==='pudding'?{maxBands:10,minGain:-12,maxGain:3}:{maxBands:10,minGain:-10,maxGain:10};
+      const solverResult=optimize(raw.curve,target.curve,solverConstraints);
       const result=applyDeviceProfile(solverResult,raw.curve,target.curve,selectedDeviceId(),selectedDeviceOptions());
       lastSolverResult=solverResult;lastContext={raw,target};
       last=result;lastMeta={raw:raw.source,target:target.source,target_mode:'Robust Target',robust_target_path:target.path,device:result.metrics.deviceProfile.label};
@@ -1978,50 +2018,21 @@
     finally{if(button){button.disabled=false;button.textContent='Generate Pudding PEQ';}}
   }
 
-  function readSolverConstraintsFromUi(){
-    const maxBands=$('puddingMaxBands'), minGain=$('puddingMinGain'), maxGain=$('puddingMaxGain');
-    return normalizeSolverConstraints({
-      maxBands:maxBands?Number(maxBands.value):configuredDefaultSolverConstraints().maxBands,
-      minGain:minGain?Number(minGain.value):configuredDefaultSolverConstraints().minGain,
-      maxGain:maxGain?Number(maxGain.value):configuredDefaultSolverConstraints().maxGain
-    });
-  }
-
-  function updateConstraintSummary(){
-    const summary=$('puddingConstraintSummary');
-    if(!summary)return;
-    try{
-      const c=readSolverConstraintsFromUi();
-      summary.textContent='ACTIVE CONSTRAINTS · Maximum Bands: '+c.maxBands+' · Gain Range: '+c.minGain.toFixed(2)+' dB → '+(c.maxGain>=0?'+':'')+c.maxGain.toFixed(2)+' dB';
-      summary.className='pudding-constraint-summary';
-    }catch(e){summary.textContent=e.message;summary.className='pudding-constraint-summary invalid';}
-  }
-
   function updateFRSummary(message=''){
     const summary=$('puddingFRSummary'), custom=$('puddingCustomFRFile');
     if(!summary)return;
-    const source=$('puddingFrSourceSelect')?.value||'moondrop';
-    summary.textContent=message||source==='custom'?(message||customFR?.source||'Upload a CSV, TXT, or JSON FR file.'):'Moondrop FR · input/original_711/moondrop pudding fr.txt';
+    const source=activeWorkflow==='walkplay'?'walkplay':'pudding';
+    const counts=customFR&&source==='walkplay'?' · Original '+customFR.originalPoints+' · Processed '+customFR.processedPoints+' · Removed '+customFR.removedPoints:'';
+    summary.textContent=message||source==='walkplay'?(message||(customFR?.source||'Upload a CSV, TXT, or JSON WalkPlay FR file.')+counts):'Moondrop FR · input/original_711/moondrop pudding fr.txt';
     summary.className='pudding-constraint-summary'+(message?' invalid':'');
-    if(custom)custom.hidden=source!=='custom';
+    if(custom)custom.hidden=source!=='walkplay';
   }
 
   function updateDeviceUi(){
-    const device=$('puddingDeviceSelect')?.value||'generic', walkplay=device==='walkplay';
-    const bands=$('puddingWalkplayBandsWrap'), dac=$('puddingWalkplayDacWrap');
-    if(bands)bands.hidden=!walkplay;if(dac)dac.hidden=!walkplay;
+    const walkplay=activeWorkflow==='walkplay';
+    const bands=$('puddingWalkplayBandsWrap');
+    if(bands)bands.hidden=!walkplay;
     applyCurrentDeviceProfile();
-  }
-
-  function initializeConstraintUi(){
-    const c=normalizeSolverConstraints(configuredDefaultSolverConstraints());
-    for(const [id,value] of [['puddingMaxBands',c.maxBands],['puddingMinGain',c.minGain],['puddingMaxGain',c.maxGain]]){
-      const input=$(id);if(input)input.value=String(value);
-    }
-    const bandInput=$('puddingMaxBands'), bandRange=$('puddingMaxBandsRange');
-    if(bandInput&&bandRange){bandRange.value=bandInput.value;bandRange.addEventListener('input',()=>{bandInput.value=bandRange.value;updateConstraintSummary();});bandInput.addEventListener('input',()=>{bandRange.value=bandInput.value;updateConstraintSummary();});}
-    for(const id of ['puddingMinGain','puddingMaxGain'])$(id)?.addEventListener('input',updateConstraintSummary);
-    updateConstraintSummary();
   }
 
   function render(result,meta){
@@ -2040,6 +2051,7 @@
       ['Target','Robust Target (locked)'],
       ['Device',result.metrics.deviceProfile?.label||'Generic PEQ'],
       ['Headroom',result.metrics.deviceProfile?.id==='moondrop'?result.metrics.deviceProfile.headroomBefore.message:(result.metrics.deviceProfile?.headroom?.message||'—')],
+      ...(result.metrics.deviceProfile?.id==='walkplay'&&result.metrics.deviceProfile.dacRecommendation?[['DAC recommendation',result.metrics.deviceProfile.dacRecommendation.recommendedDb.toFixed(1)+' dB · PEQ → DAC → output']]:[]),
       ['Gain range',result.metrics.solverConstraints.minGain.toFixed(2)+' dB to '+(result.metrics.solverConstraints.maxGain>=0?'+':'')+result.metrics.solverConstraints.maxGain.toFixed(2)+' dB'],
       ['Equal Loudness',CFG.equalLoudness?.enabled?CFG.equalLoudness.standard:'disabled'],
       ['Phon',CFG.equalLoudness?.enabled?String(CFG.equalLoudness.phon):'—'],
@@ -2055,6 +2067,12 @@
       ['Target Guard',result.metrics.shapeGuardAccepted===false?'ROLLBACK':'PASS'],
       ['Shape Δ',result.metrics.shapeGuardDeltaDb===null?'—':(result.metrics.shapeGuardDeltaDb>=0?'+':'')+result.metrics.shapeGuardDeltaDb.toFixed(4)+' dB']
     ].map(x=>`<div class="summary"><span class="k">${esc(x[0])}</span><span class="v">${esc(x[1])}</span></div>`).join('');
+
+    const dac=$('puddingDacRecommendation');
+    if(dac&&result.metrics.deviceProfile?.dacRecommendation){
+      const recommendation=result.metrics.deviceProfile.dacRecommendation.recommendedDb;
+      dac.textContent='Recommended DAC Playback Volume: '+(recommendation>=0?'+':'')+recommendation.toFixed(1)+' dB · warning/recommendation only';
+    }
 
     table.innerHTML='<div class="pudding-peq-head"><span>Band</span><span>Type</span><span>Freq</span><span>Gain</span><span>Q</span></div>'+
       result.bands.map((b,i)=>`<div class="pudding-peq-row"><span>${i+1}</span><span>PK</span><span>${fmt(b.freq)} Hz</span><span>${b.gain>=0?'+':''}${b.gain.toFixed(2)} dB</span><span>${b.q.toFixed(2)}</span></div>`).join('')+
@@ -2074,17 +2092,17 @@
   function ensureUi(){
     if($('puddingEngine'))return;
     const anchor=$('infoPanel')||$('modal');
-    const html=`<div class="card section" id="puddingEngine"><div class="visualizer-head"><div><h2 style="margin:0">IEM EarPrint PEQ Engine</h2><div class="visualizer-subtitle">Moondrop Pudding · Original 711 · Robust Target only</div></div><button type="button" id="puddingRefreshSources">Refresh targets</button></div>
-    <div class="peq-source"><b>FR Source</b><span><select id="puddingFrSourceSelect"><option value="moondrop">Moondrop FR</option><option value="custom">Upload Custom FR</option></select><input id="puddingCustomFRFile" type="file" accept=".csv,.txt,.json,text/csv,text/plain,application/json" hidden></span><b>Selected FR</b><span id="puddingFRSummary">Moondrop FR · input/original_711/moondrop pudding fr.txt</span><b>Measurement</b><span>Original 711 / custom response</span></div>
-    <div class="field" style="margin-top:10px"><label for="puddingTargetSelect">Robust Target — PEQ Reference</label><select id="puddingTargetSelect"></select></div>
-    <div class="field" style="margin-top:10px"><label for="puddingDeviceSelect">PEQ Device</label><select id="puddingDeviceSelect"><option value="generic">Generic PEQ</option><option value="moondrop">Moondrop Link</option><option value="walkplay">WalkPlay / CrinEar DSP</option></select></div>
-    <div class="pudding-device-options"><div id="puddingWalkplayBandsWrap" hidden><label for="puddingWalkplayBands">WalkPlay hardware bands</label><select id="puddingWalkplayBands"><option value="8">8 bands (default)</option><option value="10">10 bands</option></select></div><div id="puddingWalkplayDacWrap" hidden><label for="puddingWalkplayDac">DAC Playback Volume</label><input id="puddingWalkplayDac" type="number" min="-8" max="4" step="0.1" value="0"><span class="pudding-help">-8 dB to +4 dB · warning only</span></div></div>
-    <fieldset class="pudding-config"><legend>PEQ CONFIGURATION</legend><div class="pudding-config-grid"><label for="puddingMaxBands">Maximum PEQ Bands</label><div class="pudding-control"><input id="puddingMaxBands" type="number" min="1" max="10" step="1" value="10"><input id="puddingMaxBandsRange" type="range" min="1" max="10" step="1" value="10"></div><label for="puddingMinGain">Minimum Gain</label><input id="puddingMinGain" type="number" min="-12" max="10" step="0.01" value="-12"><label for="puddingMaxGain">Maximum Gain</label><input id="puddingMaxGain" type="number" min="-12" max="10" step="0.01" value="3"></div><div id="puddingConstraintSummary" class="pudding-constraint-summary"></div></fieldset>
+    const html=`<div class="card section" id="puddingEngine"><div class="visualizer-head"><div><h2 style="margin:0">IEM EarPrint PEQ Engine</h2><div class="visualizer-subtitle">Pudding + WalkPlay · Robust Target only</div></div><button type="button" id="puddingRefreshSources">Refresh targets</button></div>
+    <div class="pudding-tabs" role="tablist"><button type="button" class="pudding-tab active" data-pudding-workflow="pudding">PUDDING</button><button type="button" class="pudding-tab" data-pudding-workflow="walkplay">WALKPLAY</button></div>
+    <div class="field" style="margin-top:10px"><label for="puddingTargetSelect">Robust Target — PEQ Reference</label><select id="puddingTargetSelect"></select><div class="pudding-help">Robust Target is the only tuning target. The list is loaded dynamically from READY outputs.</div></div>
+    <div class="peq-source"><b>FR Source</b><span id="puddingFRSummary">Moondrop FR · input/original_711/moondrop pudding fr.txt</span><b>Selected Target</b><span>Robust Target (locked)</span></div>
+    <section data-pudding-panel="pudding" class="workflow-panel"><div class="pudding-panel-title">Moondrop Pudding</div><div class="pudding-help">Built-in Original 711 measurement · Moondrop Link output</div><fieldset class="pudding-config"><legend>FIXED PUDDING CONSTRAINTS</legend><div class="pudding-readonly-grid"><span>Maximum bands</span><b>10</b><span>Gain range</span><b>-12.0 dB to +3.0 dB</b><span>Q range</span><b>0.30 to 10.00</b><span>Output precision</span><b>Gain 0.1 dB · Q 0.01</b></div><div class="pudding-help">Moondrop Link has no preamp. Headroom compensation is applied after these limits.</div></fieldset></section>
+    <section data-pudding-panel="walkplay" class="workflow-panel" hidden><div class="pudding-panel-title">WalkPlay / CrinEar DSP</div><div class="pudding-help">Upload a measured FR; unusable points are removed, sorted, and normalized to 20 Hz–20 kHz.</div><div class="field"><label for="puddingCustomFRFile">Upload FR · CSV, TXT, or JSON</label><input id="puddingCustomFRFile" type="file" accept=".csv,.txt,.json,text/csv,text/plain,application/json"></div><div class="pudding-device-options"><div id="puddingWalkplayBandsWrap"><label for="puddingWalkplayBands">Hardware PEQ bands</label><select id="puddingWalkplayBands"><option value="8">8 bands (default)</option><option value="10">10 bands</option></select></div><div><label>DAC Playback Volume</label><span class="pudding-readonly">Recommendation only · -8 dB to +4 dB</span><span id="puddingDacRecommendation" class="pudding-help">Generate a WalkPlay PEQ to calculate a recommendation.</span></div></div></section>
     <div class="inline" style="margin-top:10px"><button type="button" class="primary" id="generatePuddingPEQ">Generate PEQ</button><button type="button" id="downloadPuddingPEQ">Download TXT</button><button type="button" id="downloadPuddingJSON">Download JSON</button></div>
     <div id="puddingStatus" class="status small" style="margin-top:8px"></div><div id="puddingResult" hidden style="margin-top:10px"><div id="puddingStats" class="summary-grid"></div><div id="puddingTable" class="pudding-table" style="margin-top:10px"></div></div>
     <details style="margin-top:12px"><summary>Import PEQ preset</summary><div class="field"><label>PK text preset (local only)</label><input id="importPeqFile" type="file" accept=".txt,text/plain"></div><div class="inline"><button id="validateImportedPeq" type="button">Validate</button><button id="downloadImportedPeq" type="button" disabled>Download unchanged</button></div><pre id="importPeqStatus" class="status small"></pre></details></div>`;
     if(anchor)anchor.insertAdjacentHTML('beforebegin',html);else document.body.insertAdjacentHTML('beforeend',html);
-    const style=document.createElement('style');style.textContent=`#puddingEngine{margin-top:12px}.peq-source{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12px}.peq-source code{overflow-wrap:anywhere}.peq-source select,.peq-source input[type=file],.pudding-device-options select,.pudding-device-options input{background:#111a24;color:#e6edf3;border:1px solid var(--line);border-radius:4px;padding:5px}.pudding-config{margin-top:12px;border:1px solid var(--line);border-radius:6px;padding:10px;background:#0b1118}.pudding-config legend{padding:0 6px;color:#aab7c5;font-size:11px;letter-spacing:.08em}.pudding-config-grid{display:grid;grid-template-columns:minmax(130px,1fr) minmax(170px,1.2fr);gap:8px 12px;align-items:center}.pudding-config-grid label,.pudding-device-options label{color:#aab7c5;font-size:12px}.pudding-config-grid input[type=number]{width:100%;box-sizing:border-box;background:#111a24;color:#e6edf3;border:1px solid var(--line);border-radius:4px;padding:6px;font-variant-numeric:tabular-nums}.pudding-control{display:grid;grid-template-columns:76px 1fr;gap:8px;align-items:center}.pudding-control input[type=range]{width:100%;accent-color:#77bdfb}.pudding-device-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:10px}.pudding-device-options>div{display:grid;gap:4px}.pudding-help{color:#7f8b99;font-size:10px}.pudding-constraint-summary{margin-top:9px;color:#77bdfb;font-size:11px;font-variant-numeric:tabular-nums}.pudding-constraint-summary.invalid{color:#ff9b9b}.pudding-table{border:1px solid var(--line);border-radius:6px;overflow:hidden}.pudding-peq-head,.pudding-peq-row{display:grid;grid-template-columns:.5fr .6fr 1.3fr 1.2fr 1fr;gap:8px;padding:7px 9px;align-items:center;font-size:12px;font-variant-numeric:tabular-nums}.pudding-peq-head{background:#0d141c;color:#7f8b99;border-bottom:1px solid var(--line);font-size:10px;text-transform:uppercase}.pudding-peq-row{border-bottom:1px solid #1b2530}.pudding-note{padding:8px 9px;color:#7f8b99;font-size:10px}`;document.head.appendChild(style);
+    const style=document.createElement('style');style.textContent=`#puddingEngine{margin-top:12px}.peq-source{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12px;margin-top:10px}.peq-source code{overflow-wrap:anywhere}.peq-source select,.peq-source input[type=file],.pudding-device-options select,.pudding-device-options input{background:#111a24;color:#e6edf3;border:1px solid var(--line);border-radius:4px;padding:5px}.pudding-tabs{display:flex;gap:6px;margin-top:12px}.pudding-tab{border:1px solid var(--line);background:#0b1118;color:#aab7c5;border-radius:4px;padding:7px 14px;font-size:11px;letter-spacing:.08em}.pudding-tab.active{background:#17344d;color:#fff;border-color:#77bdfb}.workflow-panel{margin-top:12px;border:1px solid var(--line);border-radius:6px;padding:10px;background:#0b1118}.pudding-panel-title{font-weight:600;margin-bottom:3px}.pudding-config{margin-top:12px;border:1px solid var(--line);border-radius:6px;padding:10px;background:#0b1118}.pudding-config legend{padding:0 6px;color:#aab7c5;font-size:11px;letter-spacing:.08em}.pudding-readonly-grid{display:grid;grid-template-columns:minmax(130px,1fr) minmax(170px,1.2fr);gap:7px 12px;align-items:center;font-size:12px}.pudding-readonly-grid span,.pudding-device-options label{color:#aab7c5}.pudding-readonly{font-size:12px}.pudding-device-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:10px}.pudding-device-options>div{display:grid;gap:4px}.pudding-help{color:#7f8b99;font-size:10px}.pudding-constraint-summary{margin-top:9px;color:#77bdfb;font-size:11px;font-variant-numeric:tabular-nums}.pudding-constraint-summary.invalid{color:#ff9b9b}.pudding-table{border:1px solid var(--line);border-radius:6px;overflow:hidden}.pudding-peq-head,.pudding-peq-row{display:grid;grid-template-columns:.5fr .6fr 1.3fr 1.2fr 1fr;gap:8px;padding:7px 9px;align-items:center;font-size:12px;font-variant-numeric:tabular-nums}.pudding-peq-head{background:#0d141c;color:#7f8b99;border-bottom:1px solid var(--line);font-size:10px;text-transform:uppercase}.pudding-peq-row{border-bottom:1px solid #1b2530}.pudding-note{padding:8px 9px;color:#7f8b99;font-size:10px}`;document.head.appendChild(style);
   }
   let importedPeqText=null;
   function parseImportedPeq(text){const rows=[];for(const line of String(text).split(/\r?\n/)){const m=line.match(/PK\s+([\d.]+)\s*Hz\s*,?\s*([+-]?[\d.]+)\s*dB\s*,?\s*Q\s*([\d.]+)/i);if(m)rows.push({freq:+m[1],gain:+m[2],q:+m[3]});}if(!rows.length)throw Error('No valid PK filters found.');if(rows.length>HARDWARE_CONSTRAINTS.maxBands)throw Error('Imported preset has more than '+HARDWARE_CONSTRAINTS.maxBands+' filters.');rows.forEach((b,i)=>{if(b.freq<CFG.minFreq||b.freq>CFG.minFreq*1000||b.gain<HARDWARE_CONSTRAINTS.minGain||b.gain>HARDWARE_CONSTRAINTS.maxGain||b.q<CFG.minQ||b.q>CFG.maxQ||!biquadSafety(b).stable)throw Error('Filter '+(i+1)+' is outside device/stability limits.');});return rows;}
@@ -2094,22 +2112,21 @@
     ensureUi();
     if(!$('puddingEngine'))return;
     await loadPeqConfig();
-    initializeConstraintUi();
     status('Pudding PEQ Engine v'+CFG.version);
     $('generatePuddingPEQ')?.addEventListener('click',generate);
     $('downloadPuddingPEQ')?.addEventListener('click',downloadTxt);
     $('downloadPuddingJSON')?.addEventListener('click',downloadJson);
-    $('puddingRefreshSources')?.addEventListener('click',populate);
-    $('puddingFrSourceSelect')?.addEventListener('change',handleFRSourceChange);
+    $('puddingRefreshSources')?.addEventListener('click',async()=>{await populate();if(activeWorkflow==='pudding'||customFR)await generate();});
     $('puddingCustomFRFile')?.addEventListener('change',handleCustomFRFile);
-    $('puddingDeviceSelect')?.addEventListener('change',updateDeviceUi);
     $('puddingWalkplayBands')?.addEventListener('change',updateDeviceUi);
-    $('puddingWalkplayDac')?.addEventListener('input',applyCurrentDeviceProfile);
+    $('puddingTargetSelect')?.addEventListener('change',generate);
+    document.querySelectorAll('[data-pudding-workflow]').forEach(button=>button.addEventListener('click',()=>setWorkflow(button.dataset.puddingWorkflow)));
     $('validateImportedPeq')?.addEventListener('click',validateImport);
     $('downloadImportedPeq')?.addEventListener('click',()=>{if(importedPeqText)download(importedPeqText,'Imported_PEQ.txt');});
     updateFRSummary();
     updateDeviceUi();
-    populate();
+    await populate();
+    if(targetRegistry.length)await generate();
   }
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
