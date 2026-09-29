@@ -80,8 +80,16 @@ const moondrop = t.applyDeviceProfile(solverResult, raw, target, 'moondrop');
 assert(moondrop.bands.every(b => Math.abs(b.gain * 10 - Math.round(b.gain * 10)) < 1e-9));
 assert(moondrop.bands.every(b => Math.abs(b.q * 100 - Math.round(b.q * 100)) < 1e-9));
 assert.equal(moondrop.metrics.deviceProfile.headroomBefore.compensationDb, -3);
+assert.equal(moondrop.metrics.deviceProfile.headroomAppliedToBands, false);
+assert(Math.abs(moondrop.bands.find(b => b.freq === 100).gain - 1.2) < 1e-9);
+assert.equal(moondrop.bands.find(b => b.freq === 1000).gain, 3);
+assert(moondrop.bands.every(b => Math.abs(b.gain) >= 0.05));
 assert(!api.formatPEQ(moondrop).includes('Preamp:'));
 assert(!api.formatPEQ(moondrop).includes('Headroom compensation:'));
+
+const inactiveResult = t.applyDeviceProfile({...solverResult,bands:solverResult.bands.concat({freq:500,gain:0.02,q:1.2})}, raw, target, 'moondrop');
+assert(!inactiveResult.bands.some(b => b.freq === 500));
+assert(inactiveResult.metrics.deviceProfile.removedInactiveBands.some(b => b.frequency === 500));
 
 const walkplay = t.applyDeviceProfile(solverResult, raw, target, 'walkplay', { walkplayBands: 8 });
 assert.equal(walkplay.bands.length, 8);
@@ -91,5 +99,14 @@ assert.equal(walkplay.metrics.deviceProfile.dacVolumeDb, null);
 assert(Math.abs(walkplay.metrics.deviceProfile.dacRecommendation.recommendedDb + 5.6) < 1e-9);
 const walkplay10 = t.applyDeviceProfile(solverResult, raw, target, 'walkplay', { walkplayBands: 10 });
 assert.equal(walkplay10.bands.length, 9);
+
+const puddingFR = t.parseCustomFR(fs.readFileSync('input/original_711/moondrop pudding fr.txt', 'utf8'), 'moondrop pudding fr.txt');
+const iefTarget = t.parseCustomFR(fs.readFileSync('output/IEF2025__robust_target.txt', 'utf8'), 'IEF2025__robust_target.txt');
+const iefSolver = api.optimize(puddingFR.curve, iefTarget.curve, { maxBands: 10, minGain: -12, maxGain: 3 });
+const iefPudding = t.applyDeviceProfile(iefSolver, puddingFR.curve, iefTarget.curve, 'moondrop');
+assert(iefPudding.bands.length <= 10);
+assert(iefPudding.bands.every(b => b.gain >= -12 && b.gain <= 3 && b.q >= 0.3 && b.q <= 10 && Math.abs(b.gain) >= 0.05));
+assert(iefPudding.metrics.shapeGuardAccepted !== false);
+assert(iefPudding.metrics.rmseAfter <= iefSolver.metrics.rmseAfter + 0.05);
 
 console.log('PEQ FR input and device profiles PASS');

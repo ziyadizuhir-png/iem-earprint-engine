@@ -321,7 +321,32 @@
     const compensation=profile.id==='moondrop'?-Math.min(maxBoost,3):0;
     const peakWithDac=maxBoost+Number(dacVolume||0);
     const warning=profile.preamp?false:profile.id==='moondrop'?false:peakWithDac>0;
-    return {maxBoostDb:maxBoost,compensationDb:compensation,dacVolumeDb:Number(dacVolume||0),peakWithDacDb:peakWithDac,status:warning?'WARN':'PASS',message:profile.id==='generic'?'Virtual preamp available: '+(-maxBoost).toFixed(2)+' dB':profile.id==='moondrop'?'Moondrop Link has no preamp. Maximum boost +'+maxBoost.toFixed(1)+' dB. Headroom compensation applied '+compensation.toFixed(1)+' dB':warning?'Clipping risk: PEQ peak + DAC volume is '+peakWithDac.toFixed(1)+' dB.':'Headroom OK'};
+    return {maxBoostDb:maxBoost,compensationDb:compensation,dacVolumeDb:Number(dacVolume||0),peakWithDacDb:peakWithDac,status:warning?'WARN':'PASS',message:profile.id==='generic'?'Virtual preamp available: '+(-maxBoost).toFixed(2)+' dB':profile.id==='moondrop'?'Moondrop Link has no preamp. Maximum boost +'+maxBoost.toFixed(1)+' dB. External headroom required '+compensation.toFixed(1)+' dB; PEQ gains unchanged.':warning?'Clipping risk: PEQ peak + DAC volume is '+peakWithDac.toFixed(1)+' dB.':'Headroom OK'};
+  }
+
+  function validatePuddingAdapterBands(bands){
+    const errors=[];
+    if(bands.length>10)errors.push('band count exceeds 10');
+    bands.forEach((band,index)=>{
+      if(!Number.isFinite(band.freq)||band.freq<20||band.freq>20000)errors.push('band '+(index+1)+' frequency is outside 20–20,000 Hz');
+      if(!Number.isFinite(band.gain)||band.gain<-12||band.gain>3)errors.push('band '+(index+1)+' gain is outside -12…+3 dB');
+      if(!Number.isFinite(band.q)||band.q<0.3||band.q>10)errors.push('band '+(index+1)+' Q is outside 0.30…10.00');
+      if(Math.abs(band.gain)<CFG.minActiveGain)errors.push('band '+(index+1)+' is inactive');
+    });
+    if(errors.length)throw Error('Pudding adapter output validation failed: '+errors.join('; '));
+    return true;
+  }
+
+  function finalAdapterMetrics(result,rawCurve,targetCurve,bands){
+    const lo=Math.max(20,result.metrics.coverage?.[0]||20,rawCurve[0][0],targetCurve[0][0]);
+    const hi=Math.min(20000,result.metrics.coverage?.[1]||20000,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
+    if(hi<=lo)return {...result.metrics,activeBands:bands.length,actualBands:bands.length,deviceActiveBands:bands.length};
+    const freqs=logspace(lo,hi,Math.min(240,Math.max(96,bands.length*24)));
+    const raw=resample(rawCurve,freqs).map(v=>v-(result.metrics.levelOffsetDb||0));
+    const target=resample(targetCurve,freqs);
+    const corrected=applyFilters(raw,bands,freqs);
+    const errors=Array.from(corrected,(value,index)=>Math.abs(value-target[index]));
+    return {...result.metrics,rmseAfter:rmse(errors),p95After:percentile(errors,.95),maxAfter:Math.max(...errors),maxBoost:Math.max(0,...bands.map(b=>b.gain)),maxCut:Math.min(0,...bands.map(b=>b.gain)),maxQ:Math.max(0,...bands.map(b=>b.q)),objective:distance(freqs,corrected,target),objectiveComponents:objectiveComponents(freqs,corrected,target,bands),activeBands:bands.length,actualBands:bands.length,deviceActiveBands:bands.length};
   }
 
   function walkplayDacRecommendation(bands){
@@ -339,15 +364,20 @@
       bands=bands.map(b=>({...b,gain:clamp(roundProfileValue(b.gain,profile.gainPrecision),profile.gainRange[0],profile.gainRange[1]),q:clamp(roundProfileValue(b.q,profile.qPrecision),profile.qRange[0],profile.qRange[1])}));
     }
     const headroomBefore=profileHeadroom(profile,bands,options.dacVolumeDb||0);
+    let removedInactive=[];
     if(profile.id==='moondrop'){
-      bands=bands.map(b=>({...b,gain:clamp(roundProfileValue(b.gain+headroomBefore.compensationDb,profile.gainPrecision),profile.gainRange[0],profile.gainRange[1]),q:clamp(roundProfileValue(b.q,profile.qPrecision),profile.qRange[0],profile.qRange[1])}));
+      removedInactive=bands.filter(b=>Math.abs(b.gain)<CFG.minActiveGain).map(b=>({frequency:b.freq,gain:b.gain,q:b.q,reason:'inactive after Pudding quantization'}));
+      bands=bands.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain);
+      validatePuddingAdapterBands(bands);
     }else if(profile.id==='walkplay'){
       bands=bands.map(b=>({...b,freq:clamp(b.freq,20,20000),gain:clamp(roundProfileValue(b.gain,profile.gainPrecision),profile.gainRange[0],profile.gainRange[1]),q:clamp(roundProfileValue(b.q,profile.qPrecision),profile.qRange[0],profile.qRange[1])}));
     }
     const headroom=profileHeadroom(profile,bands,options.dacVolumeDb||0);
+    const finalMetrics=profile.id==='moondrop'?finalAdapterMetrics(result,rawCurve,targetCurve,bands):result.metrics;
     const preampDb=profile.preamp?-headroom.maxBoostDb:0;
     const dacRecommendation=profile.id==='walkplay'?walkplayDacRecommendation(bands):null;
-    return {...result,bands,metrics:{...result.metrics,activeBands:bands.length,actualBands:bands.length,deviceActiveBands:bands.length,deviceProfile:{id:profile.id,label:profile.label,bandLimit:profile.maxBands,removedBands:removed,rounding:{gainDb:profile.gainPrecision,q:profile.qPrecision},preampSupported:profile.preamp,preampDb,dacVolumeRange:profile.id==='walkplay'?[-8,4]:null,dacVolumeDb:null,dacRecommendation,headroom,headroomBefore,selectedBandContributions:ranking.slice(0,profile.maxBands).map(x=>({frequency:x.band.freq,improvementDb:x.improvementDb,score:x.score}))}}};
+    const finalHeadroomBefore=profile.id==='moondrop'?headroom:headroomBefore;
+    return {...result,bands,metrics:{...finalMetrics,deviceProfile:{id:profile.id,label:profile.label,bandLimit:profile.maxBands,removedBands:removed.concat(removedInactive),removedInactiveBands:removedInactive,rounding:{gainDb:profile.gainPrecision,q:profile.qPrecision},preampSupported:profile.preamp,preampDb,dacVolumeRange:profile.id==='walkplay'?[-8,4]:null,dacVolumeDb:null,dacRecommendation,headroom,headroomBefore:finalHeadroomBefore,headroomAppliedToBands:profile.id==='moondrop'?false:null,selectedBandContributions:ranking.slice(0,profile.maxBands).map(x=>({frequency:x.band.freq,improvementDb:x.improvementDb,score:x.score}))}}};
   }
 
   function interp(c,f){
