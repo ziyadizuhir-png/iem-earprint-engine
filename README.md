@@ -34,7 +34,8 @@ Raw Pudding 711 + selected Robust Target
 → level alignment
 → residual / feature evidence
 → bandwidth-derived candidate filters
-→ active band growth (3 → 5 → 7 → <=10)
+→ runtime solver constraints (user ceiling + gain range)
+→ active band growth (3 → 5 → 7 → <= user ceiling)
 → joint Levenberg-Marquardt refinement of log(Fc), Gain, log(Q)
 → Huber IRLS robust refinement with guarded acceptance
 → response-aware pruning / redundancy cleanup
@@ -45,8 +46,11 @@ Raw Pudding 711 + selected Robust Target
 → final PEQ export
 ```
 
-The 10-band hardware limit is part of the active-set solve; the engine does not
-generate an oversized bank and slice it afterward. All fitting and validation
+The hardware capability is 10 bands and -12 to +10 dB. The default user solver
+constraint is 10 bands and -12 to +3 dB. These are separate: the user limits are
+validated once and propagated through candidate generation, active-set growth,
+LM, Huber IRLS, rescue/pruning, quantization, and final exact-RBJ validation.
+The engine does not generate an oversized bank and slice it afterward. All fitting and validation
 uses the exact RBJ peaking-biquad magnitude response at the provisional 48 kHz
 sample rate. The correction domain is 20–12,000 Hz. The 12–20 kHz region is
 validation-only and is never fabricated as personal EarPrint data.
@@ -60,6 +64,21 @@ Final Fc/Gain/Q values are quantized to the export grid and exactly re-simulated
 A deterministic local rescue may adjust adjacent quantization steps. Final
 metadata records band-growth decisions, LM iteration counts, stability evidence,
 HF safety, modeled headroom and whether a numerical fallback was required.
+
+### Runtime PEQ configuration
+
+The PEQ panel exposes:
+
+- Maximum PEQ Bands: 1–10, default 10. This is a ceiling, not a required count.
+- Minimum Gain: -12 to +10 dB, default -12 dB.
+- Maximum Gain: -12 to +10 dB, default +3 dB.
+
+Invalid ranges are rejected (`minGain <= maxGain`). Growth is capped before
+candidate generation; for example, ceilings 4, 6, 7, and 10 use
+`3 → 4`, `3 → 5 → 6`, `3 → 5 → 7`, and `3 → 5 → 7 → 10` respectively.
+Exports include the active constraint object and a deterministic configuration
+hash, while diagnostics include local worst-error, HF validation, stability,
+quantization sensitivity, and high-Q rescue metadata.
 
 ## Locked handoff
 

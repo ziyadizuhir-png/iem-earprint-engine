@@ -1,7 +1,9 @@
 # Browser PEQ configuration. The file is JSON-compatible YAML so the static
 # browser app can load it without adding a YAML runtime dependency.
 {
-  "version": "2026-09-25.5-vNext4-LM-IRLS",
+  "version": "2026-09-29.6-vNext4-LM-IRLS-runtime-constraints",
+  "hardwareConstraints": {"maxBands": 10, "minGain": -12, "maxGain": 10},
+  "defaultSolverConstraints": {"maxBands": 10, "minGain": -12, "maxGain": 3},
   "topologyToleranceDb": 0.15,
   "bands": 10,
   "minFreq": 20,
@@ -24,7 +26,7 @@
     "iemFactor": 0.5
   },
   "resolution": {"r0Points": 720, "r1Points": 240, "r2Points": 96, "tonalOctaves": 0.1666666667},
-  "quantization": {"freqHz": 1, "gainDb": 0.01, "q": 0.01},
+  "quantization": {"freqHz": 1, "gainDb": 0.01, "q": 0.01, "sensitivityDb": 0.02},
   "feature": {"prominenceDb": 0.15, "minWidthOct": 0.05, "supportOct": 0.12},
   "hfValidation": {"startHz": 12000, "endHz": 20000, "maxDeviationDb": 6, "maxSlopeDbPerOct": 18},
   "solver": {
