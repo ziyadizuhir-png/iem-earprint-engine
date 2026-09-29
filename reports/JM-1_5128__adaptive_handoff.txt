@@ -1,8 +1,8 @@
 status: HANDOFF_ACCEPTED
 nominal_anchor_hz: 1000.0
-actual_handoff_hz: 1261.648894259477
-transition_end_hz: 1261.648894259477
-transition_width_octaves: 0.3353104768919842
+actual_handoff_hz: 1457.6494524886093
+transition_end_hz: 1457.6494524886093
+transition_width_octaves: 0.5436438102253187
 selection_rule: earliest_feasible_E
 candidate_scoring: False
 pareto_selection: False
@@ -12,18 +12,18 @@ destination_slope_stable: True
 destination_curvature_stable: True
 bridge_curvature_stable: True
 oscillation_pass: True
-destination_slope_reference: 6.607477502164016
-destination_curvature_reference: -27.355720283496538
-endpoint_start_level: -9.808024936098672
-endpoint_end_level: -7.433769065620434
-endpoint_start_slope: 1.5552107510793576
-endpoint_end_slope: 6.607477502164016
+destination_slope_reference: 5.301445764572023
+destination_curvature_reference: -3.5348794294955184
+endpoint_start_level: -5.933890256072098
+endpoint_end_level: -4.615760085930628
+endpoint_start_slope: 1.7727654523223464
+endpoint_end_slope: 5.301445764572023
 domain_end_hz: 12000.0
-alpha: 0.21963869399927852
-beta: 0.9331582412208173
-alpha_plus_beta: 1.1527969352200957
-used_start_slope: 1.5552107510793576
-used_end_slope: 6.607477502164023
+alpha: 0.7311515865181168
+beta: 2.186504975336
+alpha_plus_beta: 2.917656561854117
+used_start_slope: 1.7727654523223464
+used_end_slope: 5.301445764572026
 endpoint_direction_compatibility_pass: True
 analytic_bridge_derivative_pass: True
 finite_pass: True
@@ -36,4 +36,4 @@ bridge_pass: True
 c1_slope_match: True
 continuity_pass: True
 derivative_root_count: 2
-analytic_derivative_values: [0.5214784586119603, 2.215556432303675]
+analytic_derivative_values: [0.963752965136331, 2.8820981751548143]
