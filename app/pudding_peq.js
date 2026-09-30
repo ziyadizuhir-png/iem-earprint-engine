@@ -98,6 +98,7 @@
     maxGain: 3
   });
   let ACTIVE_SOLVER_CONSTRAINTS = null;
+  let ACTIVE_ALIGNMENT_TARGET_CURVE = null;
 
   function configuredDefaultSolverConstraints() {
     return CFG.defaultSolverConstraints || DEFAULT_SOLVER_CONSTRAINTS;
@@ -340,6 +341,12 @@
     return result.metrics?.deviceProfile?.id==='moondrop'?filterActiveMoondropBands(result.bands||[]):(result.bands||[]);
   }
 
+  function shiftCurveLevel(curve,db){
+    const offset=Number(db);
+    if(!Array.isArray(curve)||!Number.isFinite(offset))throw Error('Target-level shift requires a finite dB offset and a curve.');
+    return curve.map(point=>[point[0],point[1]+offset]);
+  }
+
   function analyzeOutputLevel(rawResponse,correctedResponse,frequencies){
     if(!Array.isArray(rawResponse)||!Array.isArray(correctedResponse)||!Array.isArray(frequencies)||rawResponse.length!==correctedResponse.length||rawResponse.length!==frequencies.length||!rawResponse.length)throw Error('Output-level analysis requires equal non-empty response arrays.');
     const deltas=correctedResponse.map((value,index)=>Number(value)-Number(rawResponse[index]));
@@ -357,7 +364,7 @@
     const shift=Math.abs(outputLevel.integratedWeightedLevelShiftDb)<CFG.minActiveGain?0:outputLevel.integratedWeightedLevelShiftDb;
     const desired=shift===0?0:-shift;
     const positiveConflict=desired>CFG.minActiveGain&&headroom.maxBoostDb>CFG.minActiveGain;
-    return {headroomRequiredDb:headroom.headroomRequiredDb,outputLevelShiftDb:shift,desiredExternalVolumeAdjustmentDb:desired,externalVolumeAdjustmentDb:positiveConflict?null:desired,externalVolumeSafe:!positiveConflict,externalVolumeStatus:positiveConflict?'No safe positive digital adjustment; headroom takes priority.':Math.abs(desired)<CFG.minActiveGain?'No volume adjustment required.':'Manual playback-volume adjustment may be used if desired.',outputLevel};
+    return {...outputLevel,headroomRequiredDb:headroom.headroomRequiredDb,outputLevelShiftDb:shift,desiredExternalVolumeAdjustmentDb:desired,externalVolumeAdjustmentDb:positiveConflict?null:desired,externalVolumeSafe:!positiveConflict,externalVolumeStatus:positiveConflict?'No safe positive digital adjustment; headroom takes priority.':Math.abs(desired)<CFG.minActiveGain?'No volume adjustment required.':'Manual playback-volume adjustment may be used if desired.',outputLevel};
   }
 
   function moondropHeadroomFromOutput(headroom,outputLevel){
@@ -413,6 +420,29 @@
     const finalHeadroomBefore=profile.id==='moondrop'?headroom:headroomBefore;
     const outputLevel=profile.id==='moondrop'&&finalMetrics.outputLevel?moondropOutputLevelMetadata(finalMetrics.outputLevel,headroom):null;
     return {...result,bands,metrics:{...finalMetrics,outputLevel,deviceProfile:{id:profile.id,label:profile.label,bandLimit:profile.maxBands,removedBands:removed.concat(removedInactive),removedInactiveBands:removedInactive,rounding:{gainDb:profile.gainPrecision,q:profile.qPrecision},preampSupported:profile.preamp,preampDb,dacVolumeRange:profile.id==='walkplay'?[-8,4]:null,dacVolumeDb:null,dacRecommendation,headroom,headroomBefore:finalHeadroomBefore,headroomAppliedToBands:profile.id==='moondrop'?false:null,outputLevel,selectedBandContributions:ranking.slice(0,profile.maxBands).map(x=>({frequency:x.band.freq,improvementDb:x.improvementDb,score:x.score}))}}};
+  }
+
+  function solvePuddingWithTargetCompensation(rawCurve,targetCurve,options={}){
+    const solverConstraints=options.solverConstraints||{maxBands:10,minGain:-12,maxGain:3};
+    const deviceOptions=options.deviceOptions||{};
+    let workingTarget=targetCurve.map(point=>[point[0],point[1]]), targetLevelCompensationDb=0, finalResult=null, finalSolverResult=null, passes=0, outputLevelConverged=false;
+    for(let pass=0;pass<3;pass++){
+      passes=pass+1;
+      const solverResult=optimize(rawCurve,workingTarget,{...solverConstraints,alignmentTargetCurve:targetCurve});
+      const result=applyDeviceProfile(solverResult,rawCurve,workingTarget,'moondrop',deviceOptions);
+      finalSolverResult=solverResult;
+      finalResult=result;
+      const shift=Number(result.metrics?.outputLevel?.integratedWeightedLevelShiftDb)||0;
+      if(Math.abs(shift)<0.05){outputLevelConverged=true;break;}
+      if(pass===2)break;
+      const correction=clamp(-shift,-3,3);
+      if(Math.abs(correction)<1e-9)break;
+      workingTarget=shiftCurveLevel(workingTarget,correction);
+      targetLevelCompensationDb+=correction;
+    }
+    const metadata={targetLevelCompensationDb,outputLevelCompensationApplied:Math.abs(targetLevelCompensationDb)>1e-9,outputLevelConverged,compensationPasses:passes};
+    finalResult={...finalResult,metrics:{...finalResult.metrics,...metadata,deviceProfile:{...finalResult.metrics.deviceProfile,...metadata}}};
+    return {result:finalResult,solverResult:finalSolverResult,workingTarget,metadata};
   }
 
   function interp(c,f){
@@ -502,6 +532,11 @@
     }
     const offset=n?s/n:0;
     return {offset,curve:raw.map(v=>v-offset)};
+  }
+
+  function alignmentLevel(freqs,raw,target){
+    const alignmentTarget=ACTIVE_ALIGNMENT_TARGET_CURVE?resample(ACTIVE_ALIGNMENT_TARGET_CURVE,freqs):target;
+    return alignLevel(freqs,raw,alignmentTarget);
   }
 
   // Apply the exact declared biquad transfer response to a curve.
@@ -763,7 +798,7 @@
   function finalizeQuantized(rawCurve,targetCurve,bands){
     const lo=Math.max(CFG.minFreq,rawCurve[0][0],targetCurve[0][0]), hi=Math.min(CFG.maxFreq,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
     const freqs=logspace(lo,hi,(CFG.resolution||{}).r0Points||720), raw=resample(rawCurve,freqs), target=resample(targetCurve,freqs);
-    const aligned=alignLevel(freqs,raw,target), qbands=responseAwarePrune(freqs,aligned.curve,target,quantizeBands(bands));
+    const aligned=alignmentLevel(freqs,raw,target), qbands=responseAwarePrune(freqs,aligned.curve,target,quantizeBands(bands));
     const curve=applyFilters(aligned.curve,qbands,freqs), validation=highFrequencyValidation(rawCurve,qbands);
     const continuousCurve=applyFilters(aligned.curve,bands,freqs);
     const beforeTopology=topologyError(freqs,continuousCurve,target), afterTopology=topologyError(freqs,curve,target);
@@ -1042,13 +1077,13 @@
     const grids=resolutionGrids(lo,hi);
     const freqs=grids.R0;
     const raw=resample(rawCurve,freqs),target=resample(targetCurve,freqs);
-    const aligned=alignLevel(freqs,raw,target),rawA=aligned.curve;
+    const aligned=alignmentLevel(freqs,raw,target),rawA=aligned.curve;
 
     // Discover features on the coarse and tonal views, then hand only their
     // deterministic seeds to the existing candidate/ranking machinery.
     const featureSeeds=[];
     for(const view of [grids.R2,grids.R1]){
-      const vr=resample(rawCurve,view), vt=resample(targetCurve,view), va=alignLevel(view,vr,vt).curve;
+      const vr=resample(rawCurve,view), vt=resample(targetCurve,view), va=alignmentLevel(view,vr,vt).curve;
       for(const f of featureAnalysis(view,va.map((v,i)=>v-vt[i])).slice(0,24)){
         const limits=solverConstraints();
         featureSeeds.push({freq:f.freq,q:clamp(1/Math.max(f.widthOct*2,0.3),0.3,2),gain:clamp(f.gain,limits.minGain,limits.maxGain),risk:boostRisk(f)});
@@ -1127,7 +1162,7 @@
     const hi=Math.min(CFG.maxFreq,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
     const freqs=resolutionGrids(lo,hi).R0;
     const raw=resample(rawCurve,freqs),target=resample(targetCurve,freqs);
-    const aligned=alignLevel(freqs,raw,target),rawA=aligned.curve;
+    const aligned=alignmentLevel(freqs,raw,target),rawA=aligned.curve;
     const active=q2.bands.filter(b=>Math.abs(b.gain)>=CFG.minActiveGain).map(b=>({...b}));
     let work=active.slice();
     const highQs=CFG.performanceMode==='balanced'
@@ -1271,7 +1306,7 @@
     const hi=Math.min(CFG.maxFreq,rawCurve.at(-1)[0],targetCurve.at(-1)[0]);
     const freqs=logspace(lo,hi,CFG.balancedPoints||CFG.points);
     const raw=resample(rawCurve,freqs),target=resample(targetCurve,freqs);
-    const aligned=alignLevel(freqs,raw,target),rawA=aligned.curve;
+    const aligned=alignmentLevel(freqs,raw,target),rawA=aligned.curve;
     const corrected=applyFilters(rawA,candidate.bands,freqs);
     const before=rawA.map((v,i)=>Math.abs(v-target[i])), after=corrected.map((v,i)=>Math.abs(v-target[i]));
     const metrics={...candidate.metrics,
@@ -1783,7 +1818,7 @@
     const sc=CFG.solver||{}, grids=resolutionGrids(lo,hi);
     const lmN=Math.min(Math.max(48,sc.lmPoints||240),grids.R0.length);
     const lmFreqs=logspace(lo,hi,lmN), rawLM=resample(rawCurve,lmFreqs), targetLM=resample(targetCurve,lmFreqs);
-    const alignedLM=alignLevel(lmFreqs,rawLM,targetLM), baseLM=alignedLM.curve;
+    const alignedLM=alignmentLevel(lmFreqs,rawLM,targetLM), baseLM=alignedLM.curve;
     const limits=solverConstraints();
     const growth=getAllowedGrowth(limits.maxBands);
     let bands=[], acceptedState=null, trace=[], totalIterations=0, totalAccepted=0, totalRejected=0;
@@ -1815,7 +1850,7 @@
     if(!bands.length)throw Error('LM/IRLS solver could not initialize a valid PEQ solution.');
 
     // Dense final joint refinement; Huber IRLS remains active, then exact guards.
-    const f=grids.R0, raw=resample(rawCurve,f), target=resample(targetCurve,f), aligned=alignLevel(f,raw,target), base=aligned.curve;
+    const f=grids.R0, raw=resample(rawCurve,f), target=resample(targetCurve,f), aligned=alignmentLevel(f,raw,target), base=aligned.curve;
     let final=lmRefine(f,base,target,bands,CFG.huberEnabled?'huber':'standard');
     totalIterations+=final.iterations;totalAccepted+=final.acceptedSteps;totalRejected+=final.rejectedSteps;
     bands=responseAwarePruneLM(f,base,target,final.bands,CFG.huberEnabled?'huber':'standard');
@@ -1903,7 +1938,17 @@
       ...configuredDefaultSolverConstraints()
     };
     const constraints=normalizeSolverConstraints(requestedConstraints||fallbackDefaults);
-    const result=withSolverConstraints(constraints,()=>optimizeInternal(rawCurve,targetCurve));
+    const alignmentTarget=Array.isArray(requestedConstraints?.alignmentTargetCurve)
+      ? requestedConstraints.alignmentTargetCurve
+      : null;
+    const previousAlignmentTarget=ACTIVE_ALIGNMENT_TARGET_CURVE;
+    ACTIVE_ALIGNMENT_TARGET_CURVE=alignmentTarget;
+    let result;
+    try{
+      result=withSolverConstraints(constraints,()=>optimizeInternal(rawCurve,targetCurve));
+    }finally{
+      ACTIVE_ALIGNMENT_TARGET_CURVE=previousAlignmentTarget;
+    }
     result.metrics.solverConstraints=constraintSummary(constraints);
     result.metrics.solverConfigurationHash=solverConfigurationHash(constraints);
     result.metrics.hardwareConstraints={...HARDWARE_CONSTRAINTS};
@@ -1955,7 +2000,7 @@
       target_mode:'Robust Target (locked)',
       device_profile:result.metrics.deviceProfile||null,
       equal_loudness:{standard:CFG.equalLoudness?.enabled?CFG.equalLoudness.standard:'disabled',phon:CFG.equalLoudness?.enabled?CFG.equalLoudness.phon:null,iem_factor:CFG.equalLoudness?.enabled?CFG.equalLoudness.iemFactor:null,weighting:'relative ISO226 contour in dB converted to positive optimizer weight'},
-      source:meta,metrics:result.metrics,target_topology_guard:{reference:'selected Robust Target',tolerance_db:CFG.topologyToleranceDb},peq:finalOutputBands(result).slice(0,result.metrics.solverConstraints.maxBands)
+      source:meta,metrics:result.metrics,targetLevelCompensationDb:result.metrics.targetLevelCompensationDb||0,outputLevelShiftDb:result.metrics.outputLevel?.outputLevelShiftDb??null,outputLevelCompensationApplied:result.metrics.outputLevelCompensationApplied===true,outputLevelConverged:result.metrics.outputLevelConverged===true,target_topology_guard:{reference:'selected Robust Target',tolerance_db:CFG.topologyToleranceDb},peq:finalOutputBands(result).slice(0,result.metrics.solverConstraints.maxBands)
       ,output_level:result.metrics.outputLevel||null
     },null,2)+'\n';
   }
@@ -2086,16 +2131,25 @@
       const raw=await selectedFR();
       updateFRSummary();
       const reg=selectedTarget();
-      const target={curve:parseCurveText(await readRepo(reg.robustTargetPath)),source:reg.displayName,path:reg.robustTargetPath};
+      const targetCurve=parseCurveText(await readRepo(reg.robustTargetPath));
+      const target={curve:targetCurve,source:reg.displayName,path:reg.robustTargetPath};
       status('IEM EarPrint constrained optimization…');
-      const solverConstraints=activeWorkflow==='pudding'?{maxBands:10,minGain:-12,maxGain:3}:{maxBands:10,minGain:-10,maxGain:10};
-      const solverResult=optimize(raw.curve,target.curve,solverConstraints);
-      const result=applyDeviceProfile(solverResult,raw.curve,target.curve,selectedDeviceId(),selectedDeviceOptions());
-      lastSolverResult=solverResult;lastContext={raw,target};
-      last=result;lastMeta={raw:raw.source,target:target.source,target_mode:'Robust Target',robust_target_path:target.path,device:result.metrics.deviceProfile.label,frStats:Number.isFinite(raw.originalPoints)?{original:raw.originalPoints,processed:raw.processedPoints,removed:raw.removedPoints,removedReasons:raw.removedReasons}:null};
+      let solverResult,result,workingTarget=targetCurve,compensationMetadata={targetLevelCompensationDb:0,outputLevelCompensationApplied:false,outputLevelConverged:false,compensationPasses:0};
+      if(activeWorkflow==='pudding'){
+        const compensated=solvePuddingWithTargetCompensation(raw.curve,targetCurve,{solverConstraints:{maxBands:10,minGain:-12,maxGain:3},deviceOptions:selectedDeviceOptions()});
+        solverResult=compensated.solverResult;result=compensated.result;workingTarget=compensated.workingTarget;compensationMetadata=compensated.metadata;
+      }else{
+        const solverConstraints={maxBands:10,minGain:-10,maxGain:10};
+        solverResult=optimize(raw.curve,targetCurve,solverConstraints);
+        result=applyDeviceProfile(solverResult,raw.curve,targetCurve,selectedDeviceId(),selectedDeviceOptions());
+      }
+      const finalTarget={curve:workingTarget,source:target.source,path:target.path};
+      lastSolverResult=solverResult;lastContext={raw,target:finalTarget};
+      last=result;lastMeta={raw:raw.source,target:target.source,target_mode:'Robust Target',robust_target_path:target.path,device:result.metrics.deviceProfile.label,...compensationMetadata,frStats:Number.isFinite(raw.originalPoints)?{original:raw.originalPoints,processed:raw.processedPoints,removed:raw.removedPoints,removedReasons:raw.removedReasons}:null};
       render(result,lastMeta);
       const cleanup=lastMeta.frStats?' · FR '+lastMeta.frStats.original+'→'+lastMeta.frStats.processed+' · removed '+lastMeta.frStats.removed:'';
-      status('Done · '+result.metrics.deviceProfile.label+' · '+result.bands.length+' bands · RMSE '+result.metrics.rmseBefore.toFixed(2)+' → '+result.metrics.rmseAfter.toFixed(2)+' dB'+cleanup,'ok');
+      const convergence=activeWorkflow==='pudding'?' · '+(compensationMetadata.outputLevelConverged?'target level converged':'target level not fully converged'):'';
+      status('Done · '+result.metrics.deviceProfile.label+' · '+result.bands.length+' bands · RMSE '+result.metrics.rmseBefore.toFixed(2)+' → '+result.metrics.rmseAfter.toFixed(2)+' dB'+cleanup+convergence,'ok');
     }catch(e){last=null;lastSolverResult=null;lastContext=null;lastMeta=null;render(null,null);status(e.message,'warn');}
     finally{if(button){button.disabled=false;button.textContent='Generate Pudding PEQ';}}
   }
@@ -2137,8 +2191,10 @@
       ['Target','Robust Target (locked)'],
       ['Device',result.metrics.deviceProfile?.label||'Generic PEQ'],
       ...(moondropLevel?[
+        ['Target Level Compensation',(result.metrics.targetLevelCompensationDb>=0?'+':'')+Number(result.metrics.targetLevelCompensationDb||0).toFixed(2)+' dB'],
+        ['Target Level Status',result.metrics.outputLevelConverged===true?'Converged':'Not fully converged'],
         ['PEQ Headroom',(outputLevel.headroomRequiredDb>=0?'+':'')+outputLevel.headroomRequiredDb.toFixed(1)+' dB required'],
-        ['Output Level Shift',(outputLevel.outputLevelShiftDb>=0?'+':'')+outputLevel.outputLevelShiftDb.toFixed(2)+' dB (weighted)'],
+        ['Final Output Level Shift',(outputLevel.outputLevelShiftDb>=0?'+':'')+outputLevel.outputLevelShiftDb.toFixed(2)+' dB (weighted)'],
         ['External Volume',outputLevel.externalVolumeStatus]
       ]:[['Headroom',result.metrics.deviceProfile?.headroom?.message||'—']]),
       ...(result.metrics.deviceProfile?.id==='walkplay'&&result.metrics.deviceProfile.dacRecommendation?[['DAC recommendation',result.metrics.deviceProfile.dacRecommendation.recommendedDb.toFixed(1)+' dB · PEQ → DAC → output']]:[]),
@@ -2222,5 +2278,5 @@
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 
   window.MoondropPuddingPEQ={CFG,HARDWARE_CONSTRAINTS,DEFAULT_SOLVER_CONSTRAINTS,DEVICE_PROFILES,optimize,solvePEQ,getAllowedGrowth,normalizeSolverConstraints,formatPEQ,jsonPEQ,
-    __test:{DOMAIN_BANDS,resolutionGrids,featureAnalysis,boostRisk,deadZoneHuber,huberWeight,objectiveComponents,worstErrorRegion,highFrequencyValidation,quantizeBands,findQuantizationSensitiveBands,responseAwarePrune,finalizeQuantized,responseDelta,rbj,totalEq,applyFilters,applyFiltersCached,erbRate,erbBandError,narrowFeatureError,topologyError,biquadSafety,modeledHeadroom,parseImportedPeq,parseCustomFR,normalizeFRRows,normalizeFRInputRows,filterActiveMoondropBands,analyzeOutputLevel,moondropOutputLevelMetadata,solveLinearSystem,lmRefine,candidatePoolForState,stabilityPerturbationTest,hfSafetyRescue,quantizationRescue,highQReasonMetadata,optimizeLMIRLS,solverConfigurationHash,applyDeviceProfile,profileHeadroom,rankDeviceBands}};
+    __test:{DOMAIN_BANDS,resolutionGrids,featureAnalysis,boostRisk,deadZoneHuber,huberWeight,objectiveComponents,worstErrorRegion,highFrequencyValidation,quantizeBands,findQuantizationSensitiveBands,responseAwarePrune,finalizeQuantized,responseDelta,rbj,totalEq,applyFilters,applyFiltersCached,erbRate,erbBandError,narrowFeatureError,topologyError,biquadSafety,modeledHeadroom,parseImportedPeq,parseCustomFR,normalizeFRRows,normalizeFRInputRows,filterActiveMoondropBands,analyzeOutputLevel,moondropOutputLevelMetadata,shiftCurveLevel,solvePuddingWithTargetCompensation,solveLinearSystem,lmRefine,candidatePoolForState,stabilityPerturbationTest,hfSafetyRescue,quantizationRescue,highQReasonMetadata,optimizeLMIRLS,solverConfigurationHash,applyDeviceProfile,profileHeadroom,rankDeviceBands}};
 })();

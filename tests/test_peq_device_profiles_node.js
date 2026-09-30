@@ -136,5 +136,7 @@ assert(iefPudding.bands.every(b => b.gain >= -12 && b.gain <= 3 && b.q >= 0.3 &&
 assert(iefPudding.metrics.shapeGuardAccepted !== false);
 assert(iefPudding.metrics.rmseAfter <= iefSolver.metrics.rmseAfter + 0.05);
 console.log('IEF2025 Pudding adapter', JSON.stringify({solverBands:iefSolver.bands.length,finalBands:iefPudding.bands.length,solverRmse:iefSolver.metrics.rmseAfter,finalRmse:iefPudding.metrics.rmseAfter,outputLevel:iefPudding.metrics.outputLevel}));
+const iefCompensated = t.solvePuddingWithTargetCompensation(puddingFR.curve, iefTarget.curve, { solverConstraints: { maxBands: 10, minGain: -12, maxGain: 3 } });
+console.log('IEF2025 target compensation', JSON.stringify(iefCompensated.metadata), 'finalShift=', iefCompensated.result.metrics.outputLevel.outputLevelShiftDb);
 
 console.log('PEQ FR input and device profiles PASS');

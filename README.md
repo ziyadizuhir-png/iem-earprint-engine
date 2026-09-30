@@ -101,6 +101,15 @@ level-preserving external volume adjustment would conflict with clipping
 headroom. The TXT export contains only frequency, gain, and Q filters; the UI
 and JSON metadata contain the separate level analysis.
 
+For Moondrop Pudding only, a selected Robust Target may receive a uniform
+vertical level compensation during the existing solve/profile loop. The loop
+uses the existing output-level metric, applies at most three bounded passes,
+and preserves every target difference between frequencies. The original
+Robust Target remains the alignment authority; no alternate target, fake
+preamp band, or gain subtraction is introduced. Final metadata records the
+total target-level compensation and whether the final weighted output shift
+converged.
+
 WalkPlay DAC volume is a playback recommendation rather than a solver input:
 `recommended DAC = -(maximum PEQ boost + 1 dB)`, clamped to -8…+4 dB. The
 recommendation preserves the PEQ curve and reflects the signal order PEQ → DAC
