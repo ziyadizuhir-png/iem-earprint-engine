@@ -13,7 +13,7 @@ destination_curvature_stable: True
 bridge_curvature_stable: True
 oscillation_pass: True
 destination_slope_reference: 5.301445764572037
-destination_curvature_reference: -3.534879429494495
+destination_curvature_reference: -3.5348794294951773
 endpoint_start_level: -5.933890256072098
 endpoint_end_level: -4.615760085930628
 endpoint_start_slope: 1.7727654523223464

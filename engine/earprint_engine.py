@@ -12,6 +12,7 @@ import hashlib
 import json
 import math
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,6 +32,7 @@ PREFERRED_DIR = ROOT / "input" / "preferred"
 TARGET_DIR = ROOT / "input" / "targets"
 OUT = ROOT / "output"
 REPORTS = ROOT / "reports"
+SERIALIZED_FREQUENCY_DIGITS = 12
 
 
 def fail(message: str) -> None:
@@ -126,21 +128,77 @@ def validate_grid(
         fail(f"{label}: frequency grid must be strictly ascending")
 
 
+def coverage_tolerance_hz(
+    required_hz: float,
+    actual_hz: float,
+    grid_epsilon_hz: float,
+    serialized_frequency_digits: int = SERIALIZED_FREQUENCY_DIGITS,
+) -> float:
+    """Return a scale-aware tolerance for serialized grid endpoints.
+
+    ``write_xy`` emits frequency values with this same significant-digit
+    policy, so validation allows only the bounded serialization step in
+    addition to the existing grid epsilon.
+    """
+    if not (
+        math.isfinite(required_hz)
+        and math.isfinite(actual_hz)
+        and math.isfinite(grid_epsilon_hz)
+        and grid_epsilon_hz > 0
+    ):
+        fail("Coverage tolerance inputs must be finite and grid epsilon > 0")
+    if serialized_frequency_digits < 1:
+        fail("Serialized frequency precision must be at least one digit")
+
+    scale = max(1.0, abs(required_hz), abs(actual_hz))
+    serialized_step = 10.0 ** (
+        math.floor(math.log10(scale))
+        - (serialized_frequency_digits - 1)
+    )
+    scale_aware_grid_epsilon = grid_epsilon_hz * scale
+    return max(
+        grid_epsilon_hz,
+        scale_aware_grid_epsilon,
+        2.0 * serialized_step,
+    )
+
+
 def validate_curve_coverage(
     curves: dict[str, tuple[np.ndarray, np.ndarray]],
     start_hz: float,
     end_hz: float,
     label: str,
+    grid_epsilon_hz: float = 1.0e-12,
 ) -> None:
     """Fail before output cleanup when an input cannot cover the locked domain."""
     if not (math.isfinite(start_hz) and math.isfinite(end_hz) and start_hz < end_hz):
         fail(f"Invalid {label} validation domain: {start_hz:g}-{end_hz:g} Hz")
     for name, (freq, _level) in curves.items():
-        if freq[0] > start_hz or freq[-1] < end_hz:
-            fail(
+        start_tolerance = coverage_tolerance_hz(
+            start_hz,
+            float(freq[0]),
+            grid_epsilon_hz,
+        )
+        end_tolerance = coverage_tolerance_hz(
+            end_hz,
+            float(freq[-1]),
+            grid_epsilon_hz,
+        )
+        under_start = float(freq[0]) > start_hz + start_tolerance
+        under_end = float(freq[-1]) < end_hz - end_tolerance
+        if under_start or under_end:
+            detail = (
                 f"{name}: {label} coverage {freq[0]:g}-{freq[-1]:g} Hz does not "
-                f"cover required {start_hz:g}-{end_hz:g} Hz"
+                f"cover required {start_hz:g}-{end_hz:g} Hz; "
+                f"actual_start={float(freq[0])!r}, "
+                f"actual_end={float(freq[-1])!r}, "
+                f"required_start={float(start_hz)!r}, "
+                f"required_end={float(end_hz)!r}, "
+                f"tolerance_start={start_tolerance!r}, "
+                f"tolerance_end={end_tolerance!r}"
             )
+            print(f"Coverage validation failed: {detail}", file=sys.stderr)
+            fail(detail)
 
 
 def interpolate_log_frequency(
@@ -157,12 +215,32 @@ def interpolate_log_frequency(
         fail("Interpolation source levels must match the source grid")
     if not np.all(np.isfinite(levels)):
         fail("Interpolation source levels contain NaN or Inf")
-    if freq_dst[0] < freq_src[0] or freq_dst[-1] > freq_src[-1]:
-        fail(
+    start_tolerance = coverage_tolerance_hz(
+        float(freq_dst[0]),
+        float(freq_src[0]),
+        grid_epsilon_hz,
+    )
+    end_tolerance = coverage_tolerance_hz(
+        float(freq_dst[-1]),
+        float(freq_src[-1]),
+        grid_epsilon_hz,
+    )
+    under_start = float(freq_dst[0]) < float(freq_src[0]) - start_tolerance
+    over_end = float(freq_dst[-1]) > float(freq_src[-1]) + end_tolerance
+    if under_start or over_end:
+        detail = (
             "Grid coverage error: "
             f"{freq_src[0]:.6g}-{freq_src[-1]:.6g} Hz source does not cover "
-            f"{freq_dst[0]:.6g}-{freq_dst[-1]:.6g} Hz destination."
+            f"{freq_dst[0]:.6g}-{freq_dst[-1]:.6g} Hz destination; "
+            f"source_start={float(freq_src[0])!r}, "
+            f"source_end={float(freq_src[-1])!r}, "
+            f"destination_start={float(freq_dst[0])!r}, "
+            f"destination_end={float(freq_dst[-1])!r}, "
+            f"tolerance_start={start_tolerance!r}, "
+            f"tolerance_end={end_tolerance!r}"
         )
+        print(f"Grid coverage validation failed: {detail}", file=sys.stderr)
+        fail(detail)
     return np.interp(np.log(freq_dst), np.log(freq_src), level_src)
 
 
@@ -522,7 +600,7 @@ def write_xy(
     ) as f:
         for x, y in zip(freq, level):
             f.write(
-                f"{x:.12g}\t{y:.{decimals}f}\n"
+                f"{x:.{SERIALIZED_FREQUENCY_DIGITS}g}\t{y:.{decimals}f}\n"
             )
 
 
@@ -786,12 +864,14 @@ def main() -> None:
         personal_start,
         personal_end,
         "personal-domain",
+        grid_epsilon_hz,
     )
     validate_curve_coverage(
         targets,
         output_start,
         output_end,
         "output-domain",
+        grid_epsilon_hz,
     )
 
     previous_pure = read_output_xy(

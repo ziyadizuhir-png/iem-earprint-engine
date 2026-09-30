@@ -1,3 +1,5 @@
+from contextlib import redirect_stderr
+from io import StringIO
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,10 +14,52 @@ from engine.earprint_engine import (
     gaussian_once_strict_domain,
     huber_consensus,
     sin2_boundary_taper,
+    validate_curve_coverage,
 )
 
 
 class EarPrintMathTests(unittest.TestCase):
+    def test_serialized_endpoint_rounding_passes_coverage(self):
+        required_end = 20186.382308152035
+        actual_end = 20186.382308
+        curves = {
+            "realab.txt": (
+                np.array([20.0, actual_end], dtype=float),
+                np.array([0.0, 0.0], dtype=float),
+            )
+        }
+
+        validate_curve_coverage(
+            curves,
+            20.0,
+            required_end,
+            "output-domain",
+        )
+
+    def test_materially_undercovered_endpoint_still_fails(self):
+        required_end = 20186.382308152035
+        actual_end = required_end - 0.001
+        curves = {
+            "undercovered.txt": (
+                np.array([20.0, actual_end], dtype=float),
+                np.array([0.0, 0.0], dtype=float),
+            )
+        }
+
+        log = StringIO()
+        with redirect_stderr(log):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                r"actual_end=20186\.38130815",
+            ):
+                validate_curve_coverage(
+                    curves,
+                    20.0,
+                    required_end,
+                    "output-domain",
+                )
+        self.assertIn("actual_end=20186.38130815", log.getvalue())
+
     def test_high_frequency_extension_anchors_at_exact_boundary(self):
         freq = np.array([1000.0, 9000.0, 15000.0], dtype=float)
         level = np.array([0.0, 9.0, 15.0], dtype=float)
