@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-09-30T01:49:52.090403+00:00",
+  "generated_utc": "2026-09-30T01:54:43.849656+00:00",
   "engine": "IEM EarPrint Engine 3.4.0",
   "specification": "General_Prompt_EarPrint_8_MATH_LOCKED.txt",
   "specification_addendum": "General_Prompt_EarPrint_8_MATH_LOCKED_boundary_addendum.txt",
@@ -27,9 +27,10 @@
     "_5128_DF_Tilt__-1dB_Oct_B_4dB_Target.txt",
     "_Headphones.com_IEM_DF_Tilt__-1dB_Oct_B_4dB_Target.txt",
     "_JM-1_DF_Tilt__-1dB_Oct_B_4dB_Target.txt",
+    "ief2025_5128.txt",
     "realab.txt"
   ],
-  "target_count": 9,
+  "target_count": 10,
   "low_frequency_reference": "IEF2025.txt",
   "alignment_bands_hz": [
     [
@@ -124,11 +125,12 @@
     "input/targets/_5128_DF_Tilt__-1dB_Oct_B_4dB_Target.txt": "d92bd971b8e3c570991eaeae7eccf96eb6584cd5b5be2b69b92934c600c0e1e9",
     "input/targets/_Headphones.com_IEM_DF_Tilt__-1dB_Oct_B_4dB_Target.txt": "9f1f166b7dc4472f9114278674a828255f69a63b6336ceeb940a8095823c4510",
     "input/targets/_JM-1_DF_Tilt__-1dB_Oct_B_4dB_Target.txt": "153a4cd5046eef6e75dad142899805cc77be4077faec770825d1cbc55afaa7df",
+    "input/targets/ief2025_5128.txt": "b7b37db9c19f3aca6db2e48c9fcce491fc81249607d7c7ce2d5ff296731b7456",
     "input/targets/realab.txt": "b337c93066b99d86095d5abb568a2e480613ced6b80e68fb8cd7ad4d699ff8d0"
   },
   "output_sha256": {
     "5128_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "ceed28eb4a7b982de5a63954867315bb79ec130644c10b94ae509159a847baf7",
-    "5128_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "a133671de40eda0e3b8573451f88090ec7bf9a051058ff93941b49fc6c07900e",
+    "5128_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "b8932e7380fa1bfc95ad75e27466ff3c216c02afc3b84311037ba1682426bb6b",
     "Headphones.com_IEM_DF_Tilt_-1dB_Oct_B_4dB_Target__mask.txt": "426c2b4635e5eb1687e18f18422474386890eeada5ee1b3b0be3eafe7d737136",
     "Headphones.com_IEM_DF_Tilt_-1dB_Oct_B_4dB_Target__robust_target.txt": "0c00ae301c6ad5779962cbf8620a3072b1f1d88e821364ddb0c56a2019ec9343",
     "IEF2025__mask.txt": "7be1c7b614725a9c6ee22f63cf743448af4a06d454ba6b703dffffe817a69c3e",
@@ -143,6 +145,8 @@
     "SoundGuys__robust_target.txt": "b3b69b232a450c90b25e30e8a629a89f5c34a454c0d5ee09ca559deb8cd4ed5d",
     "Super_22_Target__mask.txt": "b93fe332958ef2991eaa1a01cf82b9f8358404f9c5b21b2659cf5cac50766dad",
     "Super_22_Target__robust_target.txt": "3e37329bf05d12b71ccc9d4669095f7f6845b8527799dfdd8ccc747b9d220316",
+    "ief2025_5128__mask.txt": "c7ca2dec002bb88883b608f92d52462fce0a0bc62fa26793a6082b71072530e1",
+    "ief2025_5128__robust_target.txt": "ef62d75246d47edfbe78eb111412af599063b7ad4bc5d651230d98a688ffaef5",
     "pure_earprint_dynamic.txt": "f0f94ff8d24a598c3bd6811091d2675189de399b653bd45cf2f263cca60bafc8",
     "realab__mask.txt": "28a277656427b3d9965200542ddb903444e1fc7cc140e2359b1f45edd0081e5b",
     "realab__robust_target.txt": "e2dd3ac992d755fb20128660e6b2b9956b1ddd46df613bb3dcf59721121b7ffb"
